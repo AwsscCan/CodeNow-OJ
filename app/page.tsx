@@ -84,6 +84,9 @@ export default function Home() {
   const [running, setRunning] = useState(false);
   const [notice, setNotice] = useState("");
   const [showImport, setShowImport] = useState(false);
+  const [importMode, setImportMode] = useState<"paste" | "json">("paste");
+  const [rawProblemText, setRawProblemText] = useState("");
+  const [generatingProblem, setGeneratingProblem] = useState(false);
   const [showAi, setShowAi] = useState(false);
   const [apiKey, setApiKey] = useState("");
   const [provider, setProvider] = useState<AiProvider>("deepseek");
@@ -181,6 +184,33 @@ export default function Home() {
     }
   }
 
+  async function generateProblemFromText() {
+    if (rawProblemText.trim().length < 20) return toast("请粘贴完整题面，至少 20 个字符");
+    if (!apiKey.trim()) return toast("请填写所选 AI 服务的 API Key");
+    if (!endpoint.trim() || !model.trim()) return toast("请补全 API Endpoint 和模型");
+    setGeneratingProblem(true);
+    try {
+      const response = await fetch("/api/generate-problem", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey, endpoint, model, rawProblem: rawProblemText }),
+      });
+      const data = await response.json() as { problem?: unknown; error?: string };
+      if (!response.ok || !data.problem) throw new Error(data.error || "题目解析失败");
+      const generated = normalizeImportedProblem(data.problem);
+      setProblem(generated);
+      setCode(starterCode);
+      setResults([]);
+      setTab("problem");
+      setShowImport(false);
+      toast(`已生成「${generated.title}」和 ${generated.samples.length} 个测试点`);
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "AI 生成题目失败");
+    } finally {
+      setGeneratingProblem(false);
+    }
+  }
+
   async function askAi() {
     if (!apiKey.trim()) return toast("请先填写 API Key");
     setAiBusy(true);
@@ -253,16 +283,32 @@ export default function Home() {
 
       {showImport && <div className="modal-backdrop" onMouseDown={() => setShowImport(false)}><div className="modal import-modal" onMouseDown={(e) => e.stopPropagation()}>
         <button className="modal-close" onClick={() => setShowImport(false)}>×</button>
-        <span className="modal-kicker">题目管理 · JSON V1</span><h2>导入题目与测试点</h2>
-        <p>文件必须是 UTF-8 JSON。必填字段会在导入前严格校验，错误位置会直接提示。</p>
-        <div className="spec-table">
-          <div><b>必填</b><code>title</code><code>description</code><code>inputFormat</code><code>outputFormat</code><code>samples[]</code></div>
-          <div><b>可选</b><code>id</code><code>difficulty</code><code>time</code><code>memory</code><code>version</code></div>
-          <p><code>samples[]</code> 每项必须含字符串类型的 <code>input</code> 和 <code>output</code>，换行使用 <code>\n</code>。</p>
-        </div>
-        <button className="dropzone compact" onClick={() => fileRef.current?.click()}><strong>⇧</strong><b>选择 JSON 文件</b><span>最大建议 5 MB · 至少包含 1 个测试点</span></button>
-        <input ref={fileRef} hidden type="file" accept="application/json,.json" onChange={(e) => importProblem(e.target.files?.[0])} />
-        <div className="download-row"><a href="/problem-example.json" download>下载完整示例</a><a href="/problem.schema.json" download>下载 JSON Schema</a></div>
+        <span className="modal-kicker">快速开始</span><h2>添加一道练习题</h2>
+        <div className="import-tabs"><button className={importMode === "paste" ? "active" : ""} onClick={() => setImportMode("paste")}>✦ 粘贴题面</button><button className={importMode === "json" ? "active" : ""} onClick={() => setImportMode("json")}>⇧ 导入 JSON</button></div>
+        {importMode === "paste" ? <>
+          <p>直接复制题目全文，AI 会整理题面并生成可立即运行的测试点。</p>
+          <label className="raw-problem-label">题目原文<textarea value={rawProblemText} onChange={(e) => setRawProblemText(e.target.value)} placeholder={'粘贴题目标题、描述、输入输出格式、数据范围和样例……\n\n例如：给定两个整数 a 和 b，输出它们的和。'} /></label>
+          <div className="provider-switch compact-providers">
+            <button className={provider === "deepseek" ? "active deepseek" : ""} onClick={() => chooseProvider("deepseek")}><b>DeepSeek</b><small>推荐</small></button>
+            <button className={provider === "openai" ? "active" : ""} onClick={() => chooseProvider("openai")}><b>OpenAI</b><small>官方</small></button>
+            <button className={provider === "custom" ? "active" : ""} onClick={() => chooseProvider("custom")}><b>自定义</b><small>兼容 API</small></button>
+          </div>
+          {provider === "custom" && <div className="inline-fields"><input value={endpoint} onChange={(e) => setEndpoint(e.target.value)} placeholder="API Endpoint" /><input value={model} onChange={(e) => setModel(e.target.value)} placeholder="模型 ID" /></div>}
+          {provider === "deepseek" && <label className="compact-model">模型<select value={model} onChange={(e) => setModel(e.target.value)}><option value="deepseek-v4-flash">DeepSeek V4 Flash · 快速</option><option value="deepseek-v4-pro">DeepSeek V4 Pro · 高质量</option></select></label>}
+          <label className="raw-problem-label">API Key<input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="仅用于本次生成，不会保存" autoComplete="off" /></label>
+          <div className="generation-warning"><b>AI 测试点提示</b><span>系统会覆盖样例、边界值和特殊情况，但生成结果仍可能有误；可在生成后手动检查和修改。</span></div>
+          <button className="generate-button" disabled={generatingProblem} onClick={generateProblemFromText}>{generatingProblem ? "正在理解题目并计算测试点…" : "✦ 生成题目与测试点"}</button>
+        </> : <>
+          <p>文件必须是 UTF-8 JSON。必填字段会在导入前严格校验，错误位置会直接提示。</p>
+          <div className="spec-table">
+            <div><b>必填</b><code>title</code><code>description</code><code>inputFormat</code><code>outputFormat</code><code>samples[]</code></div>
+            <div><b>可选</b><code>id</code><code>difficulty</code><code>time</code><code>memory</code><code>version</code></div>
+            <p><code>samples[]</code> 每项必须含字符串类型的 <code>input</code> 和 <code>output</code>，换行使用 <code>\n</code>。</p>
+          </div>
+          <button className="dropzone compact" onClick={() => fileRef.current?.click()}><strong>⇧</strong><b>选择 JSON 文件</b><span>最大建议 5 MB · 至少包含 1 个测试点</span></button>
+          <input ref={fileRef} hidden type="file" accept="application/json,.json" onChange={(e) => importProblem(e.target.files?.[0])} />
+          <div className="download-row"><a href="/problem-example.json" download>下载完整示例</a><a href="/problem.schema.json" download>下载 JSON Schema</a></div>
+        </>}
       </div></div>}
 
       {showAi && <div className="modal-backdrop" onMouseDown={() => setShowAi(false)}><div className="modal ai-modal" onMouseDown={(e) => e.stopPropagation()}>
