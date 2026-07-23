@@ -213,6 +213,7 @@ export default function Home() {
   const fileRef = useRef<HTMLInputElement>(null);
   const mascotRef = useRef<HTMLElement>(null);
   const codePanelRef = useRef<HTMLElement>(null);
+  const editorAreaRef = useRef<HTMLDivElement>(null);
   const mascotDragOffset = useRef({ x: 0, y: 0 });
   const mascotDragStart = useRef({ x: 0, y: 0 });
   const mascotDragged = useRef(false);
@@ -347,9 +348,12 @@ export default function Home() {
       applyPosition();
       setMascotDragging(false);
       if (mascotNextPosition.current) setMascotPosition(mascotNextPosition.current);
-      const bounds = codePanelRef.current?.getBoundingClientRect();
+      const bounds = editorAreaRef.current?.getBoundingClientRect();
+      const companionBounds = codePanelRef.current?.querySelector(".coding-companion-scene")?.getBoundingClientRect();
       if (!bounds || pageView !== "workspace" || showAi || showMascotAiPrompt) return;
-      const droppedOnCode = event.clientX >= bounds.left && event.clientX <= bounds.right && event.clientY >= bounds.top && event.clientY <= bounds.bottom;
+      const insideEditor = event.clientX >= bounds.left && event.clientX <= bounds.right && event.clientY >= bounds.top && event.clientY <= bounds.bottom;
+      const insideCompanion = companionBounds && event.clientX >= companionBounds.left && event.clientX <= companionBounds.right && event.clientY >= companionBounds.top && event.clientY <= companionBounds.bottom;
+      const droppedOnCode = insideEditor && !insideCompanion;
       if (droppedOnCode) {
         setMascotMessage(2);
         setShowMascotAiPrompt(true);
@@ -901,7 +905,7 @@ export default function Home() {
         <section ref={codePanelRef} className={`code-panel editor-theme-${editorTheme}`}>
           <div className="coding-companion-scene" aria-hidden="true"><img src="/codenow/portrait-classroom.jpg" alt="" /><span>我在看哦 · ちゃんと見てるよ</span></div>
           <div className="editor-toolbar"><div className="file-tab"><span>C++</span> main.cpp <i>●</i></div><div><select aria-label="编程语言" value="cpp17" disabled><option value="cpp17">GNU C++17 · GCC</option></select><button title="重置 C++ 模板" onClick={() => { setCode(starterCode); setCompilerDiagnostic(""); toast("C++ 模板已重置"); }}>↻</button><label className="editor-theme-picker" title="切换编辑器主题"><span aria-hidden="true">◐</span><select aria-label="编辑器主题" value={editorTheme} onChange={(event) => setEditorTheme(event.target.value as EditorTheme)}><option value="dark">暗色</option><option value="light">亮色</option><option value="girl">少女</option></select></label></div></div>
-          <div className="editor-area"><CppEditor value={code} themeMode={editorTheme} compilerDiagnostic={compilerDiagnostic} onChange={(next) => { setCode(next); setCompilerDiagnostic(""); }} onCursorChange={(line, column) => setCursor({ line, column })} /></div>
+          <div ref={editorAreaRef} className="editor-area"><CppEditor value={code} themeMode={editorTheme} compilerDiagnostic={compilerDiagnostic} onChange={(next) => { setCode(next); setCompilerDiagnostic(""); }} onCursorChange={(line, column) => setCursor({ line, column })} /></div>
           <div className="console-panel">
             <div className="console-tabs"><button className={consoleTab === "results" ? "active" : ""} onClick={() => setConsoleTab("results")}>测试结果</button><button className={consoleTab === "history" ? "active" : ""} onClick={() => setConsoleTab("history")}>提交记录</button>{results.length > 0 && <span className={score === 100 ? "score good" : "score"}>{passed}/{results.length} 通过 · {score} 分</span>}</div>
             <div className="console-content">
