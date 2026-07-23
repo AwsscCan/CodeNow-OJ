@@ -53,6 +53,9 @@ type AiProvider = "deepseek" | "openai" | "custom";
 type ArchivedProblem = { problem: Problem; folder: string; archivedAt: string };
 type ChatMessage = { role: "user" | "assistant"; content: string };
 type BundledProblem = Problem & { folder: string; sourceUrl: string; extractionStatus: "complete" | "needs_review" };
+type CatalogEntry = { kind: "built-in"; id: string } | { kind: "acwing"; id: string; item: BundledProblem } | { kind: "archive"; id: string; item: ArchivedProblem };
+
+const naturalCollator = new Intl.Collator("zh-CN", { numeric: true, sensitivity: "base" });
 
 const acwingCourse = acwingCourseData as BundledProblem[];
 const acwingFolders = Array.from(new Set(acwingCourse.flatMap((problem) => {
@@ -66,6 +69,16 @@ function folderContains(folder: string, parent: string) {
 
 function folderName(folder: string) {
   return folder.split("/").pop() || folder;
+}
+
+function compareFolderPaths(left: string, right: string) {
+  const a = left.split("/");
+  const b = right.split("/");
+  for (let index = 0; index < Math.min(a.length, b.length); index += 1) {
+    const compared = naturalCollator.compare(a[index], b[index]);
+    if (compared) return compared;
+  }
+  return a.length - b.length;
 }
 
 function normalizeImportedProblem(input: unknown): Problem {
@@ -136,6 +149,8 @@ export default function Home() {
   const [folders, setFolders] = useState(["默认题库"]);
   const [selectedFolder, setSelectedFolder] = useState("默认题库");
   const [newFolderName, setNewFolderName] = useState("");
+  const [collapsedFolders, setCollapsedFolders] = useState<string[]>([]);
+  const [includeSubfolders, setIncludeSubfolders] = useState(true);
   const [libraryReady, setLibraryReady] = useState(false);
   const [history, setHistory] = useState<{ time: string; status: string; passed: string }[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -199,31 +214,43 @@ export default function Home() {
     const saved = localStorage.getItem("codeforge-problem-library");
     if (saved) {
       try {
-        const data = JSON.parse(saved) as { archives?: ArchivedProblem[]; folders?: string[]; selectedFolder?: string };
+        const data = JSON.parse(saved) as { archives?: ArchivedProblem[]; folders?: string[]; selectedFolder?: string; collapsedFolders?: string[]; includeSubfolders?: boolean };
         if (Array.isArray(data.archives)) setArchives(data.archives);
         if (Array.isArray(data.folders) && data.folders.length) setFolders(data.folders);
         if (typeof data.selectedFolder === "string") setSelectedFolder(data.selectedFolder);
+        if (Array.isArray(data.collapsedFolders)) setCollapsedFolders(data.collapsedFolders.filter((item): item is string => typeof item === "string"));
+        if (typeof data.includeSubfolders === "boolean") setIncludeSubfolders(data.includeSubfolders);
       } catch { /* ignore malformed local state */ }
     }
     setLibraryReady(true);
   }, []);
 
   useEffect(() => {
-    if (libraryReady) localStorage.setItem("codeforge-problem-library", JSON.stringify({ archives, folders, selectedFolder }));
-  }, [archives, folders, selectedFolder, libraryReady]);
+    if (libraryReady) localStorage.setItem("codeforge-problem-library", JSON.stringify({ archives, folders, selectedFolder, collapsedFolders, includeSubfolders }));
+  }, [archives, folders, selectedFolder, collapsedFolders, includeSubfolders, libraryReady]);
 
   useEffect(() => {
     if (libraryReady) setArchives((items) => items.map((item) => item.problem.id === problem.id ? { ...item, problem } : item));
   }, [problem, libraryReady]);
 
   const apiKey = apiKeys[provider];
-  const orderedFolders = Array.from(new Set([...folders, ...acwingFolders])).sort((a, b) => a.localeCompare(b, "zh-CN"));
-  const selectedArchives = selectedFolder === "全部题目" ? archives : archives.filter((item) => folderContains(item.folder, selectedFolder));
-  const selectedAcwing = selectedFolder === "全部题目" ? acwingCourse : acwingCourse.filter((item) => folderContains(item.folder, selectedFolder));
+  const orderedFolders = Array.from(new Set([...folders, ...acwingFolders])).sort(compareFolderPaths);
+  const visibleFolders = orderedFolders.filter((folder) => {
+    const parts = folder.split("/");
+    return parts.slice(0, -1).every((_, index) => !collapsedFolders.includes(parts.slice(0, index + 1).join("/")));
+  });
+  const matchesSelectedFolder = (folder: string) => selectedFolder === "全部题目" || (includeSubfolders ? folderContains(folder, selectedFolder) : folder === selectedFolder);
+  const selectedArchives = archives.filter((item) => matchesSelectedFolder(item.folder));
+  const selectedAcwing = acwingCourse.filter((item) => matchesSelectedFolder(item.folder));
   const searchQuery = librarySearch.trim().toLowerCase();
   const displayedArchives = selectedArchives.filter((item) => !searchQuery || `${item.problem.id} ${item.problem.title}`.toLowerCase().includes(searchQuery));
   const displayedAcwing = selectedAcwing.filter((item) => !searchQuery || `${item.id} ${item.title}`.toLowerCase().includes(searchQuery));
-  const showBuiltInProblem = (selectedFolder === "全部题目" || folderContains("默认题库", selectedFolder)) && (!searchQuery || `${initialProblem.id} ${initialProblem.title}`.toLowerCase().includes(searchQuery));
+  const showBuiltInProblem = matchesSelectedFolder("默认题库") && (!searchQuery || `${initialProblem.id} ${initialProblem.title}`.toLowerCase().includes(searchQuery));
+  const catalogItems: CatalogEntry[] = [];
+  if (showBuiltInProblem) catalogItems.push({ kind: "built-in", id: initialProblem.id });
+  displayedAcwing.forEach((item) => catalogItems.push({ kind: "acwing", id: item.id, item }));
+  displayedArchives.forEach((item) => catalogItems.push({ kind: "archive", id: item.problem.id, item }));
+  catalogItems.sort((a, b) => naturalCollator.compare(a.id, b.id));
 
   const passed = results.filter((r) => r.status === "AC").length;
   const score = results.length ? Math.round((passed / results.length) * 100) : 0;
@@ -341,7 +368,7 @@ export default function Home() {
     toast(`已创建${parent ? "子" : ""}文件夹「${path}」`);
   }
 
-  function deleteFolder(folder: string) {
+  function dissolveFolder(folder: string) {
     if (folder === "默认题库" || !folders.includes(folder)) return;
     const parent = folder.includes("/") ? folder.slice(0, folder.lastIndexOf("/")) : "默认题库";
     const nestedFolders = folders.filter((item) => folderContains(item, folder));
@@ -350,11 +377,16 @@ export default function Home() {
       nestedFolders.length > 1 ? `及 ${nestedFolders.length - 1} 个子文件夹` : "",
       affectedProblems ? `其中 ${affectedProblems} 道题目会移至「${parent}」` : "",
     ].filter(Boolean).join("，");
-    if (!window.confirm(`确定删除文件夹「${folder}」${detail ? `（${detail}）` : ""}吗？`)) return;
+    if (!window.confirm(`确定解散文件夹「${folder}」${detail ? `（${detail}）` : ""}吗？`)) return;
     setFolders((items) => items.filter((item) => !folderContains(item, folder)));
     setArchives((items) => items.map((item) => folderContains(item.folder, folder) ? { ...item, folder: parent } : item));
+    setCollapsedFolders((items) => items.filter((item) => !folderContains(item, folder)));
     if (folderContains(selectedFolder, folder)) setSelectedFolder(parent);
-    toast(`已删除文件夹「${folder}」${affectedProblems ? `，题目已移至「${parent}」` : ""}`);
+    toast(`已解散文件夹「${folder}」${affectedProblems ? `，题目已移至「${parent}」` : ""}`);
+  }
+
+  function toggleFolder(folder: string) {
+    setCollapsedFolders((items) => items.includes(folder) ? items.filter((item) => item !== folder) : [...items, folder]);
   }
 
   function moveArchivedProblem(id: string, folder: string) {
@@ -492,7 +524,7 @@ export default function Home() {
     <main className={`app-shell theme-${themeMode}`}>
       <header className="topbar">
         <div className="brand"><span className="brand-mark">C<span>F</span></span><span>CodeForge</span><em>OJ</em></div>
-        <nav><button className={pageView === "library" ? "nav-active" : ""} onClick={() => setPageView("library")}>题库</button><button className={pageView === "workspace" ? "nav-active" : ""}>做题</button><button>比赛</button><button>讨论</button></nav>
+        <nav><button className={pageView === "library" ? "nav-active" : ""} onClick={() => setPageView("library")}>题库</button><button className={pageView === "workspace" ? "nav-active" : ""} onClick={() => setPageView("workspace")}>做题</button><button onClick={() => toast("比赛功能正在开发中，敬请期待")}>比赛</button><button onClick={() => toast("讨论区正在开发中，敬请期待")}>讨论</button></nav>
         <div className="header-actions"><button className="icon-button theme-toggle" aria-label={`切换到${themeMode === "dark" ? "亮色" : "暗色"}模式`} title={`切换到${themeMode === "dark" ? "亮色" : "暗色"}模式`} onClick={() => setThemeMode((mode) => mode === "dark" ? "light" : "dark")}>{themeMode === "dark" ? "☀" : "◐"}</button><span className="avatar">LR</span><div className="user-copy"><b>LinR</b><small>Lv.12 · 1842</small></div></div>
       </header>
 
@@ -505,26 +537,27 @@ export default function Home() {
           <aside className="library-page-sidebar">
             <h3>题目文件夹</h3>
             <button className={selectedFolder === "全部题目" ? "active" : ""} onClick={() => setSelectedFolder("全部题目")}><span>▦ 全部题目</span><b>{archives.length + acwingCourse.length + 1}</b></button>
-            {orderedFolders.map((folder) => <div className="folder-entry" key={folder}>
-              <button title={folder} style={{ paddingLeft: `${10 + (folder.split("/").length - 1) * 14}px` }} className={`folder-select ${selectedFolder === folder ? "active" : ""}`} onClick={() => setSelectedFolder(folder)}><span>{folder.includes("/") ? "└" : "▱"} {folderName(folder)}</span><b>{archives.filter((item) => folderContains(item.folder, folder)).length + acwingCourse.filter((item) => folderContains(item.folder, folder)).length + (folder === "默认题库" ? 1 : 0)}</b></button>
-              {folder !== "默认题库" && folders.includes(folder) && <button className="folder-delete" aria-label={`删除文件夹 ${folder}`} title="删除文件夹" onClick={() => deleteFolder(folder)}>×</button>}
-            </div>)}
+            {visibleFolders.map((folder) => {
+              const hasChildren = orderedFolders.some((item) => item.startsWith(`${folder}/`));
+              const collapsed = collapsedFolders.includes(folder);
+              return <div className="folder-entry" key={folder} style={{ marginLeft: `${(folder.split("/").length - 1) * 13}px` }}>
+              {hasChildren ? <button className="folder-expand" aria-label={`${collapsed ? "展开" : "收起"}文件夹 ${folder}`} title={collapsed ? "展开子文件夹" : "收起子文件夹"} onClick={() => toggleFolder(folder)}>{collapsed ? "›" : "⌄"}</button> : <span className="folder-spacer" />}
+              <button title={folder} className={`folder-select ${selectedFolder === folder ? "active" : ""}`} onClick={() => setSelectedFolder(folder)}><span>▱ {folderName(folder)}</span><b>{archives.filter((item) => folderContains(item.folder, folder)).length + acwingCourse.filter((item) => folderContains(item.folder, folder)).length + (folder === "默认题库" ? 1 : 0)}</b></button>
+              {folder !== "默认题库" && folders.includes(folder) && <button className="folder-delete" aria-label={`解散文件夹 ${folder}`} title="解散文件夹，题目移至上一级" onClick={() => dissolveFolder(folder)}>散</button>}
+            </div>;
+            })}
             <div className="folder-create-caption">{selectedFolder === "全部题目" ? "新建根文件夹" : `在「${folderName(selectedFolder)}」中新建`}</div><div className="new-folder page-folder"><input value={newFolderName} onChange={(e) => setNewFolderName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") createFolder(); }} placeholder="文件夹名称" /><button title="新建文件夹" onClick={createFolder}>＋</button></div>
           </aside>
           <main className="library-catalog">
-            <div className="catalog-toolbar"><div><h2 className="folder-breadcrumb">{selectedFolder === "全部题目" ? "全部题目" : selectedFolder.split("/").map((part, index) => <span key={`${part}-${index}`}>{index > 0 && <i>›</i>}{part}</span>)}</h2><span>{selectedArchives.length + selectedAcwing.length + (showBuiltInProblem ? 1 : 0)} 道题目已收录（含子文件夹）</span></div><label><span>⌕</span><input value={librarySearch} onChange={(e) => setLibrarySearch(e.target.value)} placeholder="搜索编号或题目名称" /></label></div>
+            <div className="catalog-toolbar"><div><h2 className="folder-breadcrumb">{selectedFolder === "全部题目" ? "全部题目" : selectedFolder.split("/").map((part, index) => <span key={`${part}-${index}`}>{index > 0 && <i>›</i>}{part}</span>)}</h2><span>{selectedArchives.length + selectedAcwing.length + (showBuiltInProblem ? 1 : 0)} 道题目 · 按题号排序{selectedFolder !== "全部题目" ? includeSubfolders ? " · 含子文件夹" : " · 仅当前文件夹" : ""}</span></div><div className="catalog-tools">{selectedFolder !== "全部题目" && <button className={includeSubfolders ? "active" : ""} onClick={() => setIncludeSubfolders((value) => !value)}>{includeSubfolders ? "含子文件夹" : "仅当前文件夹"}</button>}<label><span>⌕</span><input value={librarySearch} onChange={(e) => setLibrarySearch(e.target.value)} placeholder="搜索编号或题目名称" /></label></div></div>
             <div className="catalog-header"><span>题目</span><span>难度</span><span>测试点</span><span>分类</span><span></span></div>
             <div className="catalog-list">
-              {showBuiltInProblem && <article className="catalog-row built-in">
-                <button onClick={() => { setProblem(initialProblem); setCode(starterCode); setResults([]); setCompilerDiagnostic(""); setPageView("workspace"); }}><code>{initialProblem.id}</code><div><b>{initialProblem.title}</b><small>经典入门题 · 内置题目</small></div></button><span className="difficulty beginner">{initialProblem.difficulty}</span><span>{initialProblem.samples.length} 个</span><span>默认题库</span><i>进入做题 →</i>
-              </article>}
-              {displayedAcwing.map((item) => <article className="catalog-row external-problem" key={item.id}>
-                <button onClick={() => openBundledProblem(item)}><code>{item.id}</code><div><b>{item.title}</b><small>{item.extractionStatus === "complete" ? "题面已自动提取" : "题面需结合来源核对"} · 博客园来源</small></div></button><span className="difficulty normal">{item.difficulty}</span><span>{item.samples.length} 个</span><span title={item.folder}>{folderName(item.folder)}</span><div className="row-actions"><a href={item.sourceUrl} target="_blank" rel="noreferrer">来源</a><i onClick={() => openBundledProblem(item)}>进入 →</i></div>
-              </article>)}
-              {displayedArchives.map((item) => <article className="catalog-row" key={item.problem.id}>
-                <div className="catalog-problem-link"><button className="catalog-id-edit" title="点击修改题号" aria-label={`修改题号 ${item.problem.id}`} onClick={() => beginRenameProblem(item.problem.id)}><code>{item.problem.id}</code></button><button className="catalog-title-open" onClick={() => openArchivedProblem(item)}><span><b>{item.problem.title}</b><small>{new Date(item.archivedAt).toLocaleDateString("zh-CN")} 归档</small></span></button></div><span className={`difficulty ${item.problem.difficulty === "提高" ? "advanced" : item.problem.difficulty === "普及" ? "normal" : "beginner"}`}>{item.problem.difficulty}</span><span>{item.problem.samples.length} 个</span><select aria-label={`移动 ${item.problem.title} 到文件夹`} value={item.folder} onChange={(e) => moveArchivedProblem(item.problem.id, e.target.value)}>{orderedFolders.map((folder) => <option key={folder} value={folder}>{"　".repeat(folder.split("/").length - 1)}{folderName(folder)}</option>)}</select><div className="row-actions"><i onClick={() => openArchivedProblem(item)}>进入 →</i></div>
-              </article>)}
-              {!showBuiltInProblem && displayedAcwing.length === 0 && displayedArchives.length === 0 && <div className="catalog-empty"><b>{searchQuery ? "没有匹配的题目" : "此文件夹及子文件夹暂无题目"}</b><span>{searchQuery ? "请尝试其他编号或标题关键词。" : "点击“添加题目”导入 JSON，或粘贴题面让 AI 自动生成。"}</span></div>}
+              {catalogItems.map((entry) => {
+                if (entry.kind === "built-in") return <article className="catalog-row built-in" key={`${entry.kind}-${entry.id}`}><button onClick={() => { setProblem(initialProblem); setCode(starterCode); setResults([]); setCompilerDiagnostic(""); setPageView("workspace"); }}><code>{initialProblem.id}</code><div><b>{initialProblem.title}</b><small>经典入门题 · 内置题目</small></div></button><span className="difficulty beginner">{initialProblem.difficulty}</span><span>{initialProblem.samples.length} 个</span><span>默认题库</span><i onClick={() => { setProblem(initialProblem); setCode(starterCode); setResults([]); setCompilerDiagnostic(""); setPageView("workspace"); }}>进入做题 →</i></article>;
+                if (entry.kind === "acwing") { const item = entry.item; return <article className="catalog-row external-problem" key={`${entry.kind}-${entry.id}`}><button onClick={() => openBundledProblem(item)}><code>{item.id}</code><div><b>{item.title}</b><small>{item.extractionStatus === "complete" ? "题面已自动提取" : "题面需结合来源核对"} · 博客园来源</small></div></button><span className="difficulty normal">{item.difficulty}</span><span>{item.samples.length} 个</span><span title={item.folder}>{folderName(item.folder)}</span><div className="row-actions"><a href={item.sourceUrl} target="_blank" rel="noreferrer">来源</a><i onClick={() => openBundledProblem(item)}>进入 →</i></div></article>; }
+                const item = entry.item; return <article className="catalog-row" key={`${entry.kind}-${entry.id}`}><div className="catalog-problem-link"><button className="catalog-id-edit" title="点击修改题号" aria-label={`修改题号 ${item.problem.id}`} onClick={() => beginRenameProblem(item.problem.id)}><code>{item.problem.id}</code></button><button className="catalog-title-open" onClick={() => openArchivedProblem(item)}><span><b>{item.problem.title}</b><small>{new Date(item.archivedAt).toLocaleDateString("zh-CN")} 归档</small></span></button></div><span className={`difficulty ${item.problem.difficulty === "提高" ? "advanced" : item.problem.difficulty === "普及" ? "normal" : "beginner"}`}>{item.problem.difficulty}</span><span>{item.problem.samples.length} 个</span><select aria-label={`移动 ${item.problem.title} 到文件夹`} value={item.folder} onChange={(e) => moveArchivedProblem(item.problem.id, e.target.value)}>{orderedFolders.map((folder) => <option key={folder} value={folder}>{"　".repeat(folder.split("/").length - 1)}{folderName(folder)}</option>)}</select><div className="row-actions"><i onClick={() => openArchivedProblem(item)}>进入 →</i></div></article>;
+              })}
+              {catalogItems.length === 0 && <div className="catalog-empty"><b>{searchQuery ? "没有匹配的题目" : includeSubfolders ? "此文件夹及子文件夹暂无题目" : "当前文件夹暂无题目"}</b><span>{searchQuery ? "请尝试其他编号或标题关键词。" : "点击“添加题目”导入 JSON，或粘贴题面让 AI 自动生成。"}</span></div>}
             </div>
           </main>
         </div>
