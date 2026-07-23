@@ -47,6 +47,40 @@ function configureCpp(monaco: Monaco) {
       "minimap.background": "#10151F",
     },
   });
+  monaco.editor.defineTheme("codeforge-vscode-light", {
+    base: "vs",
+    inherit: true,
+    rules: [
+      { token: "keyword", foreground: "AF00DB", fontStyle: "bold" },
+      { token: "keyword.control", foreground: "AF00DB" },
+      { token: "type", foreground: "267F99" },
+      { token: "type.identifier", foreground: "267F99" },
+      { token: "identifier", foreground: "795E26" },
+      { token: "number", foreground: "098658" },
+      { token: "string", foreground: "A31515" },
+      { token: "comment", foreground: "008000", fontStyle: "italic" },
+      { token: "operator", foreground: "333333" },
+      { token: "predefined", foreground: "0070C1" },
+    ],
+    colors: {
+      "editor.background": "#FFFFFF",
+      "editor.foreground": "#1F2430",
+      "editorLineNumber.foreground": "#9AA1AB",
+      "editorLineNumber.activeForeground": "#344054",
+      "editorCursor.foreground": "#245FDF",
+      "editor.selectionBackground": "#ADD6FF",
+      "editor.inactiveSelectionBackground": "#E5EBF1",
+      "editor.lineHighlightBackground": "#F6F8FA",
+      "editorIndentGuide.background1": "#E4E8EE",
+      "editorIndentGuide.activeBackground1": "#AEB8C6",
+      "editorInlayHint.foreground": "#697586",
+      "editorInlayHint.background": "#E9EEF5",
+      "editorError.foreground": "#D1242F",
+      "editorWarning.foreground": "#9A6700",
+      "editorGutter.background": "#FFFFFF",
+      "minimap.background": "#F7F9FB",
+    },
+  });
 
   if (configured) return;
   configured = true;
@@ -187,12 +221,13 @@ function getCompilerMarkers(value: string, diagnostic: string, monaco: Monaco): 
 
 type Props = {
   value: string;
+  themeMode: "light" | "dark";
   compilerDiagnostic: string;
   onChange: (value: string) => void;
   onCursorChange: (line: number, column: number) => void;
 };
 
-export function CppEditor({ value, compilerDiagnostic, onChange, onCursorChange }: Props) {
+export function CppEditor({ value, themeMode, compilerDiagnostic, onChange, onCursorChange }: Props) {
   const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<Monaco | null>(null);
 
@@ -219,7 +254,7 @@ export function CppEditor({ value, compilerDiagnostic, onChange, onCursorChange 
     language="cpp"
     path="main.cpp"
     value={value}
-    theme="codeforge-vscode"
+    theme={themeMode === "light" ? "codeforge-vscode-light" : "codeforge-vscode"}
     beforeMount={configureCpp}
     onMount={handleMount}
     onChange={(next) => {

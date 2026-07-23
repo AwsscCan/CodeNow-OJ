@@ -83,6 +83,8 @@ export default function Home() {
   const [consoleTab, setConsoleTab] = useState<"results" | "history">("results");
   const [results, setResults] = useState<Result[]>([]);
   const [running, setRunning] = useState(false);
+  const [themeMode, setThemeMode] = useState<"light" | "dark">("dark");
+  const [themeReady, setThemeReady] = useState(false);
   const [compilerDiagnostic, setCompilerDiagnostic] = useState("");
   const [cursor, setCursor] = useState({ line: 1, column: 1 });
   const [notice, setNotice] = useState("");
@@ -113,6 +115,17 @@ export default function Home() {
   useEffect(() => {
     localStorage.setItem("codeforge-workspace", JSON.stringify({ problem, code }));
   }, [problem, code]);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("codeforge-theme");
+    if (saved === "light" || saved === "dark") setThemeMode(saved);
+    else if (window.matchMedia?.("(prefers-color-scheme: light)").matches) setThemeMode("light");
+    setThemeReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (themeReady) localStorage.setItem("codeforge-theme", themeMode);
+  }, [themeMode, themeReady]);
 
   const passed = results.filter((r) => r.status === "AC").length;
   const score = results.length ? Math.round((passed / results.length) * 100) : 0;
@@ -238,11 +251,11 @@ export default function Home() {
   }
 
   return (
-    <main className="app-shell">
+    <main className={`app-shell theme-${themeMode}`}>
       <header className="topbar">
         <div className="brand"><span className="brand-mark">C<span>F</span></span><span>CodeForge</span><em>OJ</em></div>
         <nav><button className="nav-active">题库</button><button>训练</button><button>比赛</button><button>讨论</button></nav>
-        <div className="header-actions"><button className="icon-button" aria-label="通知">◒</button><span className="avatar">LR</span><div className="user-copy"><b>LinR</b><small>Lv.12 · 1842</small></div></div>
+        <div className="header-actions"><button className="icon-button theme-toggle" aria-label={`切换到${themeMode === "dark" ? "亮色" : "暗色"}模式`} title={`切换到${themeMode === "dark" ? "亮色" : "暗色"}模式`} onClick={() => setThemeMode((mode) => mode === "dark" ? "light" : "dark")}>{themeMode === "dark" ? "☀" : "◐"}</button><span className="avatar">LR</span><div className="user-copy"><b>LinR</b><small>Lv.12 · 1842</small></div></div>
       </header>
 
       <section className="workspace-bar">
@@ -275,7 +288,7 @@ export default function Home() {
 
         <section className="code-panel">
           <div className="editor-toolbar"><div className="file-tab"><span>C++</span> main.cpp <i>●</i></div><div><select aria-label="编程语言" value="cpp17" disabled><option value="cpp17">GNU C++17 · GCC</option></select><button title="重置 C++ 模板" onClick={() => { setCode(starterCode); setCompilerDiagnostic(""); toast("C++ 模板已重置"); }}>↻</button><button title="编辑器设置">⚙</button></div></div>
-          <div className="editor-area"><CppEditor value={code} compilerDiagnostic={compilerDiagnostic} onChange={(next) => { setCode(next); setCompilerDiagnostic(""); }} onCursorChange={(line, column) => setCursor({ line, column })} /></div>
+          <div className="editor-area"><CppEditor value={code} themeMode={themeMode} compilerDiagnostic={compilerDiagnostic} onChange={(next) => { setCode(next); setCompilerDiagnostic(""); }} onCursorChange={(line, column) => setCursor({ line, column })} /></div>
           <div className="console-panel">
             <div className="console-tabs"><button className={consoleTab === "results" ? "active" : ""} onClick={() => setConsoleTab("results")}>测试结果</button><button className={consoleTab === "history" ? "active" : ""} onClick={() => setConsoleTab("history")}>提交记录</button>{results.length > 0 && <span className={score === 100 ? "score good" : "score"}>{passed}/{results.length} 通过 · {score} 分</span>}</div>
             <div className="console-content">
