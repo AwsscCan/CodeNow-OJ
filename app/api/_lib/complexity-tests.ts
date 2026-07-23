@@ -168,26 +168,156 @@ function findTestList(parsed: unknown): unknown[] | null {
   return null;
 }
 
-// Patterns that indicate AI laziness — "..." / "……" / "略" etc.
-const ELLIPSIS_PATTERNS = [
-  /\.{2,}/,              // "..." or "...." 省略号
-  /…{2,}/,               // "……" 中文省略号
-  /\betc\.?\b/i,          // "etc" / "etc."
-  /[（(]?\s*略\s*[)）]?/,  // "(略)" "略"
-  /[（(]?\s*同上\s*[)）]?/, // "(同上)"
-  /[（(]?\s*下同\s*[)）]?/, // "(下同)"
-  /以此类推/,              // "以此类推"
-  /依此类推/,              // "依此类推"
-  /重复.*次/,              // "重复N次"
-  /类似.*[以到].*/,        // "类似...到..."
-  /\bplaceholder\b/i,     // "placeholder"
-  /\bTODO\b/,             // "TODO"
-  /\bsame as above\b/i,   // "same as above"
+// Patterns that indicate truly unfixable AI laziness (no expansion possible)
+const UNFIXABLE_PATTERNS = [
+  /[（(]?\s*略\s*[)）]?/,    // "(略)" "略"
+  /[（(]?\s*同上\s*[)）]?/,   // "(同上)"
+  /[（(]?\s*下同\s*[)）]?/,   // "(下同)"
+  /以此类推/,                // "以此类推"
+  /\bplaceholder\b/i,       // "placeholder"
+  /\bTODO\b/,               // "TODO"
+  /\bsame as above\b/i,     // "same as above"
+  /\betc\.?\b/i,            // "etc" / "etc."
+  /重复.*次/,                // "重复N次" without specifying what
 ];
 
-function isInvalidTestData(value: string): boolean {
-  const normalized = value.replace(/\\n/g, "\n");
-  return ELLIPSIS_PATTERNS.some((pattern) => pattern.test(normalized));
+// Try to expand "..." or "……" patterns into full data.
+// Returns expanded text, or null if the pattern cannot be inferred.
+function expandEllipsis(text: string): string | null {
+  const normalized = text.replace(/\\n/g, "\n");
+
+  // Check for truly unfixable patterns first
+  if (UNFIXABLE_PATTERNS.some((p) => p.test(normalized))) return null;
+
+  // No ellipsis — no expansion needed
+  if (!/[.…]{2,}/.test(normalized)) return normalized;
+
+  const lines = normalized.split("\n");
+  const expanded: string[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    const ellipsisMatch = line.match(/^(.*?)([.…]{2,})(.*)$/);
+
+    if (!ellipsisMatch) {
+      // No ellipsis on this line — check if it's a standalone "..." line
+      if (/^[.…]{2,}$/.test(line)) {
+        // Multi-line ellipsis: lines before and after define a sequence
+        const prevLine = i > 0 ? lines[i - 1].trim() : "";
+        const nextLine = i < lines.length - 1 ? lines[i + 1].trim() : "";
+        const expandedLines = expandMultiLineEllipsis(prevLine, nextLine);
+        if (expandedLines === null) return null;
+        expanded.push(...expandedLines);
+        continue;
+      }
+      expanded.push(line);
+      continue;
+    }
+
+    // Inline ellipsis: "1 2 3 ... 99999 100000"
+    const before = ellipsisMatch[1].trim();
+    const after = ellipsisMatch[3].trim();
+    const expandedInline = expandInlineEllipsis(before, after);
+    if (expandedInline === null) return null;
+    expanded.push(expandedInline);
+  }
+
+  return expanded.join("\n");
+}
+
+// Expand "1 2 3 ... 99999 100000" type patterns
+function expandInlineEllipsis(before: string, after: string): string | null {
+  const beforeNums = before.split(/\s+/).filter((s) => /^-?\d+$/.test(s)).map(Number);
+  const afterNums = after.split(/\s+/).filter((s) => /^-?\d+$/.test(s)).map(Number);
+
+  if (beforeNums.length === 0 || afterNums.length === 0) return null;
+
+  // Try to detect arithmetic progression from before's tail to after's head
+  const lastBefore = beforeNums[beforeNums.length - 1];
+  const firstAfter = afterNums[0];
+
+  // Calculate step if we have enough context
+  let step = 0;
+  if (beforeNums.length >= 2) {
+    step = beforeNums[beforeNums.length - 1] - beforeNums[beforeNums.length - 2];
+  } else if (afterNums.length >= 2) {
+    step = afterNums[1] - afterNums[0];
+  } else {
+    // Single numbers on both sides — use 1 or -1
+    step = firstAfter > lastBefore ? 1 : firstAfter < lastBefore ? -1 : 0;
+  }
+  if (step === 0) return null;
+
+  // Verify the after sequence starts where we'd expect
+  const stepsInBetween = Math.round((firstAfter - lastBefore) / step);
+  if (stepsInBetween < 1 || stepsInBetween > MAX_EXPANDED_CHARS / 10) return null;
+
+  // Generate the missing numbers
+  const missing: number[] = [];
+  for (let j = 1; j < stepsInBetween; j++) {
+    missing.push(lastBefore + j * step);
+  }
+
+  // Reconstruct the line: replace "..." with the generated numbers
+  const beforeTokens = before.split(/\s+/);
+  const afterTokens = after.split(/\s+/);
+
+  // Find the numeric suffix of before and prefix of after
+  const beforePrefix = beforeTokens.slice(0, beforeTokens.length - beforeNums.length);
+  const afterSuffix = afterTokens.slice(afterNums.length);
+
+  return [
+    ...beforePrefix,
+    ...beforeNums.map(String),
+    ...missing.map(String),
+    ...afterNums.map(String),
+    ...afterSuffix,
+  ].filter(Boolean).join(" ");
+}
+
+// Expand multi-line patterns like "1\n2\n3\n...\n100000\n"
+function expandMultiLineEllipsis(prev: string, next: string): string[] | null {
+  const prevNums = prev.trim().split(/\s+/).filter((s) => /^-?\d+$/.test(s)).map(Number);
+  const nextNums = next.trim().split(/\s+/).filter((s) => /^-?\d+$/.test(s)).map(Number);
+
+  // Simplest case: single numbers per line
+  if (prevNums.length === 1 && nextNums.length === 1) {
+    const step = nextNums[0] - prevNums[0];
+    const count = Math.abs(nextNums[0] - prevNums[0]);
+    if (count < 2 || count > 100000) return null;
+    const result: string[] = [];
+    for (let v = prevNums[0] + step; v !== nextNums[0]; v += step) {
+      result.push(String(v));
+    }
+    return result;
+  }
+
+  // Structured lines: "5 1" ... "5 100000" — first col fixed, second col sequences
+  if (prevNums.length === nextNums.length && prevNums.length >= 2) {
+    // Check if all columns except last are identical
+    let allMatch = true;
+    for (let k = 0; k < prevNums.length - 1; k++) {
+      if (prevNums[k] !== nextNums[k]) { allMatch = false; break; }
+    }
+    if (allMatch) {
+      const step = nextNums[nextNums.length - 1] - prevNums[prevNums.length - 1];
+      const count = Math.abs(nextNums[nextNums.length - 1] - prevNums[prevNums.length - 1]);
+      if (count < 2 || count > 100000) return null;
+      const prefix = prevNums.slice(0, -1).join(" ");
+      const result: string[] = [];
+      for (let v = prevNums[prevNums.length - 1] + step; v !== nextNums[nextNums.length - 1]; v += step) {
+        result.push(`${prefix} ${v}`);
+      }
+      return result;
+    }
+  }
+
+  return null;
+}
+
+function isValidTestData(value: string): boolean {
+  if (UNFIXABLE_PATTERNS.some((p) => p.test(value))) return false;
+  return true;
 }
 
 function parseTests(content: string): GeneratedTest[] {
@@ -200,14 +330,24 @@ function parseTests(content: string): GeneratedTest[] {
     const input = readFirst(test, ["input", "stdin", "input_data", "in", "输入", "输入数据", "标准输入", "测试输入", "样例输入"]);
     const output = readFirst(test, ["output", "stdout", "expectedOutput", "expected_output", "expected", "answer", "output_data", "out", "输出", "输出数据", "标准输出", "预期输出", "期望输出", "答案", "样例输出"]);
     try {
-      const materializedInput = materialize(input, test.inputParts);
-      const materializedOutput = materialize(output, test.outputParts);
-      if (isInvalidTestData(materializedInput) || isInvalidTestData(materializedOutput)) {
-        return []; // Reject tests with ellipsis/placeholders
+      let materializedInput = materialize(input, test.inputParts);
+      let materializedOutput = materialize(output, test.outputParts);
+
+      // Validate truly unfixable patterns
+      if (!isValidTestData(materializedInput) || !isValidTestData(materializedOutput)) {
+        return [];
       }
+
+      // Try to expand ellipsis patterns into full data
+      const expandedInput = expandEllipsis(materializedInput);
+      const expandedOutput = expandEllipsis(materializedOutput);
+      if (expandedInput === null || expandedOutput === null) {
+        return []; // Cannot infer the pattern — reject
+      }
+
       return [{
-        input: materializedInput,
-        output: materializedOutput,
+        input: expandedInput,
+        output: expandedOutput,
         category: String(test.category || "ordinary").toLowerCase(),
         scale: Math.max(1, Math.floor(Number(test.scale) || 1)),
         targets: String(test.targets || ""),
@@ -257,8 +397,8 @@ ${schema}
 - input/output 必须是 UTF-8 字符串，不能为空、不能写”略/待计算/unknown”
 - 字符串内换行用 \\n，禁止字符串内物理换行
 - category: 至少${requiredPerformance}个performance、${requiredAdversarial}个adversarial，其余boundary/special/ordinary
-- input/output 必须逐行写出完整数据，严禁使用"..."、"……"、"略"、"同上"、"以此类推"等任何省略或缩写
-- input 如包含多行数据，每一行都必须写出，不能用省略号代表中间行
+- input/output 必须是完整的可执行字符串
+- 大规模数据（>50行或>200个值）可用"..."表达等差/等间隔序列（如"1 2 3 ... 99999 100000"），系统会自动展开。但禁止"略""同上""以此类推"等非数值省略
 - 严禁重复已有测试点
 - 只输出纯 JSON，无前后缀`;
 }
