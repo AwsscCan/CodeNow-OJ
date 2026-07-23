@@ -79,6 +79,8 @@ function normalizeImportedProblem(input: unknown): Problem {
 }
 
 export default function Home() {
+  const [pageView, setPageView] = useState<"library" | "workspace">("library");
+  const [librarySearch, setLibrarySearch] = useState("");
   const [problem, setProblem] = useState<Problem>(initialProblem);
   const [code, setCode] = useState(starterCode);
   const [tab, setTab] = useState<"problem" | "tests">("problem");
@@ -105,7 +107,6 @@ export default function Home() {
   const [chatInput, setChatInput] = useState("");
   const [chatBusy, setChatBusy] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [showLibrary, setShowLibrary] = useState(false);
   const [archives, setArchives] = useState<ArchivedProblem[]>([]);
   const [folders, setFolders] = useState(["默认题库"]);
   const [selectedFolder, setSelectedFolder] = useState("默认题库");
@@ -275,6 +276,7 @@ export default function Home() {
     setCompilerDiagnostic("");
     setResults([]);
     setTab("problem");
+    setPageView("workspace");
     return numbered;
   }
 
@@ -296,7 +298,7 @@ export default function Home() {
     setProblem(item.problem);
     setResults([]);
     setCompilerDiagnostic("");
-    setShowLibrary(false);
+    setPageView("workspace");
     toast(`已打开 ${item.problem.id} · ${item.problem.title}`);
   }
 
@@ -373,13 +375,40 @@ export default function Home() {
     <main className={`app-shell theme-${themeMode}`}>
       <header className="topbar">
         <div className="brand"><span className="brand-mark">C<span>F</span></span><span>CodeForge</span><em>OJ</em></div>
-        <nav><button className="nav-active" onClick={() => setShowLibrary(true)}>我的题库</button><button>训练</button><button>比赛</button><button>讨论</button></nav>
+        <nav><button className={pageView === "library" ? "nav-active" : ""} onClick={() => setPageView("library")}>题库</button><button className={pageView === "workspace" ? "nav-active" : ""}>做题</button><button>比赛</button><button>讨论</button></nav>
         <div className="header-actions"><button className="icon-button theme-toggle" aria-label={`切换到${themeMode === "dark" ? "亮色" : "暗色"}模式`} title={`切换到${themeMode === "dark" ? "亮色" : "暗色"}模式`} onClick={() => setThemeMode((mode) => mode === "dark" ? "light" : "dark")}>{themeMode === "dark" ? "☀" : "◐"}</button><span className="avatar">LR</span><div className="user-copy"><b>LinR</b><small>Lv.12 · 1842</small></div></div>
       </header>
 
+      {pageView === "library" ? <section className="library-page">
+        <div className="library-hero">
+          <div><span>CODEFORGE PROBLEM SET</span><h1>我的题库</h1><p>选择一道题进入专注的 C++ 编程与判题工作区。</p></div>
+          <button onClick={() => { if (selectedFolder === "全部题目") setSelectedFolder("默认题库"); setShowImport(true); }}>＋ 添加题目</button>
+        </div>
+        <div className="library-page-body">
+          <aside className="library-page-sidebar">
+            <h3>题目文件夹</h3>
+            <button className={selectedFolder === "全部题目" ? "active" : ""} onClick={() => setSelectedFolder("全部题目")}><span>▦ 全部题目</span><b>{archives.length + 1}</b></button>
+            {folders.map((folder) => <button key={folder} className={selectedFolder === folder ? "active" : ""} onClick={() => setSelectedFolder(folder)}><span>▱ {folder}</span><b>{archives.filter((item) => item.folder === folder).length + (folder === "默认题库" ? 1 : 0)}</b></button>)}
+            <div className="new-folder page-folder"><input value={newFolderName} onChange={(e) => setNewFolderName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") createFolder(); }} placeholder="新文件夹名称" /><button onClick={createFolder}>＋</button></div>
+          </aside>
+          <main className="library-catalog">
+            <div className="catalog-toolbar"><div><h2>{selectedFolder}</h2><span>{archives.length + 1} 道题目已收录</span></div><label><span>⌕</span><input value={librarySearch} onChange={(e) => setLibrarySearch(e.target.value)} placeholder="搜索编号或题目名称" /></label></div>
+            <div className="catalog-header"><span>题目</span><span>难度</span><span>测试点</span><span>分类</span><span></span></div>
+            <div className="catalog-list">
+              {(selectedFolder === "全部题目" || selectedFolder === "默认题库") && (!librarySearch.trim() || `${initialProblem.id} ${initialProblem.title}`.toLowerCase().includes(librarySearch.trim().toLowerCase())) && <article className="catalog-row built-in">
+                <button onClick={() => { setProblem(initialProblem); setCode(starterCode); setResults([]); setCompilerDiagnostic(""); setPageView("workspace"); }}><code>{initialProblem.id}</code><div><b>{initialProblem.title}</b><small>经典入门题 · 内置题目</small></div></button><span className="difficulty beginner">{initialProblem.difficulty}</span><span>{initialProblem.samples.length} 个</span><span>默认题库</span><i>进入做题 →</i>
+              </article>}
+              {(selectedFolder === "全部题目" ? archives : archives.filter((item) => item.folder === selectedFolder)).filter((item) => !librarySearch.trim() || `${item.problem.id} ${item.problem.title}`.toLowerCase().includes(librarySearch.trim().toLowerCase())).map((item) => <article className="catalog-row" key={item.problem.id}>
+                <button onClick={() => openArchivedProblem(item)}><code>{item.problem.id}</code><div><b>{item.problem.title}</b><small>{new Date(item.archivedAt).toLocaleDateString("zh-CN")} 归档</small></div></button><span className={`difficulty ${item.problem.difficulty === "提高" ? "advanced" : item.problem.difficulty === "普及" ? "normal" : "beginner"}`}>{item.problem.difficulty}</span><span>{item.problem.samples.length} 个</span><select aria-label={`移动 ${item.problem.title} 到文件夹`} value={item.folder} onChange={(e) => moveArchivedProblem(item.problem.id, e.target.value)}>{folders.map((folder) => <option key={folder}>{folder}</option>)}</select><i onClick={() => openArchivedProblem(item)}>进入做题 →</i>
+              </article>)}
+              {archives.length === 0 && selectedFolder !== "默认题库" && selectedFolder !== "全部题目" && <div className="catalog-empty"><b>此文件夹暂无题目</b><span>点击“添加题目”导入 JSON，或粘贴题面让 AI 自动生成。</span></div>}
+            </div>
+          </main>
+        </div>
+      </section> : <>
       <section className="workspace-bar">
-        <div className="breadcrumb"><span>题库</span><i>/</i><b>{problem.id}</b><strong>{problem.title}</strong><mark>{problem.difficulty}</mark></div>
-        <div className="workspace-actions"><button onClick={() => setShowLibrary(true)}>▣ 题目存档</button><button onClick={() => { if (selectedFolder === "全部题目") setSelectedFolder("默认题库"); setShowImport(true); }}>⇧ 导入题目</button><button className="ask-button" onClick={() => setShowChat(true)}>◈ 问 AI</button><button className="ai-button" onClick={() => setShowAi(true)}>✦ AI 解题</button><button className="run-button" disabled={running} onClick={() => runTests(false)}>{running ? "运行中…" : "▷ 运行测试"}</button><button className="submit-button" disabled={running} onClick={() => runTests(true)}>提交</button></div>
+        <div className="breadcrumb"><button onClick={() => setPageView("library")}>← 题库</button><i>/</i><b>{problem.id}</b><strong>{problem.title}</strong><mark>{problem.difficulty}</mark></div>
+        <div className="workspace-actions"><button onClick={() => { if (selectedFolder === "全部题目") setSelectedFolder("默认题库"); setShowImport(true); }}>⇧ 导入题目</button><button className="ask-button" onClick={() => setShowChat(true)}>◈ 问 AI</button><button className="ai-button" onClick={() => setShowAi(true)}>✦ AI 解题</button><button className="run-button" disabled={running} onClick={() => runTests(false)}>{running ? "运行中…" : "▷ 运行测试"}</button><button className="submit-button" disabled={running} onClick={() => runTests(true)}>提交</button></div>
       </section>
 
       <section className="split-workspace">
@@ -417,6 +446,7 @@ export default function Home() {
           <footer className="statusbar"><span>✓ IntelliSense</span><span>Ln {cursor.line}, Col {cursor.column}</span><span>UTF-8</span><span>Spaces: 4</span><span>GNU C++17</span></footer>
         </section>
       </section>
+      </>}
 
       {showImport && <div className="modal-backdrop" onMouseDown={() => setShowImport(false)}><div className="modal import-modal" onMouseDown={(e) => e.stopPropagation()}>
         <button className="modal-close" onClick={() => setShowImport(false)}>×</button>
@@ -447,25 +477,6 @@ export default function Home() {
           <input ref={fileRef} hidden type="file" accept="application/json,.json" onChange={(e) => importProblem(e.target.files?.[0])} />
           <div className="download-row"><a href="/problem-example.json" download>下载完整示例</a><a href="/problem.schema.json" download>下载 JSON Schema</a></div>
         </>}
-      </div></div>}
-
-      {showLibrary && <div className="modal-backdrop" onMouseDown={() => setShowLibrary(false)}><div className="modal library-modal" onMouseDown={(e) => e.stopPropagation()}>
-        <button className="modal-close" onClick={() => setShowLibrary(false)}>×</button>
-        <span className="modal-kicker">LOCAL LIBRARY</span><h2>我的题目存档</h2><p>导入和 AI 生成的题目会自动编号并保存在当前浏览器中。</p>
-        <div className="library-layout">
-          <aside className="folder-list">
-            <button className={selectedFolder === "全部题目" ? "active" : ""} onClick={() => setSelectedFolder("全部题目")}><span>全部题目</span><b>{archives.length}</b></button>
-            {folders.map((folder) => <button key={folder} className={selectedFolder === folder ? "active" : ""} onClick={() => setSelectedFolder(folder)}><span>▱ {folder}</span><b>{archives.filter((item) => item.folder === folder).length}</b></button>)}
-            <div className="new-folder"><input value={newFolderName} onChange={(e) => setNewFolderName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") createFolder(); }} placeholder="新文件夹名称" /><button onClick={createFolder}>＋</button></div>
-          </aside>
-          <section className="archive-list">
-            {(selectedFolder === "全部题目" ? archives : archives.filter((item) => item.folder === selectedFolder)).map((item) => <article className="archive-card" key={item.problem.id}>
-              <button className="archive-open" onClick={() => openArchivedProblem(item)}><code>{item.problem.id}</code><span><b>{item.problem.title}</b><small>{item.problem.difficulty} · {item.problem.samples.length} 个测试点</small></span></button>
-              <select aria-label={`移动 ${item.problem.title} 到文件夹`} value={item.folder} onChange={(e) => moveArchivedProblem(item.problem.id, e.target.value)}>{folders.map((folder) => <option key={folder}>{folder}</option>)}</select>
-            </article>)}
-            {(selectedFolder === "全部题目" ? archives : archives.filter((item) => item.folder === selectedFolder)).length === 0 && <div className="library-empty"><strong>这个文件夹还是空的</strong><span>导入 JSON 或粘贴题面后会自动存档。</span></div>}
-          </section>
-        </div>
       </div></div>}
 
       {showChat && <div className="chat-backdrop" onMouseDown={() => setShowChat(false)}><aside className="chat-drawer" onMouseDown={(e) => e.stopPropagation()}>
