@@ -4,7 +4,8 @@ import { generateComplexityAwareTests } from "../_lib/complexity-tests";
 export async function POST(request: NextRequest) {
   try {
     const { apiKey, endpoint, model, problem, count } = await request.json();
-    const target = [12, 18, 24].includes(Number(count)) ? Number(count) : 18;
+    const requested = Math.floor(Number(count));
+    const target = Number.isFinite(requested) ? Math.max(4, Math.min(24, requested)) : 6;
     if (!apiKey || !endpoint || !model || !problem) {
       return NextResponse.json({ error: "AI 配置和题目信息不完整" }, { status: 400 });
     }
