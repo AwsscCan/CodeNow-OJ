@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { CppEditor } from "./CppEditor";
+import acwingCourseData from "../public/acwing-course.json";
 
 type TestCase = { id: number; input: string; output: string };
 type Problem = {
@@ -14,6 +15,8 @@ type Problem = {
   inputFormat: string;
   outputFormat: string;
   samples: TestCase[];
+  sourceUrl?: string;
+  extractionStatus?: "complete" | "needs_review";
 };
 
 const initialProblem: Problem = {
@@ -49,6 +52,13 @@ type Result = { id: number; status: "AC" | "WA" | "RE" | "CE" | "TLE"; actual: s
 type AiProvider = "deepseek" | "openai" | "custom";
 type ArchivedProblem = { problem: Problem; folder: string; archivedAt: string };
 type ChatMessage = { role: "user" | "assistant"; content: string };
+type BundledProblem = Problem & { folder: string; sourceUrl: string; extractionStatus: "complete" | "needs_review" };
+
+const acwingCourse = acwingCourseData as BundledProblem[];
+const acwingFolders = Array.from(new Set(acwingCourse.flatMap((problem) => {
+  const parts = problem.folder.split("/");
+  return parts.map((_, index) => parts.slice(0, index + 1).join("/"));
+})));
 
 function folderContains(folder: string, parent: string) {
   return folder === parent || folder.startsWith(`${parent}/`);
@@ -207,10 +217,12 @@ export default function Home() {
   }, [problem, libraryReady]);
 
   const apiKey = apiKeys[provider];
-  const orderedFolders = [...folders].sort((a, b) => a.localeCompare(b, "zh-CN"));
+  const orderedFolders = Array.from(new Set([...folders, ...acwingFolders])).sort((a, b) => a.localeCompare(b, "zh-CN"));
   const selectedArchives = selectedFolder === "全部题目" ? archives : archives.filter((item) => folderContains(item.folder, selectedFolder));
+  const selectedAcwing = selectedFolder === "全部题目" ? acwingCourse : acwingCourse.filter((item) => folderContains(item.folder, selectedFolder));
   const searchQuery = librarySearch.trim().toLowerCase();
   const displayedArchives = selectedArchives.filter((item) => !searchQuery || `${item.problem.id} ${item.problem.title}`.toLowerCase().includes(searchQuery));
+  const displayedAcwing = selectedAcwing.filter((item) => !searchQuery || `${item.id} ${item.title}`.toLowerCase().includes(searchQuery));
   const showBuiltInProblem = (selectedFolder === "全部题目" || folderContains("默认题库", selectedFolder)) && (!searchQuery || `${initialProblem.id} ${initialProblem.title}`.toLowerCase().includes(searchQuery));
 
   const passed = results.filter((r) => r.status === "AC").length;
@@ -301,7 +313,7 @@ export default function Home() {
     const requestedId = customProblemId.trim();
     if (requestedId && !/^[A-Za-z][A-Za-z0-9_-]{0,19}$/.test(requestedId)) throw new Error("自定义题号需以字母开头，仅含字母、数字、下划线或短横线，最长 20 位");
     const nextId = requestedId || `CF${String(nextNumber).padStart(4, "0")}`;
-    if (nextId.toUpperCase() === initialProblem.id.toUpperCase() || archives.some((item) => item.problem.id.toUpperCase() === nextId.toUpperCase())) throw new Error(`题号 ${nextId} 已存在，请更换题号`);
+    if (nextId.toUpperCase() === initialProblem.id.toUpperCase() || acwingCourse.some((item) => item.id.toUpperCase() === nextId.toUpperCase()) || archives.some((item) => item.problem.id.toUpperCase() === nextId.toUpperCase())) throw new Error(`题号 ${nextId} 已存在，请更换题号`);
     const numbered = { ...incoming, id: nextId };
     const archiveFolder = selectedFolder === "全部题目" ? "默认题库" : selectedFolder;
     setArchives((items) => [{ problem: numbered, folder: archiveFolder, archivedAt: new Date().toISOString() }, ...items]);
@@ -322,7 +334,7 @@ export default function Home() {
     const parent = selectedFolder === "全部题目" ? "" : selectedFolder;
     if (parent.split("/").filter(Boolean).length >= 5) return toast("最多支持 5 级文件夹");
     const path = parent ? `${parent}/${name}` : name;
-    if (folders.includes(path)) return toast("该文件夹已存在");
+    if (orderedFolders.includes(path)) return toast("该文件夹已存在");
     setFolders((items) => [...items, path]);
     setSelectedFolder(path);
     setNewFolderName("");
@@ -342,7 +354,7 @@ export default function Home() {
     if (!renamingProblemId) return;
     const nextId = nextProblemId.trim();
     if (!/^[A-Za-z][A-Za-z0-9_-]{0,19}$/.test(nextId)) return toast("题号需以字母开头，仅含字母、数字、下划线或短横线，最长 20 位");
-    const duplicate = nextId.toUpperCase() === initialProblem.id.toUpperCase() || archives.some((item) => item.problem.id !== renamingProblemId && item.problem.id.toUpperCase() === nextId.toUpperCase());
+    const duplicate = nextId.toUpperCase() === initialProblem.id.toUpperCase() || acwingCourse.some((item) => item.id.toUpperCase() === nextId.toUpperCase()) || archives.some((item) => item.problem.id !== renamingProblemId && item.problem.id.toUpperCase() === nextId.toUpperCase());
     if (duplicate) return toast(`题号 ${nextId} 已存在，请更换题号`);
     setArchives((items) => items.map((item) => item.problem.id === renamingProblemId ? { ...item, problem: { ...item.problem, id: nextId } } : item));
     setProblem((item) => item.id === renamingProblemId ? { ...item, id: nextId } : item);
@@ -357,6 +369,15 @@ export default function Home() {
     setCompilerDiagnostic("");
     setPageView("workspace");
     toast(`已打开 ${item.problem.id} · ${item.problem.title}`);
+  }
+
+  function openBundledProblem(item: BundledProblem) {
+    setProblem(item);
+    setCode(starterCode);
+    setResults([]);
+    setCompilerDiagnostic("");
+    setPageView("workspace");
+    toast(`已打开 ${item.id} · ${item.title}`);
   }
 
   async function sendChat() {
@@ -467,21 +488,24 @@ export default function Home() {
         <div className="library-page-body">
           <aside className="library-page-sidebar">
             <h3>题目文件夹</h3>
-            <button className={selectedFolder === "全部题目" ? "active" : ""} onClick={() => setSelectedFolder("全部题目")}><span>▦ 全部题目</span><b>{archives.length + 1}</b></button>
-            {orderedFolders.map((folder) => <button key={folder} title={folder} style={{ paddingLeft: `${10 + (folder.split("/").length - 1) * 14}px` }} className={selectedFolder === folder ? "active" : ""} onClick={() => setSelectedFolder(folder)}><span>{folder.includes("/") ? "└" : "▱"} {folderName(folder)}</span><b>{archives.filter((item) => folderContains(item.folder, folder)).length + (folder === "默认题库" ? 1 : 0)}</b></button>)}
+            <button className={selectedFolder === "全部题目" ? "active" : ""} onClick={() => setSelectedFolder("全部题目")}><span>▦ 全部题目</span><b>{archives.length + acwingCourse.length + 1}</b></button>
+            {orderedFolders.map((folder) => <button key={folder} title={folder} style={{ paddingLeft: `${10 + (folder.split("/").length - 1) * 14}px` }} className={selectedFolder === folder ? "active" : ""} onClick={() => setSelectedFolder(folder)}><span>{folder.includes("/") ? "└" : "▱"} {folderName(folder)}</span><b>{archives.filter((item) => folderContains(item.folder, folder)).length + acwingCourse.filter((item) => folderContains(item.folder, folder)).length + (folder === "默认题库" ? 1 : 0)}</b></button>)}
             <div className="folder-create-caption">{selectedFolder === "全部题目" ? "新建根文件夹" : `在「${folderName(selectedFolder)}」中新建`}</div><div className="new-folder page-folder"><input value={newFolderName} onChange={(e) => setNewFolderName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") createFolder(); }} placeholder="文件夹名称" /><button title="新建文件夹" onClick={createFolder}>＋</button></div>
           </aside>
           <main className="library-catalog">
-            <div className="catalog-toolbar"><div><h2 className="folder-breadcrumb">{selectedFolder === "全部题目" ? "全部题目" : selectedFolder.split("/").map((part, index) => <span key={`${part}-${index}`}>{index > 0 && <i>›</i>}{part}</span>)}</h2><span>{selectedArchives.length + (showBuiltInProblem ? 1 : 0)} 道题目已收录（含子文件夹）</span></div><label><span>⌕</span><input value={librarySearch} onChange={(e) => setLibrarySearch(e.target.value)} placeholder="搜索编号或题目名称" /></label></div>
+            <div className="catalog-toolbar"><div><h2 className="folder-breadcrumb">{selectedFolder === "全部题目" ? "全部题目" : selectedFolder.split("/").map((part, index) => <span key={`${part}-${index}`}>{index > 0 && <i>›</i>}{part}</span>)}</h2><span>{selectedArchives.length + selectedAcwing.length + (showBuiltInProblem ? 1 : 0)} 道题目已收录（含子文件夹）</span></div><label><span>⌕</span><input value={librarySearch} onChange={(e) => setLibrarySearch(e.target.value)} placeholder="搜索编号或题目名称" /></label></div>
             <div className="catalog-header"><span>题目</span><span>难度</span><span>测试点</span><span>分类</span><span></span></div>
             <div className="catalog-list">
               {showBuiltInProblem && <article className="catalog-row built-in">
                 <button onClick={() => { setProblem(initialProblem); setCode(starterCode); setResults([]); setCompilerDiagnostic(""); setPageView("workspace"); }}><code>{initialProblem.id}</code><div><b>{initialProblem.title}</b><small>经典入门题 · 内置题目</small></div></button><span className="difficulty beginner">{initialProblem.difficulty}</span><span>{initialProblem.samples.length} 个</span><span>默认题库</span><i>进入做题 →</i>
               </article>}
+              {displayedAcwing.map((item) => <article className="catalog-row external-problem" key={item.id}>
+                <button onClick={() => openBundledProblem(item)}><code>{item.id}</code><div><b>{item.title}</b><small>{item.extractionStatus === "complete" ? "题面已自动提取" : "题面需结合来源核对"} · 博客园来源</small></div></button><span className="difficulty normal">{item.difficulty}</span><span>{item.samples.length} 个</span><span title={item.folder}>{folderName(item.folder)}</span><div className="row-actions"><a href={item.sourceUrl} target="_blank" rel="noreferrer">来源</a><i onClick={() => openBundledProblem(item)}>进入 →</i></div>
+              </article>)}
               {displayedArchives.map((item) => <article className="catalog-row" key={item.problem.id}>
                 <button onClick={() => openArchivedProblem(item)}><code>{item.problem.id}</code><div><b>{item.problem.title}</b><small>{new Date(item.archivedAt).toLocaleDateString("zh-CN")} 归档</small></div></button><span className={`difficulty ${item.problem.difficulty === "提高" ? "advanced" : item.problem.difficulty === "普及" ? "normal" : "beginner"}`}>{item.problem.difficulty}</span><span>{item.problem.samples.length} 个</span><select aria-label={`移动 ${item.problem.title} 到文件夹`} value={item.folder} onChange={(e) => moveArchivedProblem(item.problem.id, e.target.value)}>{orderedFolders.map((folder) => <option key={folder} value={folder}>{"　".repeat(folder.split("/").length - 1)}{folderName(folder)}</option>)}</select><div className="row-actions"><button onClick={() => beginRenameProblem(item.problem.id)}>改题号</button><i onClick={() => openArchivedProblem(item)}>进入 →</i></div>
               </article>)}
-              {!showBuiltInProblem && displayedArchives.length === 0 && <div className="catalog-empty"><b>{searchQuery ? "没有匹配的题目" : "此文件夹及子文件夹暂无题目"}</b><span>{searchQuery ? "请尝试其他编号或标题关键词。" : "点击“添加题目”导入 JSON，或粘贴题面让 AI 自动生成。"}</span></div>}
+              {!showBuiltInProblem && displayedAcwing.length === 0 && displayedArchives.length === 0 && <div className="catalog-empty"><b>{searchQuery ? "没有匹配的题目" : "此文件夹及子文件夹暂无题目"}</b><span>{searchQuery ? "请尝试其他编号或标题关键词。" : "点击“添加题目”导入 JSON，或粘贴题面让 AI 自动生成。"}</span></div>}
             </div>
           </main>
         </div>
@@ -497,6 +521,7 @@ export default function Home() {
           {tab === "problem" ? (
             <div className="problem-content">
               <h1>{problem.title}</h1>
+              {problem.sourceUrl && <div className={`source-banner ${problem.extractionStatus === "needs_review" ? "review" : ""}`}><span>{problem.extractionStatus === "needs_review" ? "需核对" : "已导入"}</span><p>来源于 AcWing 算法基础课题解目录。{problem.extractionStatus === "needs_review" ? "该页面结构特殊，请先核对原文，再用 AI 补全测试点。" : "题面已自动提取，可继续用 AI 生成隐藏测试点。"}</p><a href={problem.sourceUrl} target="_blank" rel="noreferrer">查看来源 ↗</a></div>}
               <div className="problem-meta"><span>⏱ 时间限制 <b>{problem.time}</b></span><span>▣ 内存限制 <b>{problem.memory}</b></span><span>提交 <b>86.4k</b></span><span>通过率 <b>62.7%</b></span></div>
               <section><h2>题目描述</h2><p>{problem.description}</p></section>
               <section><h2>输入格式</h2><p>{problem.inputFormat}</p></section>
