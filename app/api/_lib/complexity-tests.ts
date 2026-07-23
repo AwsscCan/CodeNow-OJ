@@ -1,6 +1,10 @@
 type UpstreamData = { choices?: { message?: { content?: string } }[]; error?: { message?: string } };
 type Part = { type?: unknown; value?: unknown; count?: unknown; separator?: unknown; start?: unknown; end?: unknown; step?: unknown; values?: unknown };
-type RawTest = { input?: unknown; output?: unknown; inputParts?: unknown; outputParts?: unknown; category?: unknown; scale?: unknown; targets?: unknown; reason?: unknown };
+type RawTest = {
+  input?: unknown; output?: unknown; stdin?: unknown; stdout?: unknown; expected?: unknown; expectedOutput?: unknown; expected_output?: unknown; answer?: unknown;
+  input_data?: unknown; output_data?: unknown; in?: unknown; out?: unknown; inputParts?: unknown; outputParts?: unknown;
+  category?: unknown; scale?: unknown; targets?: unknown; reason?: unknown;
+};
 type GeneratedTest = { input: string; output: string; category: string; scale: number; targets: string; reason: string };
 type ComplexityPlan = { expectedTimeComplexity: string; expectedSpaceComplexity: string; bruteForceToReject: string[]; stressScale: number; stressInputStrategy: string };
 
@@ -113,23 +117,60 @@ function expandParts(parts: unknown): string {
   return chunks.join("");
 }
 
+function stringifyField(value: unknown): string {
+  if (value === undefined || value === null) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") return String(value);
+  if (Array.isArray(value)) return value.map((item) => Array.isArray(item) ? item.map(String).join(" ") : String(item)).join("\n");
+  return "";
+}
+
+function normalizeText(value: string) {
+  const text = value.includes("\\n") && !value.includes("\n") ? value.replace(/\\n/g, "\n") : value;
+  return text.endsWith("\n") ? text : `${text}\n`;
+}
+
 function materialize(value: unknown, parts: unknown) {
-  const text = typeof value === "string" ? value : parts !== undefined ? expandParts(parts) : "";
+  const text = parts !== undefined ? expandParts(parts) : stringifyField(value);
   if (!text || text.length > MAX_EXPANDED_CHARS) throw new Error("测试点输入或输出为空/过大");
-  return text;
+  return normalizeText(text);
+}
+
+function readFirst(test: RawTest, keys: (keyof RawTest)[]) {
+  for (const key of keys) {
+    const value = test[key];
+    if (value !== undefined && value !== null && stringifyField(value).trim() !== "") return value;
+  }
+  return undefined;
+}
+
+function findTestList(parsed: unknown): unknown[] | null {
+  if (Array.isArray(parsed)) return parsed;
+  if (!parsed || typeof parsed !== "object") return null;
+  const object = parsed as Record<string, unknown>;
+  for (const key of ["tests", "testCases", "testcases", "cases", "samples", "data"]) {
+    if (Array.isArray(object[key])) return object[key] as unknown[];
+  }
+  for (const value of Object.values(object)) {
+    const nested = findTestList(value);
+    if (nested) return nested;
+  }
+  return null;
 }
 
 function parseTests(content: string): GeneratedTest[] {
   const parsed = parseJson(content);
-  const list = Array.isArray(parsed) ? parsed : (parsed as { tests?: unknown[] })?.tests;
+  const list = findTestList(parsed);
   if (!Array.isArray(list)) throw new Error("AI 返回的 JSON 缺少 tests 数组");
   return list.flatMap((item) => {
     if (!item || typeof item !== "object") return [];
     const test = item as RawTest;
+    const input = readFirst(test, ["input", "stdin", "input_data", "in"]);
+    const output = readFirst(test, ["output", "stdout", "expectedOutput", "expected_output", "expected", "answer", "output_data", "out"]);
     try {
       return [{
-        input: materialize(test.input, test.inputParts),
-        output: materialize(test.output, test.outputParts),
+        input: materialize(input, test.inputParts),
+        output: materialize(output, test.outputParts),
         category: String(test.category || "ordinary").toLowerCase(),
         scale: Math.max(1, Math.floor(Number(test.scale) || 1)),
         targets: String(test.targets || ""),
@@ -138,7 +179,6 @@ function parseTests(content: string): GeneratedTest[] {
     } catch { return []; }
   });
 }
-
 export async function generateComplexityAwareTests(options: { apiKey: string; endpoint: string; model: string; problem: Record<string, unknown>; count: number }) {
   const { apiKey, endpoint, model, problem } = options;
   const target = Math.max(6, Math.min(24, Math.floor(options.count)));
@@ -210,7 +250,7 @@ ${compressed}
     return test.category === "adversarial" && test.targets.trim().length >= 4 && test.reason.trim().length >= 4;
   }
 
-  const candidates = parseTests(content).slice(0, target);
+  const candidates = parseTests(content);
 
   const fingerprints = new Set<string>((existingInputs as { input?: unknown; output?: unknown }[]).map((test) => `${String(test.input || "")}\u0000${String(test.output || "")}`));
   const unique: GeneratedTest[] = [];
@@ -219,6 +259,7 @@ ${compressed}
     if (!fingerprints.has(key)) {
       fingerprints.add(key);
       unique.push(test);
+      if (unique.length >= target) break;
     }
   }
   if (!unique.length) throw new Error("AI 没有生成可用测试点，请确认题面包含完整的数据范围与输入输出格式");
