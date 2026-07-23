@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, inArray } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { submissions } from "../../../db/schema";
 
@@ -42,8 +42,11 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   try {
     const id = new URL(request.url).searchParams.get("id")?.trim();
-    if (!id) return Response.json({ error: "缺少记录编号" }, { status: 400 });
-    await getDb().delete(submissions).where(eq(submissions.id, id));
+    const payload = await request.json().catch(() => null) as { problemIds?: unknown } | null;
+    const problemIds = Array.isArray(payload?.problemIds) ? payload.problemIds.map(String).map((item) => item.trim()).filter(Boolean).slice(0, 500) : [];
+    if (id) await getDb().delete(submissions).where(eq(submissions.id, id));
+    else if (problemIds.length) await getDb().delete(submissions).where(inArray(submissions.problemId, problemIds));
+    else return Response.json({ error: "缺少记录编号或题号" }, { status: 400 });
     return Response.json({ ok: true });
   } catch (error) {
     return Response.json({ error: errorMessage(error) }, { status: 500 });

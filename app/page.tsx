@@ -72,14 +72,32 @@ function folderName(folder: string) {
   return folder.split("/").pop() || folder;
 }
 
-function compareFolderPaths(left: string, right: string) {
-  const a = left.split("/");
-  const b = right.split("/");
-  for (let index = 0; index < Math.min(a.length, b.length); index += 1) {
-    const compared = naturalCollator.compare(a[index], b[index]);
-    if (compared) return compared;
+function folderParent(folder: string) {
+  return folder.includes("/") ? folder.slice(0, folder.lastIndexOf("/")) : "";
+}
+
+function orderFolderTree(paths: string[], manualOrder: string[]) {
+  const unique = Array.from(new Set(paths));
+  const pathSet = new Set(unique);
+  const rank = new Map(manualOrder.map((path, index) => [path, index]));
+  const children = new Map<string, string[]>();
+  for (const path of unique) {
+    const candidate = folderParent(path);
+    const parent = candidate && pathSet.has(candidate) ? candidate : "";
+    children.set(parent, [...(children.get(parent) || []), path]);
   }
-  return a.length - b.length;
+  const result: string[] = [];
+  function visit(parent: string) {
+    const siblings = children.get(parent) || [];
+    siblings.sort((left, right) => {
+      const a = rank.get(left); const b = rank.get(right);
+      if (a !== undefined || b !== undefined) return (a ?? Number.MAX_SAFE_INTEGER) - (b ?? Number.MAX_SAFE_INTEGER);
+      return naturalCollator.compare(folderName(left), folderName(right));
+    });
+    for (const sibling of siblings) { result.push(sibling); visit(sibling); }
+  }
+  visit("");
+  return result;
 }
 
 function normalizeImportedProblem(input: unknown): Problem {
@@ -151,6 +169,9 @@ export default function Home() {
   const [selectedFolder, setSelectedFolder] = useState("默认题库");
   const [newFolderName, setNewFolderName] = useState("");
   const [collapsedFolders, setCollapsedFolders] = useState<string[]>([]);
+  const [folderOrder, setFolderOrder] = useState<string[]>([]);
+  const [draggedFolder, setDraggedFolder] = useState<string | null>(null);
+  const [dragOverFolder, setDragOverFolder] = useState<string | null>(null);
   const [includeSubfolders, setIncludeSubfolders] = useState(true);
   const [libraryReady, setLibraryReady] = useState(false);
   const [history, setHistory] = useState<SubmissionRecord[]>([]);
@@ -217,11 +238,12 @@ export default function Home() {
     const saved = localStorage.getItem("codeforge-problem-library");
     if (saved) {
       try {
-        const data = JSON.parse(saved) as { archives?: ArchivedProblem[]; folders?: string[]; selectedFolder?: string; collapsedFolders?: string[]; includeSubfolders?: boolean };
+        const data = JSON.parse(saved) as { archives?: ArchivedProblem[]; folders?: string[]; selectedFolder?: string; collapsedFolders?: string[]; folderOrder?: string[]; includeSubfolders?: boolean };
         if (Array.isArray(data.archives)) setArchives(data.archives);
         if (Array.isArray(data.folders) && data.folders.length) setFolders(data.folders);
         if (typeof data.selectedFolder === "string") setSelectedFolder(data.selectedFolder);
         if (Array.isArray(data.collapsedFolders)) setCollapsedFolders(data.collapsedFolders.filter((item): item is string => typeof item === "string"));
+        if (Array.isArray(data.folderOrder)) setFolderOrder(data.folderOrder.filter((item): item is string => typeof item === "string"));
         if (typeof data.includeSubfolders === "boolean") setIncludeSubfolders(data.includeSubfolders);
       } catch { /* ignore malformed local state */ }
     }
@@ -229,8 +251,8 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (libraryReady) localStorage.setItem("codeforge-problem-library", JSON.stringify({ archives, folders, selectedFolder, collapsedFolders, includeSubfolders }));
-  }, [archives, folders, selectedFolder, collapsedFolders, includeSubfolders, libraryReady]);
+    if (libraryReady) localStorage.setItem("codeforge-problem-library", JSON.stringify({ archives, folders, selectedFolder, collapsedFolders, folderOrder, includeSubfolders }));
+  }, [archives, folders, selectedFolder, collapsedFolders, folderOrder, includeSubfolders, libraryReady]);
 
   useEffect(() => {
     if (libraryReady) setArchives((items) => items.map((item) => item.problem.id === problem.id ? { ...item, problem } : item));
@@ -252,7 +274,7 @@ export default function Home() {
   }, [problem.id]);
 
   const apiKey = apiKeys[provider];
-  const orderedFolders = Array.from(new Set([...folders, ...acwingFolders])).sort(compareFolderPaths);
+  const orderedFolders = orderFolderTree([...folders, ...acwingFolders], folderOrder);
   const visibleFolders = orderedFolders.filter((folder) => {
     const parts = folder.split("/");
     return parts.slice(0, -1).every((_, index) => !collapsedFolders.includes(parts.slice(0, index + 1).join("/")));
@@ -421,6 +443,8 @@ export default function Home() {
     const path = parent ? `${parent}/${name}` : name;
     if (orderedFolders.includes(path)) return toast("该文件夹已存在");
     setFolders((items) => [...items, path]);
+    const siblings = orderedFolders.filter((item) => folderParent(item) === parent);
+    setFolderOrder((items) => [...items.filter((item) => !siblings.includes(item) && item !== path), ...siblings, path]);
     setSelectedFolder(path);
     setNewFolderName("");
     toast(`已创建${parent ? "子" : ""}文件夹「${path}」`);
@@ -439,12 +463,66 @@ export default function Home() {
     setFolders((items) => items.filter((item) => !folderContains(item, folder)));
     setArchives((items) => items.map((item) => folderContains(item.folder, folder) ? { ...item, folder: parent } : item));
     setCollapsedFolders((items) => items.filter((item) => !folderContains(item, folder)));
+    setFolderOrder((items) => items.filter((item) => !folderContains(item, folder)));
     if (folderContains(selectedFolder, folder)) setSelectedFolder(parent);
     toast(`已解散文件夹「${folder}」${affectedProblems ? `，题目已移至「${parent}」` : ""}`);
   }
 
   function toggleFolder(folder: string) {
     setCollapsedFolders((items) => items.includes(folder) ? items.filter((item) => item !== folder) : [...items, folder]);
+  }
+
+  function reorderFolder(target: string, placeAfter: boolean) {
+    const source = draggedFolder;
+    setDragOverFolder(null);
+    setDraggedFolder(null);
+    if (!source || source === target) return;
+    if (folderParent(source) !== folderParent(target)) return toast("只能在同一级文件夹之间拖动排序");
+    const siblings = orderedFolders.filter((item) => folderParent(item) === folderParent(source));
+    const next = siblings.filter((item) => item !== source);
+    const targetIndex = next.indexOf(target);
+    next.splice(targetIndex + (placeAfter ? 1 : 0), 0, source);
+    setFolderOrder((items) => [...items.filter((item) => !siblings.includes(item)), ...next]);
+    toast(`已调整「${folderName(source)}」的顺序`);
+  }
+
+  async function removeProblemHistories(problemIds: string[]) {
+    if (!problemIds.length) return;
+    const response = await fetch("/api/submissions", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ problemIds }) });
+    const data = await response.json() as { ok?: boolean; error?: string };
+    if (!response.ok || !data.ok) throw new Error(data.error || "清理提交历史失败");
+  }
+
+  async function deleteFolderPermanently(folder: string) {
+    if (folder === "默认题库" || !folders.includes(folder)) return;
+    const affected = archives.filter((item) => folderContains(item.folder, folder));
+    const nestedCount = folders.filter((item) => folderContains(item, folder)).length - 1;
+    if (!window.confirm(`永久删除文件夹「${folder}」${nestedCount > 0 ? `及 ${nestedCount} 个子文件夹` : ""}？其中 ${affected.length} 道题目及其提交记录也会删除，此操作不可恢复。`)) return;
+    try {
+      await removeProblemHistories(affected.map((item) => item.problem.id));
+      setFolders((items) => items.filter((item) => !folderContains(item, folder)));
+      setArchives((items) => items.filter((item) => !folderContains(item.folder, folder)));
+      setCollapsedFolders((items) => items.filter((item) => !folderContains(item, folder)));
+      setFolderOrder((items) => items.filter((item) => !folderContains(item, folder)));
+      if (affected.some((item) => item.problem.id === problem.id)) setHistory([]);
+      if (folderContains(selectedFolder, folder)) setSelectedFolder(folderParent(folder) || "默认题库");
+      toast(`已永久删除文件夹「${folder}」及其中 ${affected.length} 道题目`);
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "删除文件夹失败");
+    }
+  }
+
+  async function deleteArchivedProblem(item: ArchivedProblem) {
+    if (!window.confirm(`确定永久删除题目 ${item.problem.id} · ${item.problem.title}？对应提交记录也会删除，此操作不可恢复。`)) return;
+    try {
+      await removeProblemHistories([item.problem.id]);
+      setArchives((items) => items.filter((entry) => entry.problem.id !== item.problem.id));
+      if (problem.id === item.problem.id) setHistory([]);
+      if (selectedSubmission?.problemId === item.problem.id) setSelectedSubmission(null);
+      toast(`已删除题目 ${item.problem.id}`);
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "删除题目失败");
+    }
   }
 
   function moveArchivedProblem(id: string, folder: string) {
@@ -608,12 +686,14 @@ export default function Home() {
             {visibleFolders.map((folder) => {
               const hasChildren = orderedFolders.some((item) => item.startsWith(`${folder}/`));
               const collapsed = collapsedFolders.includes(folder);
-              return <div className="folder-entry" key={folder} style={{ marginLeft: `${(folder.split("/").length - 1) * 13}px` }}>
+              return <div className={`folder-entry ${dragOverFolder === folder ? "drag-over" : ""}`} key={folder} style={{ marginLeft: `${(folder.split("/").length - 1) * 13}px` }} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; setDragOverFolder(folder); }} onDragLeave={() => setDragOverFolder((item) => item === folder ? null : item)} onDrop={(event) => { event.preventDefault(); const bounds = event.currentTarget.getBoundingClientRect(); reorderFolder(folder, event.clientY > bounds.top + bounds.height / 2); }}>
+              <button className="folder-drag" draggable aria-label={`拖动排序 ${folder}`} title="拖动调整同级文件夹顺序" onDragStart={(event) => { setDraggedFolder(folder); event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", folder); }} onDragEnd={() => { setDraggedFolder(null); setDragOverFolder(null); }}>⋮</button>
               {hasChildren ? <button className="folder-expand" aria-label={`${collapsed ? "展开" : "收起"}文件夹 ${folder}`} title={collapsed ? "展开子文件夹" : "收起子文件夹"} onClick={() => toggleFolder(folder)}>{collapsed ? "›" : "⌄"}</button> : <span className="folder-spacer" />}
               <button title={folder} className={`folder-select ${selectedFolder === folder ? "active" : ""}`} onClick={() => setSelectedFolder(folder)}><span>▱ {folderName(folder)}</span><b>{archives.filter((item) => folderContains(item.folder, folder)).length + acwingCourse.filter((item) => folderContains(item.folder, folder)).length + (folder === "默认题库" ? 1 : 0)}</b></button>
-              {folder !== "默认题库" && folders.includes(folder) && <button className="folder-delete" aria-label={`解散文件夹 ${folder}`} title="解散文件夹，题目移至上一级" onClick={() => dissolveFolder(folder)}>散</button>}
+              {folder !== "默认题库" && folders.includes(folder) && <><button className="folder-action dissolve" aria-label={`解散文件夹 ${folder}`} title="解散：保留题目并移至上一级" onClick={() => dissolveFolder(folder)}>散</button><button className="folder-action destructive" aria-label={`永久删除文件夹 ${folder}`} title="删除：同时永久删除文件夹内题目" onClick={() => deleteFolderPermanently(folder)}>删</button></>}
             </div>;
             })}
+            <div className="folder-operation-hint">⋮ 拖动排序 · “散”保留题目 · “删”永久删除</div>
             <div className="folder-create-caption">{selectedFolder === "全部题目" ? "新建根文件夹" : `在「${folderName(selectedFolder)}」中新建`}</div><div className="new-folder page-folder"><input value={newFolderName} onChange={(e) => setNewFolderName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") createFolder(); }} placeholder="文件夹名称" /><button title="新建文件夹" onClick={createFolder}>＋</button></div>
           </aside>
           <main className="library-catalog">
@@ -623,7 +703,7 @@ export default function Home() {
               {catalogItems.map((entry) => {
                 if (entry.kind === "built-in") return <article className="catalog-row built-in" key={`${entry.kind}-${entry.id}`}><button onClick={() => { setProblem(initialProblem); setCode(starterCode); setResults([]); setCompilerDiagnostic(""); setPageView("workspace"); }}><code>{initialProblem.id}</code><div><b>{initialProblem.title}</b><small>经典入门题 · 内置题目</small></div></button><span className="difficulty beginner">{initialProblem.difficulty}</span><span>{initialProblem.samples.length} 个</span><span>默认题库</span><i onClick={() => { setProblem(initialProblem); setCode(starterCode); setResults([]); setCompilerDiagnostic(""); setPageView("workspace"); }}>进入做题 →</i></article>;
                 if (entry.kind === "acwing") { const item = entry.item; return <article className="catalog-row external-problem" key={`${entry.kind}-${entry.id}`}><button onClick={() => openBundledProblem(item)}><code>{item.id}</code><div><b>{item.title}</b><small>{item.extractionStatus === "complete" ? "题面已自动提取" : "题面需结合来源核对"} · 博客园来源</small></div></button><span className="difficulty normal">{item.difficulty}</span><span>{item.samples.length} 个</span><span title={item.folder}>{folderName(item.folder)}</span><div className="row-actions"><a href={item.sourceUrl} target="_blank" rel="noreferrer">来源</a><i onClick={() => openBundledProblem(item)}>进入 →</i></div></article>; }
-                const item = entry.item; return <article className="catalog-row" key={`${entry.kind}-${entry.id}`}><div className="catalog-problem-link"><button className="catalog-id-edit" title="点击修改题号" aria-label={`修改题号 ${item.problem.id}`} onClick={() => beginRenameProblem(item.problem.id)}><code>{item.problem.id}</code></button><button className="catalog-title-open" onClick={() => openArchivedProblem(item)}><span><b>{item.problem.title}</b><small>{new Date(item.archivedAt).toLocaleDateString("zh-CN")} 归档</small></span></button></div><span className={`difficulty ${item.problem.difficulty === "提高" ? "advanced" : item.problem.difficulty === "普及" ? "normal" : "beginner"}`}>{item.problem.difficulty}</span><span>{item.problem.samples.length} 个</span><select aria-label={`移动 ${item.problem.title} 到文件夹`} value={item.folder} onChange={(e) => moveArchivedProblem(item.problem.id, e.target.value)}>{orderedFolders.map((folder) => <option key={folder} value={folder}>{"　".repeat(folder.split("/").length - 1)}{folderName(folder)}</option>)}</select><div className="row-actions"><i onClick={() => openArchivedProblem(item)}>进入 →</i></div></article>;
+                const item = entry.item; return <article className="catalog-row" key={`${entry.kind}-${entry.id}`}><div className="catalog-problem-link"><button className="catalog-id-edit" title="点击修改题号" aria-label={`修改题号 ${item.problem.id}`} onClick={() => beginRenameProblem(item.problem.id)}><code>{item.problem.id}</code></button><button className="catalog-title-open" onClick={() => openArchivedProblem(item)}><span><b>{item.problem.title}</b><small>{new Date(item.archivedAt).toLocaleDateString("zh-CN")} 归档</small></span></button></div><span className={`difficulty ${item.problem.difficulty === "提高" ? "advanced" : item.problem.difficulty === "普及" ? "normal" : "beginner"}`}>{item.problem.difficulty}</span><span>{item.problem.samples.length} 个</span><select aria-label={`移动 ${item.problem.title} 到文件夹`} value={item.folder} onChange={(e) => moveArchivedProblem(item.problem.id, e.target.value)}>{orderedFolders.map((folder) => <option key={folder} value={folder}>{"　".repeat(folder.split("/").length - 1)}{folderName(folder)}</option>)}</select><div className="row-actions"><button className="danger-action" onClick={() => deleteArchivedProblem(item)}>删除</button><i onClick={() => openArchivedProblem(item)}>进入 →</i></div></article>;
               })}
               {catalogItems.length === 0 && <div className="catalog-empty"><b>{searchQuery ? "没有匹配的题目" : includeSubfolders ? "此文件夹及子文件夹暂无题目" : "当前文件夹暂无题目"}</b><span>{searchQuery ? "请尝试其他编号或标题关键词。" : "点击“添加题目”导入 JSON，或粘贴题面让 AI 自动生成。"}</span></div>}
             </div>
