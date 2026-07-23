@@ -47,6 +47,8 @@ int main() {
 
 type Result = { id: number; status: "AC" | "WA" | "RE" | "CE" | "TLE"; actual: string; expected: string; duration: number };
 type AiProvider = "deepseek" | "openai" | "custom";
+type ArchivedProblem = { problem: Problem; folder: string; archivedAt: string };
+type ChatMessage = { role: "user" | "assistant"; content: string };
 
 function normalizeImportedProblem(input: unknown): Problem {
   if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("根节点必须是 JSON 对象");
@@ -99,6 +101,16 @@ export default function Home() {
   const [endpoint, setEndpoint] = useState("https://api.deepseek.com");
   const [model, setModel] = useState("deepseek-v4-flash");
   const [aiBusy, setAiBusy] = useState(false);
+  const [showChat, setShowChat] = useState(false);
+  const [chatInput, setChatInput] = useState("");
+  const [chatBusy, setChatBusy] = useState(false);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [showLibrary, setShowLibrary] = useState(false);
+  const [archives, setArchives] = useState<ArchivedProblem[]>([]);
+  const [folders, setFolders] = useState(["默认题库"]);
+  const [selectedFolder, setSelectedFolder] = useState("默认题库");
+  const [newFolderName, setNewFolderName] = useState("");
+  const [libraryReady, setLibraryReady] = useState(false);
   const [history, setHistory] = useState<{ time: string; status: string; passed: string }[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -147,6 +159,27 @@ export default function Home() {
     if (apiKeysReady) localStorage.setItem("codeforge-api-keys", JSON.stringify(apiKeys));
   }, [apiKeys, apiKeysReady]);
 
+  useEffect(() => {
+    const saved = localStorage.getItem("codeforge-problem-library");
+    if (saved) {
+      try {
+        const data = JSON.parse(saved) as { archives?: ArchivedProblem[]; folders?: string[]; selectedFolder?: string };
+        if (Array.isArray(data.archives)) setArchives(data.archives);
+        if (Array.isArray(data.folders) && data.folders.length) setFolders(data.folders);
+        if (typeof data.selectedFolder === "string") setSelectedFolder(data.selectedFolder);
+      } catch { /* ignore malformed local state */ }
+    }
+    setLibraryReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (libraryReady) localStorage.setItem("codeforge-problem-library", JSON.stringify({ archives, folders, selectedFolder }));
+  }, [archives, folders, selectedFolder, libraryReady]);
+
+  useEffect(() => {
+    if (libraryReady) setArchives((items) => items.map((item) => item.problem.id === problem.id ? { ...item, problem } : item));
+  }, [problem, libraryReady]);
+
   const apiKey = apiKeys[provider];
 
   const passed = results.filter((r) => r.status === "AC").length;
@@ -188,11 +221,9 @@ export default function Home() {
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        const data = normalizeImportedProblem(JSON.parse(String(reader.result)));
-        setProblem(data);
-        setResults([]);
+        const data = archiveAndOpen(normalizeImportedProblem(JSON.parse(String(reader.result))));
         setShowImport(false);
-        toast(`已导入题目「${data.title}」`);
+        toast(`已编号并归档：${data.id} · ${data.title}`);
       } catch (error) {
         toast(`导入失败：${error instanceof Error ? error.message : "请检查 JSON 文件格式"}`);
       }
@@ -231,6 +262,68 @@ export default function Home() {
     toast(`${provider === "deepseek" ? "DeepSeek" : provider === "openai" ? "OpenAI" : "自定义 API"} Key 已从本机清除`);
   }
 
+  function archiveAndOpen(incoming: Problem) {
+    const nextNumber = archives.reduce((max, item) => {
+      const match = /^CF(\d+)$/.exec(item.problem.id);
+      return match ? Math.max(max, Number(match[1])) : max;
+    }, 0) + 1;
+    const numbered = { ...incoming, id: `CF${String(nextNumber).padStart(4, "0")}` };
+    const archiveFolder = selectedFolder === "全部题目" ? "默认题库" : selectedFolder;
+    setArchives((items) => [{ problem: numbered, folder: archiveFolder, archivedAt: new Date().toISOString() }, ...items]);
+    setProblem(numbered);
+    setCode(starterCode);
+    setCompilerDiagnostic("");
+    setResults([]);
+    setTab("problem");
+    return numbered;
+  }
+
+  function createFolder() {
+    const name = newFolderName.trim();
+    if (!name) return;
+    if (folders.includes(name)) return toast("该文件夹已存在");
+    setFolders((items) => [...items, name]);
+    setSelectedFolder(name);
+    setNewFolderName("");
+    toast(`已创建文件夹「${name}」`);
+  }
+
+  function moveArchivedProblem(id: string, folder: string) {
+    setArchives((items) => items.map((item) => item.problem.id === id ? { ...item, folder } : item));
+  }
+
+  function openArchivedProblem(item: ArchivedProblem) {
+    setProblem(item.problem);
+    setResults([]);
+    setCompilerDiagnostic("");
+    setShowLibrary(false);
+    toast(`已打开 ${item.problem.id} · ${item.problem.title}`);
+  }
+
+  async function sendChat() {
+    const question = chatInput.trim();
+    if (!question || chatBusy) return;
+    if (!apiKey.trim()) return toast("请先在 AI 解题中配置 API Key");
+    const nextMessages: ChatMessage[] = [...chatMessages, { role: "user", content: question }];
+    setChatMessages(nextMessages);
+    setChatInput("");
+    setChatBusy(true);
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey, endpoint, model, problem, code, messages: nextMessages }),
+      });
+      const data = await response.json() as { answer?: string; error?: string };
+      if (!response.ok || !data.answer) throw new Error(data.error || "AI 没有返回内容");
+      setChatMessages((items) => [...items, { role: "assistant", content: data.answer! }]);
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "AI 对话失败");
+    } finally {
+      setChatBusy(false);
+    }
+  }
+
   async function generateProblemFromText() {
     if (rawProblemText.trim().length < 20) return toast("请粘贴完整题面，至少 20 个字符");
     if (!apiKey.trim()) return toast("请填写所选 AI 服务的 API Key");
@@ -244,14 +337,9 @@ export default function Home() {
       });
       const data = await response.json() as { problem?: unknown; error?: string };
       if (!response.ok || !data.problem) throw new Error(data.error || "题目解析失败");
-      const generated = normalizeImportedProblem(data.problem);
-      setProblem(generated);
-      setCode(starterCode);
-      setCompilerDiagnostic("");
-      setResults([]);
-      setTab("problem");
+      const generated = archiveAndOpen(normalizeImportedProblem(data.problem));
       setShowImport(false);
-      toast(`已生成「${generated.title}」和 ${generated.samples.length} 个测试点`);
+      toast(`已生成并归档：${generated.id} · ${generated.samples.length} 个测试点`);
     } catch (error) {
       toast(error instanceof Error ? error.message : "AI 生成题目失败");
     } finally {
@@ -285,13 +373,13 @@ export default function Home() {
     <main className={`app-shell theme-${themeMode}`}>
       <header className="topbar">
         <div className="brand"><span className="brand-mark">C<span>F</span></span><span>CodeForge</span><em>OJ</em></div>
-        <nav><button className="nav-active">题库</button><button>训练</button><button>比赛</button><button>讨论</button></nav>
+        <nav><button className="nav-active" onClick={() => setShowLibrary(true)}>我的题库</button><button>训练</button><button>比赛</button><button>讨论</button></nav>
         <div className="header-actions"><button className="icon-button theme-toggle" aria-label={`切换到${themeMode === "dark" ? "亮色" : "暗色"}模式`} title={`切换到${themeMode === "dark" ? "亮色" : "暗色"}模式`} onClick={() => setThemeMode((mode) => mode === "dark" ? "light" : "dark")}>{themeMode === "dark" ? "☀" : "◐"}</button><span className="avatar">LR</span><div className="user-copy"><b>LinR</b><small>Lv.12 · 1842</small></div></div>
       </header>
 
       <section className="workspace-bar">
         <div className="breadcrumb"><span>题库</span><i>/</i><b>{problem.id}</b><strong>{problem.title}</strong><mark>{problem.difficulty}</mark></div>
-        <div className="workspace-actions"><button onClick={() => setShowImport(true)}>⇧ 导入题目</button><button className="ai-button" onClick={() => setShowAi(true)}>✦ AI 解题</button><button className="run-button" disabled={running} onClick={() => runTests(false)}>{running ? "运行中…" : "▷ 运行测试"}</button><button className="submit-button" disabled={running} onClick={() => runTests(true)}>提交</button></div>
+        <div className="workspace-actions"><button onClick={() => setShowLibrary(true)}>▣ 题目存档</button><button onClick={() => { if (selectedFolder === "全部题目") setSelectedFolder("默认题库"); setShowImport(true); }}>⇧ 导入题目</button><button className="ask-button" onClick={() => setShowChat(true)}>◈ 问 AI</button><button className="ai-button" onClick={() => setShowAi(true)}>✦ AI 解题</button><button className="run-button" disabled={running} onClick={() => runTests(false)}>{running ? "运行中…" : "▷ 运行测试"}</button><button className="submit-button" disabled={running} onClick={() => runTests(true)}>提交</button></div>
       </section>
 
       <section className="split-workspace">
@@ -333,6 +421,7 @@ export default function Home() {
       {showImport && <div className="modal-backdrop" onMouseDown={() => setShowImport(false)}><div className="modal import-modal" onMouseDown={(e) => e.stopPropagation()}>
         <button className="modal-close" onClick={() => setShowImport(false)}>×</button>
         <span className="modal-kicker">快速开始</span><h2>添加一道练习题</h2>
+        <label className="archive-target">归档到<select value={selectedFolder} onChange={(e) => setSelectedFolder(e.target.value)}>{folders.map((folder) => <option key={folder}>{folder}</option>)}</select></label>
         <div className="import-tabs"><button className={importMode === "paste" ? "active" : ""} onClick={() => setImportMode("paste")}>✦ 粘贴题面</button><button className={importMode === "json" ? "active" : ""} onClick={() => setImportMode("json")}>⇧ 导入 JSON</button></div>
         {importMode === "paste" ? <>
           <p>直接复制题目全文，AI 会整理题面并生成可立即运行的测试点。</p>
@@ -359,6 +448,36 @@ export default function Home() {
           <div className="download-row"><a href="/problem-example.json" download>下载完整示例</a><a href="/problem.schema.json" download>下载 JSON Schema</a></div>
         </>}
       </div></div>}
+
+      {showLibrary && <div className="modal-backdrop" onMouseDown={() => setShowLibrary(false)}><div className="modal library-modal" onMouseDown={(e) => e.stopPropagation()}>
+        <button className="modal-close" onClick={() => setShowLibrary(false)}>×</button>
+        <span className="modal-kicker">LOCAL LIBRARY</span><h2>我的题目存档</h2><p>导入和 AI 生成的题目会自动编号并保存在当前浏览器中。</p>
+        <div className="library-layout">
+          <aside className="folder-list">
+            <button className={selectedFolder === "全部题目" ? "active" : ""} onClick={() => setSelectedFolder("全部题目")}><span>全部题目</span><b>{archives.length}</b></button>
+            {folders.map((folder) => <button key={folder} className={selectedFolder === folder ? "active" : ""} onClick={() => setSelectedFolder(folder)}><span>▱ {folder}</span><b>{archives.filter((item) => item.folder === folder).length}</b></button>)}
+            <div className="new-folder"><input value={newFolderName} onChange={(e) => setNewFolderName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") createFolder(); }} placeholder="新文件夹名称" /><button onClick={createFolder}>＋</button></div>
+          </aside>
+          <section className="archive-list">
+            {(selectedFolder === "全部题目" ? archives : archives.filter((item) => item.folder === selectedFolder)).map((item) => <article className="archive-card" key={item.problem.id}>
+              <button className="archive-open" onClick={() => openArchivedProblem(item)}><code>{item.problem.id}</code><span><b>{item.problem.title}</b><small>{item.problem.difficulty} · {item.problem.samples.length} 个测试点</small></span></button>
+              <select aria-label={`移动 ${item.problem.title} 到文件夹`} value={item.folder} onChange={(e) => moveArchivedProblem(item.problem.id, e.target.value)}>{folders.map((folder) => <option key={folder}>{folder}</option>)}</select>
+            </article>)}
+            {(selectedFolder === "全部题目" ? archives : archives.filter((item) => item.folder === selectedFolder)).length === 0 && <div className="library-empty"><strong>这个文件夹还是空的</strong><span>导入 JSON 或粘贴题面后会自动存档。</span></div>}
+          </section>
+        </div>
+      </div></div>}
+
+      {showChat && <div className="chat-backdrop" onMouseDown={() => setShowChat(false)}><aside className="chat-drawer" onMouseDown={(e) => e.stopPropagation()}>
+        <header><div><span>AI 助教</span><b>{problem.id} · {problem.title}</b></div><button aria-label="关闭对话" onClick={() => setShowChat(false)}>×</button></header>
+        <div className="chat-context"><span>{provider === "deepseek" ? "DS" : provider === "openai" ? "OA" : "API"}</span><div><b>{model}</b><small>已携带当前题面、测试点和 C++ 代码</small></div><button onClick={() => { setShowChat(false); setShowAi(true); }}>配置</button></div>
+        <div className="chat-messages">
+          {!chatMessages.length && <div className="chat-welcome"><strong>哪里不明白，直接问我</strong><span>我会结合当前题目和你的代码回答。</span><button onClick={() => setChatInput("这道题应该从什么思路入手？")}>提示解题思路</button><button onClick={() => setChatInput("帮我检查当前代码可能存在的问题")}>检查当前代码</button><button onClick={() => setChatInput("请解释这道题需要注意的边界情况")}>分析边界情况</button></div>}
+          {chatMessages.map((message, index) => <div className={`chat-message ${message.role}`} key={index}><span>{message.role === "user" ? "我" : "AI"}</span><p>{message.content}</p></div>)}
+          {chatBusy && <div className="chat-message assistant"><span>AI</span><p className="thinking">正在思考…</p></div>}
+        </div>
+        <footer><textarea value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) sendChat(); }} placeholder="询问思路、复杂度、代码报错……（Ctrl + Enter 发送）" /><button disabled={chatBusy || !chatInput.trim()} onClick={sendChat}>发送</button></footer>
+      </aside></div>}
 
       {showAi && <div className="modal-backdrop" onMouseDown={() => setShowAi(false)}><div className="modal ai-modal" onMouseDown={(e) => e.stopPropagation()}>
         <button className="modal-close" onClick={() => setShowAi(false)}>×</button><span className="modal-kicker purple">AI COPILOT</span><h2>让 AI 编写解答</h2>
