@@ -341,6 +341,22 @@ export default function Home() {
     toast(`已创建${parent ? "子" : ""}文件夹「${path}」`);
   }
 
+  function deleteFolder(folder: string) {
+    if (folder === "默认题库" || !folders.includes(folder)) return;
+    const parent = folder.includes("/") ? folder.slice(0, folder.lastIndexOf("/")) : "默认题库";
+    const nestedFolders = folders.filter((item) => folderContains(item, folder));
+    const affectedProblems = archives.filter((item) => folderContains(item.folder, folder)).length;
+    const detail = [
+      nestedFolders.length > 1 ? `及 ${nestedFolders.length - 1} 个子文件夹` : "",
+      affectedProblems ? `其中 ${affectedProblems} 道题目会移至「${parent}」` : "",
+    ].filter(Boolean).join("，");
+    if (!window.confirm(`确定删除文件夹「${folder}」${detail ? `（${detail}）` : ""}吗？`)) return;
+    setFolders((items) => items.filter((item) => !folderContains(item, folder)));
+    setArchives((items) => items.map((item) => folderContains(item.folder, folder) ? { ...item, folder: parent } : item));
+    if (folderContains(selectedFolder, folder)) setSelectedFolder(parent);
+    toast(`已删除文件夹「${folder}」${affectedProblems ? `，题目已移至「${parent}」` : ""}`);
+  }
+
   function moveArchivedProblem(id: string, folder: string) {
     setArchives((items) => items.map((item) => item.problem.id === id ? { ...item, folder } : item));
   }
@@ -489,7 +505,10 @@ export default function Home() {
           <aside className="library-page-sidebar">
             <h3>题目文件夹</h3>
             <button className={selectedFolder === "全部题目" ? "active" : ""} onClick={() => setSelectedFolder("全部题目")}><span>▦ 全部题目</span><b>{archives.length + acwingCourse.length + 1}</b></button>
-            {orderedFolders.map((folder) => <button key={folder} title={folder} style={{ paddingLeft: `${10 + (folder.split("/").length - 1) * 14}px` }} className={selectedFolder === folder ? "active" : ""} onClick={() => setSelectedFolder(folder)}><span>{folder.includes("/") ? "└" : "▱"} {folderName(folder)}</span><b>{archives.filter((item) => folderContains(item.folder, folder)).length + acwingCourse.filter((item) => folderContains(item.folder, folder)).length + (folder === "默认题库" ? 1 : 0)}</b></button>)}
+            {orderedFolders.map((folder) => <div className="folder-entry" key={folder}>
+              <button title={folder} style={{ paddingLeft: `${10 + (folder.split("/").length - 1) * 14}px` }} className={`folder-select ${selectedFolder === folder ? "active" : ""}`} onClick={() => setSelectedFolder(folder)}><span>{folder.includes("/") ? "└" : "▱"} {folderName(folder)}</span><b>{archives.filter((item) => folderContains(item.folder, folder)).length + acwingCourse.filter((item) => folderContains(item.folder, folder)).length + (folder === "默认题库" ? 1 : 0)}</b></button>
+              {folder !== "默认题库" && folders.includes(folder) && <button className="folder-delete" aria-label={`删除文件夹 ${folder}`} title="删除文件夹" onClick={() => deleteFolder(folder)}>×</button>}
+            </div>)}
             <div className="folder-create-caption">{selectedFolder === "全部题目" ? "新建根文件夹" : `在「${folderName(selectedFolder)}」中新建`}</div><div className="new-folder page-folder"><input value={newFolderName} onChange={(e) => setNewFolderName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") createFolder(); }} placeholder="文件夹名称" /><button title="新建文件夹" onClick={createFolder}>＋</button></div>
           </aside>
           <main className="library-catalog">
