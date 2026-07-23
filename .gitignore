@@ -43,3 +43,4 @@ next-env.d.ts
 /.npm-cache/
 __pycache__/
 *.py[cod]
+.claude/
