@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import { CppEditor } from "./CppEditor";
 import acwingCourseData from "../public/acwing-course.json";
 
@@ -205,12 +206,15 @@ export default function Home() {
   const [history, setHistory] = useState<SubmissionRecord[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [selectedSubmission, setSelectedSubmission] = useState<SubmissionRecord | null>(null);
+  const [workspaceSplit, setWorkspaceSplit] = useState(46);
+  const [workspaceResizing, setWorkspaceResizing] = useState(false);
   const [mascotVisible, setMascotVisible] = useState(true);
   const [mascotMessage, setMascotMessage] = useState(0);
   const [mascotPosition, setMascotPosition] = useState<MascotPosition | null>(null);
   const [mascotDragging, setMascotDragging] = useState(false);
   const [showMascotAiPrompt, setShowMascotAiPrompt] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const workspaceRef = useRef<HTMLElement>(null);
   const mascotRef = useRef<HTMLElement>(null);
   const codePanelRef = useRef<HTMLElement>(null);
   const editorAreaRef = useRef<HTMLDivElement>(null);
@@ -220,6 +224,8 @@ export default function Home() {
   const mascotNextPosition = useRef<MascotPosition | null>(null);
   const mascotDragFrame = useRef<number | null>(null);
   const mascotDragSize = useRef({ width: 205, height: 255 });
+  const workspaceNextSplit = useRef(46);
+  const workspaceResizeFrame = useRef<number | null>(null);
 
   useEffect(() => {
     const saved = readMigratedSetting("codenow-workspace", "codeforge-workspace");
@@ -295,6 +301,52 @@ export default function Home() {
   useEffect(() => {
     if (libraryReady) localStorage.setItem("codenow-problem-library", JSON.stringify({ archives, folders, selectedFolder, collapsedFolders, folderOrder, includeSubfolders }));
   }, [archives, folders, selectedFolder, collapsedFolders, folderOrder, includeSubfolders, libraryReady]);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("codenow-workspace-split");
+    const value = saved ? Number(saved) : NaN;
+    if (Number.isFinite(value)) {
+      const next = Math.min(72, Math.max(28, value));
+      workspaceNextSplit.current = next;
+      setWorkspaceSplit(next);
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("codenow-workspace-split", String(Math.round(workspaceSplit * 10) / 10));
+  }, [workspaceSplit]);
+
+  useEffect(() => {
+    if (!workspaceResizing) return;
+    document.body.classList.add("workspace-is-resizing");
+    const applySplit = () => {
+      workspaceResizeFrame.current = null;
+      setWorkspaceSplit(workspaceNextSplit.current);
+    };
+    const move = (event: PointerEvent) => {
+      const bounds = workspaceRef.current?.getBoundingClientRect();
+      if (!bounds) return;
+      const next = Math.min(72, Math.max(28, ((event.clientX - bounds.left) / bounds.width) * 100));
+      workspaceNextSplit.current = next;
+      if (workspaceResizeFrame.current === null) workspaceResizeFrame.current = window.requestAnimationFrame(applySplit);
+    };
+    const stop = () => {
+      if (workspaceResizeFrame.current !== null) {
+        window.cancelAnimationFrame(workspaceResizeFrame.current);
+        workspaceResizeFrame.current = null;
+      }
+      setWorkspaceSplit(workspaceNextSplit.current);
+      setWorkspaceResizing(false);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop, { once: true });
+    return () => {
+      document.body.classList.remove("workspace-is-resizing");
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+      if (workspaceResizeFrame.current !== null) window.cancelAnimationFrame(workspaceResizeFrame.current);
+    };
+  }, [workspaceResizing]);
 
   useEffect(() => {
     const saved = readMigratedSetting("codenow-mascot-visible", "codeforge-mascot-visible");
@@ -424,6 +476,13 @@ export default function Home() {
     if (!failed) setMascotMessage(2);
     else if (failed.status === "CE" || failed.status === "TLE") setMascotMessage(7);
     else setMascotMessage(6);
+  }
+
+  function startWorkspaceResize(event: React.PointerEvent<HTMLButtonElement>) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    workspaceNextSplit.current = workspaceSplit;
+    setWorkspaceResizing(true);
   }
 
   function startMascotDrag(event: React.PointerEvent<HTMLElement>) {
@@ -879,7 +938,7 @@ export default function Home() {
         <div className="workspace-actions"><button onClick={() => { if (selectedFolder === "全部题目") setSelectedFolder("默认题库"); setShowImport(true); }}>⇧ 导入题目</button><button className="ask-button" onClick={() => setShowChat(true)}>◈ 问 AI</button><button className="ai-button" onClick={() => setShowAi(true)}>✦ AI 解题</button><button className="run-button" disabled={running} onClick={() => runTests(false)}>{running ? "运行中…" : "▷ 运行测试"}</button><button className="submit-button" disabled={running} onClick={() => runTests(true)}>提交</button></div>
       </section>
 
-      <section className="split-workspace">
+      <section ref={workspaceRef} className={`split-workspace ${workspaceResizing ? "resizing" : ""}`} style={{ "--problem-ratio": `${workspaceSplit}%` } as CSSProperties & Record<"--problem-ratio", string>}>
         <article className="problem-panel">
           <div className="panel-tabs"><button className={tab === "problem" ? "active" : ""} onClick={() => setTab("problem")}>题目描述</button><button className={tab === "tests" ? "active" : ""} onClick={() => setTab("tests")}>测试点 <span>{problem.samples.length}</span></button></div>
           {tab === "problem" ? (
@@ -901,7 +960,7 @@ export default function Home() {
           )}
         </article>
 
-        <div className="resize-handle" />
+        <button className="resize-handle" type="button" aria-label="拖动调整题目区和编辑器宽度" title="拖动调整题目区和编辑器宽度" onPointerDown={startWorkspaceResize}><span>{Math.round(workspaceSplit)}%</span></button>
 
         <section ref={codePanelRef} className={`code-panel editor-theme-${editorTheme}`}>
           <div className="editor-toolbar"><div className="file-tab"><span>C++</span> main.cpp <i>●</i></div><div><select aria-label="编程语言" value="cpp17" disabled><option value="cpp17">GNU C++17 · GCC</option></select><button title="重置 C++ 模板" onClick={() => { setCode(starterCode); setCompilerDiagnostic(""); toast("C++ 模板已重置"); }}>↻</button><label className="editor-theme-picker" title="切换编辑器主题"><span aria-hidden="true">◐</span><select aria-label="编辑器主题" value={editorTheme} onChange={(event) => setEditorTheme(event.target.value as EditorTheme)}><option value="dark">暗色</option><option value="light">亮色</option><option value="girl">少女</option></select></label></div></div>
