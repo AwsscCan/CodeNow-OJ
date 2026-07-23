@@ -4,7 +4,7 @@ type RawTest = {
   input?: unknown; output?: unknown; stdin?: unknown; stdout?: unknown; expected?: unknown; expectedOutput?: unknown; expected_output?: unknown; answer?: unknown;
   input_data?: unknown; output_data?: unknown; in?: unknown; out?: unknown; inputParts?: unknown; outputParts?: unknown;
   category?: unknown; scale?: unknown; targets?: unknown; reason?: unknown;
-};
+} & Record<string, unknown>;
 type GeneratedTest = { input: string; output: string; category: string; scale: number; targets: string; reason: string };
 type ComplexityPlan = { expectedTimeComplexity: string; expectedSpaceComplexity: string; bruteForceToReject: string[]; stressScale: number; stressInputStrategy: string };
 
@@ -122,6 +122,13 @@ function stringifyField(value: unknown): string {
   if (typeof value === "string") return value;
   if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") return String(value);
   if (Array.isArray(value)) return value.map((item) => Array.isArray(item) ? item.map(String).join(" ") : String(item)).join("\n");
+  if (typeof value === "object") {
+    const object = value as Record<string, unknown>;
+    for (const key of ["text", "content", "value", "data", "raw", "文本", "内容", "值", "数据"]) {
+      const nested = stringifyField(object[key]);
+      if (nested.trim()) return nested;
+    }
+  }
   return "";
 }
 
@@ -136,7 +143,7 @@ function materialize(value: unknown, parts: unknown) {
   return normalizeText(text);
 }
 
-function readFirst(test: RawTest, keys: (keyof RawTest)[]) {
+function readFirst(test: RawTest, keys: string[]) {
   for (const key of keys) {
     const value = test[key];
     if (value !== undefined && value !== null && stringifyField(value).trim() !== "") return value;
@@ -148,8 +155,17 @@ function findTestList(parsed: unknown): unknown[] | null {
   if (Array.isArray(parsed)) return parsed;
   if (!parsed || typeof parsed !== "object") return null;
   const object = parsed as Record<string, unknown>;
-  for (const key of ["tests", "testCases", "testcases", "cases", "samples", "data"]) {
+  for (const key of ["tests", "testCases", "testcases", "cases", "samples", "data", "测试点", "测试数据", "用例", "样例"]) {
     if (Array.isArray(object[key])) return object[key] as unknown[];
+  }
+  const objectValues = Object.values(object);
+  if (objectValues.length && objectValues.every((value) => value && typeof value === "object" && !Array.isArray(value))) {
+    const likelyTests = objectValues.filter((value) => {
+      const item = value as Record<string, unknown>;
+      return ["input", "stdin", "输入", "输入数据"].some((key) => stringifyField(item[key]).trim()) &&
+        ["output", "stdout", "expectedOutput", "expected_output", "expected", "answer", "输出", "标准输出", "预期输出", "答案"].some((key) => stringifyField(item[key]).trim());
+    });
+    if (likelyTests.length) return likelyTests;
   }
   for (const value of Object.values(object)) {
     const nested = findTestList(value);
@@ -165,8 +181,8 @@ function parseTests(content: string): GeneratedTest[] {
   return list.flatMap((item) => {
     if (!item || typeof item !== "object") return [];
     const test = item as RawTest;
-    const input = readFirst(test, ["input", "stdin", "input_data", "in"]);
-    const output = readFirst(test, ["output", "stdout", "expectedOutput", "expected_output", "expected", "answer", "output_data", "out"]);
+    const input = readFirst(test, ["input", "stdin", "input_data", "in", "输入", "输入数据", "标准输入", "测试输入", "样例输入"]);
+    const output = readFirst(test, ["output", "stdout", "expectedOutput", "expected_output", "expected", "answer", "output_data", "out", "输出", "输出数据", "标准输出", "预期输出", "期望输出", "答案", "样例输出"]);
     try {
       return [{
         input: materialize(input, test.inputParts),
@@ -204,6 +220,40 @@ function makePlan(parsed: unknown): ComplexityPlan {
     stressScale: Math.max(1, Math.floor(Number(planRaw.stressScale) || 1)),
     stressInputStrategy: String(planRaw.stressInputStrategy || "在题面约束内取较大规模"),
   };
+}
+
+function buildStrictPrompt(options: { target: number; requiredPerformance: number; requiredAdversarial: number; schema: string }) {
+  const { target, requiredPerformance, requiredAdversarial, schema } = options;
+  return `你是在线评测系统的测试数据生成器。你必须只输出一个 JSON 对象，除此之外不能输出任何文字。
+
+硬性输出格式：
+1. 顶层必须且只能包含 "analysis" 和 "tests" 两个字段。
+2. "tests" 必须是数组，长度必须是 ${target}。
+3. 每个测试点对象必须使用英文键名：input、output、category、scale、targets、reason。
+4. 禁止使用中文键名，例如“输入”“输出”“测试点”“答案”。
+5. input 和 output 必须是字符串，必须同时存在，不能为空。
+6. JSON 字符串里的换行必须写成 \\n，不能在字符串内部直接换行。
+7. 不允许 Markdown，不允许代码块，不允许解释，不允许多余前后缀。
+
+唯一允许结构：
+${schema}
+
+正确示例：
+{"analysis":{"expectedTimeComplexity":"O(n)","expectedSpaceComplexity":"O(1)","bruteForceToReject":["O(n^2) 枚举"],"stressScale":100000,"stressInputStrategy":"最大 n 随机数据"},"tests":[{"input":"3\\n1 2 3\\n","output":"6\\n","category":"ordinary","scale":3,"targets":"基础正确性","reason":"检查普通样例"}]}
+
+错误示例（禁止这样输出）：
+- {"测试点":[{"输入":"...","输出":"..."}]}
+- [{"stdin":"...","stdout":"..."}]
+- 下面是 JSON：...
+- \`\`\`json ... \`\`\`
+
+测试点要求：
+1. 严格遵守题面输入格式、数据范围和输出规则。
+2. 每个 output 必须独立计算并复核，不能留空，不能写“略/待计算/unknown”。
+3. 至少 ${requiredPerformance} 个 category="performance"，规模要足以淘汰明显暴力算法。
+4. 至少 ${requiredAdversarial} 个 category="adversarial"，针对边界、贪心误判、溢出、特殊结构等。
+5. 其余覆盖最小值、最大值、普通随机、极端分布、重复值、单调结构。
+6. 不要重复已有测试点。`;
 }
 
 export async function generateComplexityAwareTests(options: { apiKey: string; endpoint: string; model: string; problem: Record<string, unknown>; count: number }) {
@@ -258,22 +308,7 @@ export async function generateComplexityAwareTests(options: { apiKey: string; en
   ]
 }`;
 
-  const systemPrompt = `你是专业 OJ 测试数据工程师。请根据题面一次性生成 ${target} 个可直接判题的确定性测试点。
-只返回 JSON，不要 Markdown，不要解释。JSON 必须符合这个结构：
-${schema}
-
-要求：
-1. 每个测试点必须严格符合题目的输入格式、数据范围和输出规则。
-2. 每个 output 必须是你独立计算并复核后的正确答案，不能留空，不能写“略”。
-3. 至少 ${requiredPerformance} 个 performance 测试点，规模要足以淘汰明显暴力算法。
-4. 至少 ${requiredAdversarial} 个 adversarial 测试点，针对边界、贪心误判、溢出、特殊结构等。
-5. 其余测试点覆盖最小值、最大值、普通随机、极端分布、重复值、单调结构等。
-6. 不要重复已有测试点。
-7. 字符串里的换行写成 \\n；如果输入很大，可以用 inputParts/outputParts 压缩表示：
-   {"type":"literal","value":"..."}、
-   {"type":"repeat","value":"7","count":100000,"separator":" "}、
-   {"type":"range","start":1,"end":100000,"separator":" "}、
-   {"type":"cycle","values":["0","1"],"count":100000,"separator":" "}。`;
+  const systemPrompt = buildStrictPrompt({ target, requiredPerformance, requiredAdversarial, schema });
 
   const userPrompt = `${buildProblemText(problem)}
 
@@ -290,18 +325,27 @@ ${JSON.stringify(compactExisting(existingInputs), null, 2)}`;
   try {
     parsed = parseJson(content);
     candidates = parseTests(content);
+    if (!candidates.length) throw new Error("empty-tests");
   } catch {
-    const repairPrompt = `下面是某个 AI 对 OJ 测试点生成任务的原始返回，但它不是合格 JSON 或字段不规范。请把它修正为严格 JSON：
-${schema}
+    const repairPrompt = `${buildStrictPrompt({ target, requiredPerformance, requiredAdversarial, schema })}
 
-修正规则：只保留有完整 input/output 的测试点；字段名统一为 input/output/category/scale/targets/reason；如果原返回不足 ${Math.max(6, Math.min(12, target))} 个，请基于题面补足一批小到中等规模、可手算复核的测试点。只返回 JSON。
+你正在修复上一次不合格的返回。上一次返回没有产生任何同时包含英文 input 和 output 的测试点。
+
+修复任务：
+1. 必须基于下面题面重新生成 ${target} 个测试点。
+2. 不要沿用中文键名，不要使用 stdin/stdout。
+3. 每个测试点必须有英文字符串字段 input 和 output。
+4. 只返回 JSON 对象。
 
 题面：
 ${buildProblemText(problem)}
 
-原始返回：
+已有测试点摘要（不要重复）：
+${JSON.stringify(compactExisting(existingInputs), null, 2)}
+
+上一次原始返回（仅供你理解错误，不要照抄格式）：
 ${content.slice(0, 12_000)}`;
-    content = await callAi([{ role: "user", content: repairPrompt }], Math.max(3200, target * 240), 0.05);
+    content = await callAi([{ role: "user", content: repairPrompt }], Math.max(4200, target * 300), 0.03);
     parsed = parseJson(content);
     candidates = parseTests(content);
   }
