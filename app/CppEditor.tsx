@@ -81,6 +81,44 @@ function configureCpp(monaco: Monaco) {
       "minimap.background": "#F7F9FB",
     },
   });
+  monaco.editor.defineTheme("codenow-vscode-girl", {
+    base: "vs",
+    inherit: true,
+    rules: [
+      { token: "keyword", foreground: "B84F5B", fontStyle: "bold" },
+      { token: "keyword.control", foreground: "B84F5B" },
+      { token: "type", foreground: "476A78" },
+      { token: "type.identifier", foreground: "476A78" },
+      { token: "identifier", foreground: "7A563B" },
+      { token: "number", foreground: "B46A30" },
+      { token: "string", foreground: "A45147" },
+      { token: "comment", foreground: "7D8B68", fontStyle: "italic" },
+      { token: "operator", foreground: "594741" },
+      { token: "delimiter", foreground: "594741" },
+      { token: "predefined", foreground: "8F4D72" },
+    ],
+    colors: {
+      "editor.background": "#FFF8F2",
+      "editor.foreground": "#463733",
+      "editorLineNumber.foreground": "#C1A79D",
+      "editorLineNumber.activeForeground": "#7A5148",
+      "editorCursor.foreground": "#C85D4B",
+      "editor.selectionBackground": "#F2CFC2",
+      "editor.inactiveSelectionBackground": "#F8E5DC",
+      "editor.lineHighlightBackground": "#FFF1E9",
+      "editorIndentGuide.background1": "#EAD8CF",
+      "editorIndentGuide.activeBackground1": "#C99F8E",
+      "editorBracketHighlight.foreground1": "#C85D4B",
+      "editorBracketHighlight.foreground2": "#D69B42",
+      "editorBracketHighlight.foreground3": "#476A78",
+      "editorInlayHint.foreground": "#986D60",
+      "editorInlayHint.background": "#F4E2D8",
+      "editorError.foreground": "#D64555",
+      "editorWarning.foreground": "#B2771A",
+      "editorGutter.background": "#FFF8F2",
+      "minimap.background": "#FFF3EC",
+    },
+  });
 
   if (configured) return;
   configured = true;
@@ -221,7 +259,7 @@ function getCompilerMarkers(value: string, diagnostic: string, monaco: Monaco): 
 
 type Props = {
   value: string;
-  themeMode: "light" | "dark";
+  themeMode: "light" | "dark" | "girl";
   compilerDiagnostic: string;
   onChange: (value: string) => void;
   onCursorChange: (line: number, column: number) => void;
@@ -254,7 +292,7 @@ export function CppEditor({ value, themeMode, compilerDiagnostic, onChange, onCu
     language="cpp"
     path="main.cpp"
     value={value}
-    theme={themeMode === "light" ? "codenow-vscode-light" : "codenow-vscode"}
+    theme={themeMode === "light" ? "codenow-vscode-light" : themeMode === "girl" ? "codenow-vscode-girl" : "codenow-vscode"}
     beforeMount={configureCpp}
     onMount={handleMount}
     onChange={(next) => {

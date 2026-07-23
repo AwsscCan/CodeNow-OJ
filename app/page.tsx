@@ -51,11 +51,14 @@ int main() {
 type Result = { id: number; status: "AC" | "WA" | "RE" | "CE" | "TLE"; actual: string; expected: string; duration: number };
 type AiProvider = "deepseek" | "openai" | "custom";
 type ThemeMode = "light" | "dark" | "girl";
+type EditorTheme = "light" | "dark" | "girl";
 type ArchivedProblem = { problem: Problem; folder: string; archivedAt: string };
 type ChatMessage = { role: "user" | "assistant"; content: string };
 type BundledProblem = Problem & { folder: string; sourceUrl: string; extractionStatus: "complete" | "needs_review" };
 type SubmissionRecord = { id: string; problemId: string; problemTitle: string; status: string; passed: string; sourceCode: string; submittedAt: string };
 type CatalogEntry = { kind: "built-in"; id: string } | { kind: "acwing"; id: string; item: BundledProblem } | { kind: "archive"; id: string; item: ArchivedProblem };
+type MascotMood = "smile" | "laugh" | "smug" | "surprised" | "gentle" | "annoyed" | "angry";
+type MascotPosition = { x: number; y: number };
 
 const naturalCollator = new Intl.Collator("zh-CN", { numeric: true, sensitivity: "base" });
 
@@ -67,11 +70,14 @@ function readMigratedSetting(currentKey: string, legacyKey: string) {
   return legacy;
 }
 
-const mascotMessages = [
-  "今天也一起 AC 吧！",
-  "卡住时可以问 AI，我会陪你整理思路。",
-  "别忘了检查边界和时空复杂度哦。",
-  "提交前先跑一遍测试点吧。",
+const mascotStates: { mood: MascotMood; face: number; message: string }[] = [
+  { mood: "smile", face: 0, message: "今天也一起 AC 吧！" },
+  { mood: "laugh", face: 1, message: "写得不错，我在旁边看着你推进。" },
+  { mood: "smug", face: 2, message: "边界条件偷偷藏起来了，抓住它。" },
+  { mood: "surprised", face: 6, message: "咦，这里可能有一个小 bug。" },
+  { mood: "gentle", face: 8, message: "别急，先把思路拆成几步。" },
+  { mood: "annoyed", face: 4, message: "唔……先看看第一个没通过的测试点吧。" },
+  { mood: "angry", face: 7, message: "编译器都生气啦，先处理红色下划线。" },
 ];
 
 const acwingCourse = acwingCourseData as BundledProblem[];
@@ -155,7 +161,7 @@ export default function Home() {
   const [running, setRunning] = useState(false);
   const [themeMode, setThemeMode] = useState<ThemeMode>("dark");
   const [themeReady, setThemeReady] = useState(false);
-  const [editorTheme, setEditorTheme] = useState<"light" | "dark">("dark");
+  const [editorTheme, setEditorTheme] = useState<EditorTheme>("dark");
   const [editorThemeReady, setEditorThemeReady] = useState(false);
   const [compilerDiagnostic, setCompilerDiagnostic] = useState("");
   const [cursor, setCursor] = useState({ line: 1, column: 1 });
@@ -195,7 +201,11 @@ export default function Home() {
   const [selectedSubmission, setSelectedSubmission] = useState<SubmissionRecord | null>(null);
   const [mascotVisible, setMascotVisible] = useState(true);
   const [mascotMessage, setMascotMessage] = useState(0);
+  const [mascotPosition, setMascotPosition] = useState<MascotPosition | null>(null);
+  const [mascotDragging, setMascotDragging] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const mascotRef = useRef<HTMLElement>(null);
+  const mascotDragOffset = useRef({ x: 0, y: 0 });
 
   useEffect(() => {
     const saved = readMigratedSetting("codenow-workspace", "codeforge-workspace");
@@ -225,7 +235,7 @@ export default function Home() {
 
   useEffect(() => {
     const saved = readMigratedSetting("codenow-editor-theme", "codeforge-editor-theme");
-    if (saved === "light" || saved === "dark") setEditorTheme(saved);
+    if (saved === "light" || saved === "dark" || saved === "girl") setEditorTheme(saved);
     setEditorThemeReady(true);
   }, []);
 
@@ -282,6 +292,37 @@ export default function Home() {
   }, [mascotVisible]);
 
   useEffect(() => {
+    const saved = localStorage.getItem("codenow-mascot-position");
+    if (!saved) return;
+    try {
+      const position = JSON.parse(saved) as Partial<MascotPosition>;
+      if (typeof position.x === "number" && typeof position.y === "number") setMascotPosition(position as MascotPosition);
+    } catch { /* ignore malformed local state */ }
+  }, []);
+
+  useEffect(() => {
+    if (mascotPosition) localStorage.setItem("codenow-mascot-position", JSON.stringify(mascotPosition));
+  }, [mascotPosition]);
+
+  useEffect(() => {
+    if (!mascotDragging) return;
+    const move = (event: PointerEvent) => {
+      const width = mascotRef.current?.offsetWidth || 230;
+      const height = mascotRef.current?.offsetHeight || 285;
+      const x = Math.min(window.innerWidth - 16 - width, Math.max(16, event.clientX - mascotDragOffset.current.x));
+      const y = Math.min(window.innerHeight - 16 - height, Math.max(16, event.clientY - mascotDragOffset.current.y));
+      setMascotPosition({ x, y });
+    };
+    const stop = () => setMascotDragging(false);
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop, { once: true });
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+    };
+  }, [mascotDragging]);
+
+  useEffect(() => {
     if (libraryReady) setArchives((items) => items.map((item) => item.problem.id === problem.id ? { ...item, problem } : item));
   }, [problem, libraryReady]);
 
@@ -327,6 +368,26 @@ export default function Home() {
     window.setTimeout(() => setNotice(""), 2600);
   }
 
+  function cycleMascot() {
+    setMascotMessage((value) => (value + 1) % mascotStates.length);
+  }
+
+  function showSubmitMascot(results: Result[]) {
+    if (!results.length) return;
+    const failed = results.find((item) => item.status !== "AC");
+    if (!failed) setMascotMessage(1);
+    else if (failed.status === "CE" || failed.status === "TLE") setMascotMessage(6);
+    else setMascotMessage(5);
+  }
+
+  function startMascotDrag(event: React.PointerEvent<HTMLElement>) {
+    const rect = mascotRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    mascotDragOffset.current = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+    setMascotPosition({ x: rect.left, y: rect.top });
+    setMascotDragging(true);
+  }
+
   async function runTests(submit = false) {
     const submittedCode = code;
     const submittedProblem = { id: problem.id, title: problem.title };
@@ -346,6 +407,7 @@ export default function Home() {
       setCompilerDiagnostic(next.find((item) => item.status === "CE")?.actual || "");
       if (submit) {
         const ok = next.filter((item) => item.status === "AC").length;
+        showSubmitMascot(next);
         const record: SubmissionRecord = {
           id: crypto.randomUUID(),
           problemId: submittedProblem.id,
@@ -366,6 +428,7 @@ export default function Home() {
         }
       }
     } catch (error) {
+      if (submit) setMascotMessage(5);
       toast(error instanceof Error ? error.message : "C++ 判题服务暂不可用");
     } finally {
       setRunning(false);
@@ -698,6 +761,8 @@ export default function Home() {
     }
   }
 
+  const mascotState = mascotStates[mascotMessage % mascotStates.length];
+
   return (
     <main className={`app-shell theme-${themeMode}`}>
       <header className="topbar">
@@ -774,7 +839,8 @@ export default function Home() {
         <div className="resize-handle" />
 
         <section className={`code-panel editor-theme-${editorTheme}`}>
-          <div className="editor-toolbar"><div className="file-tab"><span>C++</span> main.cpp <i>●</i></div><div><select aria-label="编程语言" value="cpp17" disabled><option value="cpp17">GNU C++17 · GCC</option></select><button title="重置 C++ 模板" onClick={() => { setCode(starterCode); setCompilerDiagnostic(""); toast("C++ 模板已重置"); }}>↻</button><button className="editor-theme-toggle" title={`切换为${editorTheme === "dark" ? "亮色" : "暗色"}编辑器`} aria-label={`切换为${editorTheme === "dark" ? "亮色" : "暗色"}编辑器`} onClick={() => setEditorTheme((mode) => mode === "dark" ? "light" : "dark")}>{editorTheme === "dark" ? "☀ 亮色" : "◐ 暗色"}</button></div></div>
+          <div className="coding-companion-scene" aria-hidden="true"><img src="/codenow/portrait-classroom.jpg" alt="" /></div>
+          <div className="editor-toolbar"><div className="file-tab"><span>C++</span> main.cpp <i>●</i></div><div><select aria-label="编程语言" value="cpp17" disabled><option value="cpp17">GNU C++17 · GCC</option></select><button title="重置 C++ 模板" onClick={() => { setCode(starterCode); setCompilerDiagnostic(""); toast("C++ 模板已重置"); }}>↻</button><label className="editor-theme-picker" title="切换编辑器主题"><span aria-hidden="true">◐</span><select aria-label="编辑器主题" value={editorTheme} onChange={(event) => setEditorTheme(event.target.value as EditorTheme)}><option value="dark">暗色</option><option value="light">亮色</option><option value="girl">少女</option></select></label></div></div>
           <div className="editor-area"><CppEditor value={code} themeMode={editorTheme} compilerDiagnostic={compilerDiagnostic} onChange={(next) => { setCode(next); setCompilerDiagnostic(""); }} onCursorChange={(line, column) => setCursor({ line, column })} /></div>
           <div className="console-panel">
             <div className="console-tabs"><button className={consoleTab === "results" ? "active" : ""} onClick={() => setConsoleTab("results")}>测试结果</button><button className={consoleTab === "history" ? "active" : ""} onClick={() => setConsoleTab("history")}>提交记录</button>{results.length > 0 && <span className={score === 100 ? "score good" : "score"}>{passed}/{results.length} 通过 · {score} 分</span>}</div>
@@ -790,6 +856,7 @@ export default function Home() {
       {showImport && <div className="modal-backdrop" onMouseDown={() => setShowImport(false)}><div className="modal import-modal" onMouseDown={(e) => e.stopPropagation()}>
         <button className="modal-close" onClick={() => setShowImport(false)}>×</button>
         <span className="modal-kicker">快速开始</span><h2>添加一道练习题</h2>
+        <div className="import-visual-strip" aria-hidden="true"><img src="/codenow/study-smile.jpg" alt="" /><div><b>CodeNow</b><span>把题面贴进来，她会陪你开练</span></div><img src="/codenow/sunny-selfie.jpg" alt="" /></div>
         <div className="import-meta-fields"><label className="archive-target">自定义题号<input value={customProblemId} onChange={(e) => setCustomProblemId(e.target.value)} placeholder="可选，如 MY001" maxLength={20} /></label><label className="archive-target">归档到<select value={selectedFolder} onChange={(e) => setSelectedFolder(e.target.value)}>{orderedFolders.map((folder) => <option key={folder} value={folder}>{"　".repeat(folder.split("/").length - 1)}{folderName(folder)}</option>)}</select></label></div>
         <div className="import-tabs"><button className={importMode === "paste" ? "active" : ""} onClick={() => setImportMode("paste")}>✦ 粘贴题面</button><button className={importMode === "json" ? "active" : ""} onClick={() => setImportMode("json")}>⇧ 导入 JSON</button></div>
         {importMode === "paste" ? <>
@@ -859,7 +926,7 @@ export default function Home() {
         <div className="ai-summary"><span>当前题目</span><b>{problem.id} · {problem.title}</b><small>{problem.samples.length} 个测试点将随题面一并发送</small></div>
         <button className="generate-button" disabled={aiBusy} onClick={askAi}>{aiBusy ? "正在思考并编写 C++…" : `✦ 使用 ${provider === "deepseek" ? "DeepSeek" : provider === "openai" ? "OpenAI" : "自定义 API"} 生成 C++17 解答`}</button>
       </div></div>}
-      {themeMode === "girl" && (mascotVisible ? <aside className="desktop-mascot" aria-label="CodeNow 编程伙伴"><button className="mascot-close" aria-label="暂时隐藏桌宠" title="暂时隐藏桌宠" onClick={() => setMascotVisible(false)}>×</button><button className="mascot-bubble" onClick={() => setMascotMessage((value) => (value + 1) % mascotMessages.length)}>{mascotMessages[mascotMessage]}<small>点击我换一句</small></button><button className="mascot-character" aria-label="和 CodeNow 编程伙伴互动" onClick={() => setMascotMessage((value) => (value + 1) % mascotMessages.length)}><img src="/codenow/mascot.png" alt="抱着笔记本电脑的 CodeNow 编程伙伴" /></button></aside> : <button className="mascot-reopen" onClick={() => setMascotVisible(true)} title="召回 CodeNow 编程伙伴"><img src="/codenow/icon.jpg" alt="" />召回伙伴</button>)}
+      {themeMode === "girl" && (mascotVisible ? <aside ref={mascotRef} className={`desktop-mascot mood-${mascotState.mood} ${mascotDragging ? "dragging" : ""}`} aria-label="CodeNow 编程伙伴" style={mascotPosition ? { left: mascotPosition.x, top: mascotPosition.y, right: "auto", bottom: "auto" } : undefined}><button className="mascot-close" aria-label="暂时隐藏桌宠" title="暂时隐藏桌宠" onClick={() => setMascotVisible(false)}>×</button><button className="mascot-drag-handle" aria-label="拖动桌宠位置" title="拖动桌宠位置" onPointerDown={startMascotDrag}>↕</button><button className="mascot-bubble" onClick={cycleMascot}>{mascotState.message}<small>点击换表情，拖动小把手移动</small></button><span className={`mascot-expression face-${mascotState.face}`} aria-hidden="true"><img src="/codenow/expression-guide.png" alt="" /></span><button className="mascot-character" aria-label="和 CodeNow 编程伙伴互动" onClick={cycleMascot}><img src="/codenow/mascot.png" alt="抱着笔记本电脑的 CodeNow 编程伙伴" /></button></aside> : <button className="mascot-reopen" onClick={() => setMascotVisible(true)} title="召回 CodeNow 编程伙伴"><img src="/codenow/icon.jpg" alt="" />召回伙伴</button>)}
       {notice && <div className="toast">{notice}</div>}
     </main>
   );
