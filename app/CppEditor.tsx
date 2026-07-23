@@ -270,7 +270,7 @@ function configureCpp(monaco: Monaco) {
   });
 
   monaco.languages.registerCompletionItemProvider("cpp", {
-    triggerCharacters: ["#", "<", ":", ".", ">", " "],
+    triggerCharacters: ["#", "<", ":", ".", ">"],
     provideCompletionItems(model, position) {
       const word = model.getWordUntilPosition(position);
       const range = {
