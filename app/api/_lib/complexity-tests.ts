@@ -314,10 +314,13 @@ export async function generateComplexityAwareTests(options: { apiKey: string; en
 
 已有测试点摘要（不要重复）：
 ${JSON.stringify(compactExisting(existingInputs), null, 2)}`;
+  const generationContext = typeof problem.generationContext === "string" && problem.generationContext.trim()
+    ? `\n\n分批生成上下文（必须遵守）：\n${problem.generationContext.trim()}`
+    : "";
 
   let content = await callAi([
     { role: "system", content: systemPrompt },
-    { role: "user", content: userPrompt },
+    { role: "user", content: `${userPrompt}${generationContext}` },
   ], Math.max(4200, target * 320), 0.08);
 
   let parsed: unknown;
@@ -342,6 +345,7 @@ ${buildProblemText(problem)}
 
 已有测试点摘要（不要重复）：
 ${JSON.stringify(compactExisting(existingInputs), null, 2)}
+${generationContext}
 
 上一次原始返回（仅供你理解错误，不要照抄格式）：
 ${content.slice(0, 12_000)}`;

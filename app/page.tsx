@@ -829,6 +829,13 @@ export default function Home() {
       const failedBatches: string[] = [];
       let performanceCount = 0;
       let adversarialCount = 0;
+      const batchFocus = [
+        "基础合法数据：覆盖最小可运行输入、普通随机、小规模人工可核对数据。",
+        "边界数据：覆盖最小值、最大值、空/单元素、重复值、单调结构、极端分布。",
+        "反例数据：针对贪心误判、排序假设错误、溢出、下标边界、特殊结构。",
+        "性能数据：在题目约束内构造较大规模，尽量卡掉明显暴力算法。",
+        "综合补洞：根据前面已生成测试点，补充尚未覆盖的数据形态，避免重复。",
+      ];
 
       async function requestBatch(batchIndex: number, count: number, retry = false) {
         const controller = new AbortController();
@@ -837,7 +844,16 @@ export default function Home() {
           const response = await fetch("/api/generate-tests", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ apiKey, endpoint, model, problem: currentProblem, count }),
+            body: JSON.stringify({
+              apiKey,
+              endpoint,
+              model,
+              problem: {
+                ...currentProblem,
+                generationContext: `本次是第 ${batchIndex + 1}/${totalBatches} 批${retry ? "补救生成" : "生成"}。本批目标：${batchFocus[Math.min(batchIndex, batchFocus.length - 1)]} 前面批次的 input/output 已放入 samples，请把它们当作已生成测试点，严禁重复，并优先补充不同规模、不同边界和不同算法陷阱。`,
+              },
+              count,
+            }),
             signal: controller.signal,
           });
           const data = await response.json().catch(() => ({ error: `生成服务返回异常（HTTP ${response.status}）` })) as { tests?: TestCase[]; error?: string; complexityReport?: { expectedTimeComplexity: string; stressScale: number; performanceCount: number; adversarialCount: number; requestedCount: number; generatedCount: number; partial: boolean } };
