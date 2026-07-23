@@ -1,7 +1,7 @@
 "use client";
 
 import Editor, { loader, type Monaco, type OnMount } from "@monaco-editor/react";
-import { useEffect, useRef } from "react";
+import { memo, useEffect, useRef } from "react";
 import type { editor as MonacoEditor, languages as MonacoLanguages } from "monaco-editor";
 
 loader.config({ paths: { vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.56.0/min/vs" } });
@@ -269,6 +269,69 @@ function configureCpp(monaco: Monaco) {
     },
   });
 
+  monaco.languages.registerCompletionItemProvider("cpp", {
+    triggerCharacters: ["#", "<", ":", ".", ">", " "],
+    provideCompletionItems(model, position) {
+      const word = model.getWordUntilPosition(position);
+      const range = {
+        startLineNumber: position.lineNumber,
+        endLineNumber: position.lineNumber,
+        startColumn: word.startColumn,
+        endColumn: word.endColumn,
+      };
+      const headers = [
+        ["#include <iostream>", "#include <iostream>", "cin / cout / cerr"],
+        ["#include <vector>", "#include <vector>", "std::vector"],
+        ["#include <algorithm>", "#include <algorithm>", "sort / lower_bound / max / min"],
+        ["#include <queue>", "#include <queue>", "queue / priority_queue"],
+        ["#include <stack>", "#include <stack>", "stack"],
+        ["#include <map>", "#include <map>", "map / multimap"],
+        ["#include <set>", "#include <set>", "set / multiset"],
+        ["#include <unordered_map>", "#include <unordered_map>", "unordered_map"],
+        ["#include <unordered_set>", "#include <unordered_set>", "unordered_set"],
+        ["#include <bits/stdc++.h>", "#include <bits/stdc++.h>", "contest all-in-one header"],
+      ];
+      const snippets = [
+        ["using namespace std", "using namespace std;", "use std namespace"],
+        ["main.cpp17", "int main() {\n\tios::sync_with_stdio(false);\n\tcin.tie(nullptr);\n\n\t${0}\n\treturn 0;\n}", "C++17 main"],
+        ["read n", "int ${1:n};\ncin >> ${1:n};", "read one integer"],
+        ["read vector", "int ${1:n};\ncin >> ${1:n};\nvector<${2:int}> ${3:a}(${1:n});\nfor (auto &${4:x} : ${3:a}) cin >> ${4:x};", "read an array"],
+        ["print answer", "cout << ${1:answer} << '\\n';", "print answer"],
+        ["for i", "for (int ${1:i} = 0; ${1:i} < ${2:n}; ++${1:i}) {\n\t${0}\n}", "index loop"],
+        ["for range", "for (auto &${1:x} : ${2:a}) {\n\t${0}\n}", "range-for loop"],
+        ["vector<int>", "vector<int> ${1:a}(${2:n});", "integer vector"],
+        ["vector<long long>", "vector<long long> ${1:a}(${2:n});", "long long vector"],
+        ["sort ascending", "sort(${1:a}.begin(), ${1:a}.end());", "ascending sort"],
+        ["sort descending", "sort(${1:a}.begin(), ${1:a}.end(), greater<>());", "descending sort"],
+        ["lower_bound index", "int ${1:pos} = lower_bound(${2:a}.begin(), ${2:a}.end(), ${3:x}) - ${2:a}.begin();", "lower_bound index"],
+        ["priority_queue min", "priority_queue<${1:int}, vector<${1:int}>, greater<${1:int}>> ${2:pq};", "min heap"],
+        ["unordered_map count", "unordered_map<${1:int}, int> ${2:cnt};", "frequency map"],
+      ];
+      return {
+        suggestions: [
+          ...headers.map(([label, insertText, detail]) => ({
+            label,
+            detail,
+            documentation: detail,
+            kind: monaco.languages.CompletionItemKind.Module,
+            insertText,
+            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+            range,
+          })),
+          ...snippets.map(([label, insertText, detail]) => ({
+            label,
+            detail,
+            documentation: detail,
+            kind: monaco.languages.CompletionItemKind.Snippet,
+            insertText,
+            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+            range,
+          })),
+        ],
+      };
+    },
+  });
+
   monaco.languages.registerInlineCompletionsProvider("cpp", {
     provideInlineCompletions(model, position) {
       const prefix = model.getLineContent(position.lineNumber).slice(0, position.column - 1);
@@ -279,6 +342,39 @@ function configureCpp(monaco: Monaco) {
         ? { snippet: "for (int ${1:i} = 0; ${1:i} < ${2:n}; ++${1:i}) {\n\t${0}\n}" }
         : "ios::sync_with_stdio(false);\ncin.tie(nullptr);";
       return { items: [{ insertText, range: new monaco.Range(position.lineNumber, startColumn, position.lineNumber, position.column) }] };
+    },
+    disposeInlineCompletions() {},
+  });
+
+  monaco.languages.registerInlineCompletionsProvider("cpp", {
+    provideInlineCompletions(model, position) {
+      const beforeCursor = model.getLineContent(position.lineNumber).slice(0, position.column - 1);
+      const trimmed = beforeCursor.trimStart();
+      const leading = beforeCursor.length - trimmed.length;
+      const rules: [RegExp, string | { snippet: string }][] = [
+        [/^#i$/, "#include <iostream>"],
+        [/^#b$/, "#include <bits/stdc++.h>"],
+        [/\busingn$/, "using namespace std;"],
+        [/\bmain$/, { snippet: "int main() {\n\tios::sync_with_stdio(false);\n\tcin.tie(nullptr);\n\n\t${0}\n\treturn 0;\n}" }],
+        [/\bfast$/, "ios::sync_with_stdio(false);\ncin.tie(nullptr);"],
+        [/\bcin$/, { snippet: "cin >> ${1:x};" }],
+        [/\bcout$/, { snippet: "cout << ${1:answer} << '\\n';" }],
+        [/\bvec$/, { snippet: "vector<${1:int}> ${2:a}(${3:n});" }],
+        [/\breadv$/, { snippet: "int ${1:n};\ncin >> ${1:n};\nvector<${2:int}> ${3:a}(${1:n});\nfor (auto &${4:x} : ${3:a}) cin >> ${4:x};" }],
+        [/\bsorta$/, { snippet: "sort(${1:a}.begin(), ${1:a}.end());" }],
+        [/\bsortd$/, { snippet: "sort(${1:a}.begin(), ${1:a}.end(), greater<>());" }],
+        [/\blb$/, { snippet: "lower_bound(${1:a}.begin(), ${1:a}.end(), ${2:x})" }],
+        [/\bfori$/, { snippet: "for (int ${1:i} = 0; ${1:i} < ${2:n}; ++${1:i}) {\n\t${0}\n}" }],
+        [/\bforr$/, { snippet: "for (auto &${1:x} : ${2:a}) {\n\t${0}\n}" }],
+      ];
+      for (const [pattern, insertText] of rules) {
+        const match = trimmed.match(pattern);
+        if (!match) continue;
+        const token = match[0];
+        const startColumn = leading + trimmed.length - token.length + 1;
+        return { items: [{ insertText, range: new monaco.Range(position.lineNumber, startColumn, position.lineNumber, position.column) }] };
+      }
+      return { items: [] };
     },
     disposeInlineCompletions() {},
   });
@@ -377,7 +473,7 @@ type Props = {
   onCursorChange: (line: number, column: number) => void;
 };
 
-export function CppEditor({ value, themeMode, compilerDiagnostic, onChange, onCursorChange }: Props) {
+export const CppEditor = memo(function CppEditor({ value, themeMode, compilerDiagnostic, onChange, onCursorChange }: Props) {
   const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<Monaco | null>(null);
   const localMarkerTimer = useRef<number | null>(null);
@@ -467,4 +563,4 @@ export function CppEditor({ value, themeMode, compilerDiagnostic, onChange, onCu
       wordWrap: "off",
     }}
   />;
-}
+});

@@ -368,12 +368,40 @@ ${content.slice(0, 12_000)}`;
 
   const fingerprints = new Set<string>((existingInputs as { input?: unknown; output?: unknown }[]).map((test) => `${String(test.input || "")}\u0000${String(test.output || "")}`));
   const unique: GeneratedTest[] = [];
-  for (const test of candidates) {
-    const key = `${test.input}\u0000${test.output}`;
-    if (!fingerprints.has(key)) {
-      fingerprints.add(key);
-      unique.push(test);
-      if (unique.length >= target) break;
+  function addUniqueTests(tests: GeneratedTest[]) {
+    for (const test of tests) {
+      const key = `${test.input}\u0000${test.output}`;
+      if (!fingerprints.has(key)) {
+        fingerprints.add(key);
+        unique.push(test);
+        if (unique.length >= target) break;
+      }
+    }
+  }
+  addUniqueTests(candidates);
+
+  if (unique.length < target) {
+    const missing = target - unique.length;
+    const refillPrompt = `${buildStrictPrompt({ target: missing, requiredPerformance: 0, requiredAdversarial: 0, schema })}
+
+你正在补足上一轮没有给够数量的测试点。
+必须只生成 ${missing} 个全新的测试点，不要解释，不要 Markdown。
+这些测试点已经存在，禁止重复：
+${JSON.stringify(compactExisting([...existingInputs, ...unique]), null, 2)}
+
+补足重点：
+1. 优先补还没覆盖的数据类型：最小值、最大值、重复值、单调结构、随机中等规模、性能压力、反例陷阱。
+2. category 必须在 boundary、special、ordinary、adversarial、performance 中选择。
+3. 每个对象必须同时包含英文 input 和 output 字符串。
+
+题面：
+${buildProblemText(problem)}
+${generationContext}`;
+    try {
+      const refillContent = await callAi([{ role: "user", content: refillPrompt }], Math.max(2200, missing * 360), 0.04);
+      addUniqueTests(parseTests(refillContent));
+    } catch {
+      /* keep the usable tests already generated; the caller may continue with another batch */
     }
   }
 

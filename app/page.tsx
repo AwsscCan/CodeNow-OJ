@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { CppEditor } from "./CppEditor";
 import acwingCourseData from "../public/acwing-course.json";
+
+const CppEditor = lazy(() => import("./CppEditor").then((module) => ({ default: module.CppEditor })));
 
 type TestCase = { id: number; input: string; output: string; category?: string; scale?: number; targets?: string; reason?: string };
 type Problem = {
@@ -236,6 +237,7 @@ export default function Home() {
   const mascotDragSize = useRef({ width: 205, height: 255 });
   const workspaceNextSplit = useRef(46);
   const workspaceResizeFrame = useRef<number | null>(null);
+  const workspaceSaveTimer = useRef<number | null>(null);
 
   useEffect(() => {
     const saved = readMigratedSetting("codenow-workspace", "codeforge-workspace");
@@ -249,7 +251,24 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem("codenow-workspace", JSON.stringify({ problem, code }));
+    if (workspaceSaveTimer.current !== null) window.clearTimeout(workspaceSaveTimer.current);
+    workspaceSaveTimer.current = window.setTimeout(() => {
+      workspaceSaveTimer.current = null;
+      localStorage.setItem("codenow-workspace", JSON.stringify({ problem, code }));
+    }, 450);
+    return () => {
+      if (workspaceSaveTimer.current !== null) window.clearTimeout(workspaceSaveTimer.current);
+    };
+  }, [problem, code]);
+
+  useEffect(() => {
+    const flushWorkspace = () => localStorage.setItem("codenow-workspace", JSON.stringify({ problem, code }));
+    window.addEventListener("beforeunload", flushWorkspace);
+    document.addEventListener("visibilitychange", flushWorkspace);
+    return () => {
+      window.removeEventListener("beforeunload", flushWorkspace);
+      document.removeEventListener("visibilitychange", flushWorkspace);
+    };
   }, [problem, code]);
 
   useEffect(() => {
@@ -971,6 +990,15 @@ export default function Home() {
     }
   }
 
+  const handleEditorChange = useCallback((next: string) => {
+    setCode(next);
+    setCompilerDiagnostic("");
+  }, []);
+
+  const handleCursorChange = useCallback((line: number, column: number) => {
+    setCursor((current) => current.line === line && current.column === column ? current : { line, column });
+  }, []);
+
   const mascotState = mascotStates[mascotMessage % mascotStates.length];
 
   return (
@@ -984,7 +1012,7 @@ export default function Home() {
       {pageView === "library" ? <section className="library-page">
         <div className="library-hero">
           <div><span>CODENOW PROBLEM SET</span><h1>我的题库</h1><p>选择一道题进入专注的 C++ 编程与判题工作区。</p></div>
-          <div className="girl-portrait-stack" aria-hidden="true"><img src="/codenow/portrait-ribbon.jpg" alt="" /><img src="/codenow/portrait-classroom.jpg" alt="" /><img src="/codenow/portrait-sailor.jpg" alt="" /></div>
+          <div className="girl-portrait-stack" aria-hidden="true"><img src="/codenow/portrait-ribbon.jpg" alt="" loading="lazy" decoding="async" /><img src="/codenow/portrait-classroom.jpg" alt="" loading="lazy" decoding="async" /><img src="/codenow/portrait-sailor.jpg" alt="" loading="lazy" decoding="async" /></div>
           <button onClick={() => { if (selectedFolder === "全部题目") setSelectedFolder("默认题库"); setShowImport(true); }}>＋ 添加题目</button>
         </div>
         <div className="library-page-body">
@@ -1050,9 +1078,13 @@ export default function Home() {
 
         <section ref={codePanelRef} className={`code-panel editor-theme-${editorTheme}`}>
           <div className="editor-toolbar"><div className="file-tab"><span>C++</span> main.cpp <i>●</i></div><div><select aria-label="编程语言" value="cpp17" disabled><option value="cpp17">GNU C++17 · GCC</option></select><button title="重置 C++ 模板" onClick={() => { setCode(starterCode); setCompilerDiagnostic(""); toast("C++ 模板已重置"); }}>↻</button><label className="editor-theme-picker" title="切换编辑器主题"><span aria-hidden="true">◐</span><select aria-label="编辑器主题" value={editorTheme} onChange={(event) => setEditorTheme(event.target.value as EditorTheme)}><option value="dark">暗色</option><option value="light">亮色</option><option value="girl">少女</option></select></label></div></div>
-          <div ref={editorAreaRef} className="editor-area"><CppEditor value={code} themeMode={editorTheme} compilerDiagnostic={compilerDiagnostic} onChange={(next) => { setCode(next); setCompilerDiagnostic(""); }} onCursorChange={(line, column) => setCursor({ line, column })} /></div>
+          <div ref={editorAreaRef} className="editor-area">
+            <Suspense fallback={<div className="monaco-loading"><span>C++</span><b>正在加载智能编辑器…</b></div>}>
+              <CppEditor value={code} themeMode={editorTheme} compilerDiagnostic={compilerDiagnostic} onChange={handleEditorChange} onCursorChange={handleCursorChange} />
+            </Suspense>
+          </div>
           <div className="console-panel">
-            <div className="coding-companion-scene" aria-hidden="true"><img src="/codenow/portrait-classroom.jpg" alt="" /><span>我在看哦 · ちゃんと見てるよ</span></div>
+            <div className="coding-companion-scene" aria-hidden="true"><img src="/codenow/portrait-classroom.jpg" alt="" loading="lazy" decoding="async" /><span>我在看哦 · ちゃんと見てるよ</span></div>
             <div className="console-tabs"><button className={consoleTab === "results" ? "active" : ""} onClick={() => setConsoleTab("results")}>测试结果</button><button className={consoleTab === "history" ? "active" : ""} onClick={() => setConsoleTab("history")}>提交记录</button>{results.length > 0 && <span className={score === 100 ? "score good" : "score"}>{passed}/{results.length} 通过 · {score} 分</span>}</div>
             <div className="console-content">
               {consoleTab === "history" ? (historyLoading ? <div className="empty-state"><strong>正在读取提交记录…</strong></div> : history.length ? history.map((item) => <div className="history-row" key={item.id}><button className="history-open" onClick={() => setSelectedSubmission(item)} title="查看本次提交代码"><span>{new Date(item.submittedAt).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}</span><b className={item.status === "答案正确" ? "ok" : "bad"}>{item.status}</b><span>{item.passed}</span><code>GNU C++17</code></button><button className="history-delete" aria-label={`删除 ${item.submittedAt} 的提交记录`} title="删除记录" onClick={(event) => deleteSubmission(event, item)}>删</button></div>) : <div className="empty-state"><strong>暂无提交记录</strong><span>完成一次提交后，结果会永久保存在这里。</span></div>) : results.length ? results.map((result, index) => <div className="result-row" key={result.id}><span className={`status-dot ${result.status.toLowerCase()}`}>{result.status === "AC" ? "✓" : "!"}</span><b>测试点 {index + 1}</b><code>{result.status}</code><span>{result.duration} ms</span><small>{result.status === "AC" ? "输出正确" : result.status === "CE" ? result.actual : `期望 ${result.expected}，得到 ${result.actual}`}</small></div>) : <div className="empty-state"><span className="terminal-icon">›_</span><strong>C++17 判题器就绪</strong><span>点击“运行测试”进行服务端编译与执行。</span></div>}
@@ -1066,7 +1098,7 @@ export default function Home() {
       {showImport && <div className="modal-backdrop" onMouseDown={() => setShowImport(false)}><div className="modal import-modal" onMouseDown={(e) => e.stopPropagation()}>
         <button className="modal-close" onClick={() => setShowImport(false)}>×</button>
         <span className="modal-kicker">快速开始</span><h2>添加一道练习题</h2>
-        <div className="import-visual-strip" aria-hidden="true"><img src="/codenow/study-smile.jpg" alt="" /><div><b>CodeNow</b><span>把题面贴进来，她会陪你开练</span></div><img src="/codenow/sunny-selfie.jpg" alt="" /></div>
+        <div className="import-visual-strip" aria-hidden="true"><img src="/codenow/study-smile.jpg" alt="" loading="lazy" decoding="async" /><div><b>CodeNow</b><span>把题面贴进来，她会陪你开练</span></div><img src="/codenow/sunny-selfie.jpg" alt="" loading="lazy" decoding="async" /></div>
         <div className="import-meta-fields"><label className="archive-target">自定义题号<input value={customProblemId} onChange={(e) => setCustomProblemId(e.target.value)} placeholder="可选，如 MY001" maxLength={20} /></label><label className="archive-target">归档到<select value={selectedFolder} onChange={(e) => setSelectedFolder(e.target.value)}>{orderedFolders.map((folder) => <option key={folder} value={folder}>{"　".repeat(folder.split("/").length - 1)}{folderName(folder)}</option>)}</select></label></div>
         <div className="import-tabs"><button className={importMode === "paste" ? "active" : ""} onClick={() => setImportMode("paste")}>✦ 粘贴题面</button><button className={importMode === "json" ? "active" : ""} onClick={() => setImportMode("json")}>⇧ 导入 JSON</button></div>
         {importMode === "paste" ? <>
@@ -1142,7 +1174,7 @@ export default function Home() {
         <div className="ai-summary"><span>当前题目</span><b>{problem.id} · {problem.title}</b><small>{problem.samples.length} 个测试点将随题面一并发送</small></div>
         <button className="generate-button" disabled={aiBusy} onClick={askAi}>{aiBusy ? "正在思考并编写 C++…" : `✦ 使用 ${provider === "deepseek" ? "DeepSeek" : provider === "openai" ? "OpenAI" : "自定义 API"} 生成 C++17 解答`}</button>
       </div></div>}
-      {themeMode === "girl" && (mascotVisible ? <aside ref={mascotRef} className={`desktop-mascot mood-${mascotState.mood} ${mascotDragging ? "dragging" : ""}`} aria-label="CodeNow 编程伙伴" style={mascotPosition ? { left: mascotPosition.x, top: mascotPosition.y, right: "auto", bottom: "auto" } : undefined}><button className="mascot-close" aria-label="暂时隐藏桌宠" title="暂时隐藏桌宠" onClick={() => setMascotVisible(false)}>×</button><button className="mascot-drag-handle" aria-label="拖动桌宠位置" title="拖动桌宠位置" onPointerDown={startMascotDrag}>↕</button><button className="mascot-bubble" onClick={cycleMascot}>{mascotState.message}<small>点击换表情，按住人物可拖动</small></button><button className={`mascot-character ${mascotState.sprite === 6 ? "original-state" : ""}`} aria-label="和 CodeNow 编程伙伴互动" onPointerDown={startMascotDrag} onClick={clickMascotCharacter}>{mascotState.sprite === 6 ? <img className="mascot-original" src="/codenow/mascot.png" alt="" aria-hidden="true" /> : <span className={`mascot-sprite-frame sprite-${mascotState.sprite}`} aria-hidden="true"><img src="/codenow/mascot-sprites.png" alt="" /></span>}<span className="sr-only">切换 CodeNow 编程伙伴表情</span></button></aside> : <button className="mascot-reopen" onClick={() => setMascotVisible(true)} title="召回 CodeNow 编程伙伴"><img src="/codenow/icon.jpg" alt="" />召回伙伴</button>)}
+      {themeMode === "girl" && (mascotVisible ? <aside ref={mascotRef} className={`desktop-mascot mood-${mascotState.mood} ${mascotDragging ? "dragging" : ""}`} aria-label="CodeNow 编程伙伴" style={mascotPosition ? { left: mascotPosition.x, top: mascotPosition.y, right: "auto", bottom: "auto" } : undefined}><button className="mascot-close" aria-label="暂时隐藏桌宠" title="暂时隐藏桌宠" onClick={() => setMascotVisible(false)}>×</button><button className="mascot-drag-handle" aria-label="拖动桌宠位置" title="拖动桌宠位置" onPointerDown={startMascotDrag}>↕</button><button className="mascot-bubble" onClick={cycleMascot}>{mascotState.message}<small>点击换表情，按住人物可拖动</small></button><button className={`mascot-character ${mascotState.sprite === 6 ? "original-state" : ""}`} aria-label="和 CodeNow 编程伙伴互动" onPointerDown={startMascotDrag} onClick={clickMascotCharacter}>{mascotState.sprite === 6 ? <img className="mascot-original" src="/codenow/mascot.png" alt="" aria-hidden="true" loading="lazy" decoding="async" /> : <span className={`mascot-sprite-frame sprite-${mascotState.sprite}`} aria-hidden="true"><img src="/codenow/mascot-sprites.png" alt="" loading="lazy" decoding="async" /></span>}<span className="sr-only">切换 CodeNow 编程伙伴表情</span></button></aside> : <button className="mascot-reopen" onClick={() => setMascotVisible(true)} title="召回 CodeNow 编程伙伴"><img src="/codenow/icon.jpg" alt="" loading="lazy" decoding="async" />召回伙伴</button>)}
       {notice && <div className="toast">{notice}</div>}
     </main>
   );
