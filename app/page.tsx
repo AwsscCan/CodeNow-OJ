@@ -97,6 +97,7 @@ export default function Home() {
   const [showImport, setShowImport] = useState(false);
   const [importMode, setImportMode] = useState<"paste" | "json">("paste");
   const [rawProblemText, setRawProblemText] = useState("");
+  const [customProblemId, setCustomProblemId] = useState("");
   const [generatingProblem, setGeneratingProblem] = useState(false);
   const [showAi, setShowAi] = useState(false);
   const [apiKeys, setApiKeys] = useState<Record<AiProvider, string>>({ deepseek: "", openai: "", custom: "" });
@@ -109,6 +110,8 @@ export default function Home() {
   const [chatInput, setChatInput] = useState("");
   const [chatBusy, setChatBusy] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [testPointCount, setTestPointCount] = useState(18);
+  const [generatingTests, setGeneratingTests] = useState(false);
   const [archives, setArchives] = useState<ArchivedProblem[]>([]);
   const [folders, setFolders] = useState(["默认题库"]);
   const [selectedFolder, setSelectedFolder] = useState("默认题库");
@@ -280,7 +283,11 @@ export default function Home() {
       const match = /^CF(\d+)$/.exec(item.problem.id);
       return match ? Math.max(max, Number(match[1])) : max;
     }, 0) + 1;
-    const numbered = { ...incoming, id: `CF${String(nextNumber).padStart(4, "0")}` };
+    const requestedId = customProblemId.trim();
+    if (requestedId && !/^[A-Za-z][A-Za-z0-9_-]{0,19}$/.test(requestedId)) throw new Error("自定义题号需以字母开头，仅含字母、数字、下划线或短横线，最长 20 位");
+    const nextId = requestedId || `CF${String(nextNumber).padStart(4, "0")}`;
+    if (nextId.toUpperCase() === initialProblem.id.toUpperCase() || archives.some((item) => item.problem.id.toUpperCase() === nextId.toUpperCase())) throw new Error(`题号 ${nextId} 已存在，请更换题号`);
+    const numbered = { ...incoming, id: nextId };
     const archiveFolder = selectedFolder === "全部题目" ? "默认题库" : selectedFolder;
     setArchives((items) => [{ problem: numbered, folder: archiveFolder, archivedAt: new Date().toISOString() }, ...items]);
     setProblem(numbered);
@@ -289,6 +296,7 @@ export default function Home() {
     setResults([]);
     setTab("problem");
     setPageView("workspace");
+    setCustomProblemId("");
     return numbered;
   }
 
@@ -335,6 +343,29 @@ export default function Home() {
       toast(error instanceof Error ? error.message : "AI 对话失败");
     } finally {
       setChatBusy(false);
+    }
+  }
+
+  async function generateMoreTests() {
+    if (!apiKey.trim()) return toast("请先在 AI 解题中配置 API Key");
+    setGeneratingTests(true);
+    try {
+      const response = await fetch("/api/generate-tests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey, endpoint, model, problem, count: testPointCount }),
+      });
+      const data = await response.json() as { tests?: TestCase[]; error?: string };
+      if (!response.ok || !data.tests) throw new Error(data.error || "AI 测试点生成失败");
+      const existing = new Set(problem.samples.map((item) => `${item.input}\u0000${item.output}`));
+      const fresh = data.tests.filter((item) => !existing.has(`${item.input}\u0000${item.output}`));
+      setProblem((item) => ({ ...item, samples: [...item.samples, ...fresh] }));
+      setResults([]);
+      toast(`AI 已补充 ${fresh.length} 个不重复测试点`);
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "AI 测试点生成失败");
+    } finally {
+      setGeneratingTests(false);
     }
   }
 
@@ -438,7 +469,7 @@ export default function Home() {
             </div>
           ) : (
             <div className="tests-content">
-              <div className="tests-heading"><div><h2>自定义测试点</h2><p>修改后会自动保存在此浏览器。</p></div><button onClick={addTest}>＋ 添加测试点</button></div>
+              <div className="tests-heading"><div><h2>测试点管理</h2><p>修改后会自动保存；AI 会覆盖边界、极值、特殊结构和易错反例。</p></div><div className="test-actions"><select aria-label="AI 生成测试点数量" value={testPointCount} onChange={(e) => setTestPointCount(Number(e.target.value))}><option value={12}>12 个</option><option value={18}>18 个</option><option value={24}>24 个</option></select><button className="ai-tests-button" disabled={generatingTests} onClick={generateMoreTests}>{generatingTests ? "生成中…" : "✦ AI 生成测试点"}</button><button onClick={addTest}>＋ 手动添加</button></div></div>
               {problem.samples.map((test, index) => <div className="test-editor" key={test.id}><header><b>测试点 {index + 1}</b><span>{results.find((r) => r.id === test.id)?.status || "待测试"}</span></header><label>输入<textarea value={test.input} onChange={(e) => updateTest(test.id, "input", e.target.value)} /></label><label>期望输出<textarea value={test.output} onChange={(e) => updateTest(test.id, "output", e.target.value)} /></label></div>)}
             </div>
           )}
@@ -463,7 +494,7 @@ export default function Home() {
       {showImport && <div className="modal-backdrop" onMouseDown={() => setShowImport(false)}><div className="modal import-modal" onMouseDown={(e) => e.stopPropagation()}>
         <button className="modal-close" onClick={() => setShowImport(false)}>×</button>
         <span className="modal-kicker">快速开始</span><h2>添加一道练习题</h2>
-        <label className="archive-target">归档到<select value={selectedFolder} onChange={(e) => setSelectedFolder(e.target.value)}>{folders.map((folder) => <option key={folder}>{folder}</option>)}</select></label>
+        <div className="import-meta-fields"><label className="archive-target">自定义题号<input value={customProblemId} onChange={(e) => setCustomProblemId(e.target.value)} placeholder="可选，如 MY001" maxLength={20} /></label><label className="archive-target">归档到<select value={selectedFolder} onChange={(e) => setSelectedFolder(e.target.value)}>{folders.map((folder) => <option key={folder}>{folder}</option>)}</select></label></div>
         <div className="import-tabs"><button className={importMode === "paste" ? "active" : ""} onClick={() => setImportMode("paste")}>✦ 粘贴题面</button><button className={importMode === "json" ? "active" : ""} onClick={() => setImportMode("json")}>⇧ 导入 JSON</button></div>
         {importMode === "paste" ? <>
           <p>直接复制题目全文，AI 会整理题面并生成可立即运行的测试点。</p>
