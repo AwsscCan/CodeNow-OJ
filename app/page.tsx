@@ -821,21 +821,18 @@ export default function Home() {
     setGeneratingTests(true);
     setTestGenerationStatus("准备分批生成…");
     try {
-      const batchSize = 6;
+      const batchSize = 4;
       const totalBatches = Math.ceil(testPointCount / batchSize);
       const existing = new Set(problem.samples.map((item) => `${item.input}\u0000${item.output}`));
       const currentProblem = { ...problem, samples: [...problem.samples] };
       const accepted: TestCase[] = [];
-      let lastError = "";
+      const failedBatches: string[] = [];
       let performanceCount = 0;
       let adversarialCount = 0;
 
-      for (let batchIndex = 0; batchIndex < totalBatches; batchIndex += 1) {
-        const count = Math.min(batchSize, testPointCount - accepted.length);
-        if (count <= 0) break;
-        setTestGenerationStatus(`正在生成第 ${batchIndex + 1}/${totalBatches} 批…`);
+      async function requestBatch(batchIndex: number, count: number, retry = false) {
         const controller = new AbortController();
-        const timeout = window.setTimeout(() => controller.abort(), 28_000);
+        const timeout = window.setTimeout(() => controller.abort(), retry ? 24_000 : 38_000);
         try {
           const response = await fetch("/api/generate-tests", {
             method: "POST",
@@ -861,17 +858,32 @@ export default function Home() {
             performanceCount += data.complexityReport.performanceCount || 0;
             adversarialCount += data.complexityReport.adversarialCount || 0;
           }
+          return fresh.length;
         } catch (batchError) {
-          lastError = batchError instanceof DOMException && batchError.name === "AbortError" ? `第 ${batchIndex + 1} 批超过 28 秒` : batchError instanceof Error ? batchError.message : "某一批生成失败";
-          if (!accepted.length) throw new Error(lastError);
-          break;
+          const message = batchError instanceof DOMException && batchError.name === "AbortError" ? `${retry ? "补救" : "第"} ${batchIndex + 1} 批超时` : batchError instanceof Error ? batchError.message : "某一批生成失败";
+          throw new Error(message);
         } finally {
           window.clearTimeout(timeout);
         }
       }
 
-      if (!accepted.length) throw new Error(lastError || "AI 没有生成可用测试点");
-      toast(`${accepted.length >= testPointCount ? "分批生成完成" : "已部分生成"}：新增 ${accepted.length} 个测试点，含 ${performanceCount} 个性能点、${adversarialCount} 个反例点${lastError ? `；后续批次已停止：${lastError}` : ""}`);
+      for (let batchIndex = 0; batchIndex < totalBatches && accepted.length < testPointCount; batchIndex += 1) {
+        const count = Math.min(batchSize, testPointCount - accepted.length);
+        setTestGenerationStatus(`正在生成第 ${batchIndex + 1}/${totalBatches} 批…`);
+        try {
+          await requestBatch(batchIndex, count);
+        } catch (firstError) {
+          setTestGenerationStatus(`第 ${batchIndex + 1}/${totalBatches} 批失败，正在用小批量补救…`);
+          try {
+            await requestBatch(batchIndex, Math.min(2, count), true);
+          } catch (retryError) {
+            failedBatches.push(`第 ${batchIndex + 1} 批：${retryError instanceof Error ? retryError.message : firstError instanceof Error ? firstError.message : "生成失败"}`);
+          }
+        }
+      }
+
+      if (!accepted.length) throw new Error(failedBatches[0] || "AI 没有生成可用测试点");
+      toast(`${accepted.length >= testPointCount ? "分批生成完成" : "已尽量生成"}：新增 ${accepted.length} 个测试点，含 ${performanceCount} 个性能点、${adversarialCount} 个反例点${failedBatches.length ? `；${failedBatches.length} 批未成功，可再次点击继续补足` : ""}`);
     } catch (error) {
       toast(error instanceof Error ? error.message : "AI 测试点生成失败");
     } finally {
