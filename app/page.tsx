@@ -71,6 +71,7 @@ function readMigratedSetting(currentKey: string, legacyKey: string) {
 }
 
 const mascotStates: { mood: MascotMood; sprite: number; message: string }[] = [
+  { mood: "smile", sprite: 6, message: "今日はここで見てるね。ちゃんと考えてるか、すぐ分かっちゃうよ。" },
   { mood: "smile", sprite: 0, message: "今日も一緒に AC しよっか。……それとも、先に私に見抜かれちゃう？" },
   { mood: "laugh", sprite: 1, message: "勝負しよ？先に AC したほうが勝ち。ふふ、負けないよ。" },
   { mood: "smug", sprite: 2, message: "あれ？その境界条件、忘れてない？見つけちゃった。" },
@@ -213,6 +214,10 @@ export default function Home() {
   const mascotRef = useRef<HTMLElement>(null);
   const codePanelRef = useRef<HTMLElement>(null);
   const mascotDragOffset = useRef({ x: 0, y: 0 });
+  const mascotDragStart = useRef({ x: 0, y: 0 });
+  const mascotDragged = useRef(false);
+  const mascotNextPosition = useRef<MascotPosition | null>(null);
+  const mascotDragFrame = useRef<number | null>(null);
 
   useEffect(() => {
     const saved = readMigratedSetting("codenow-workspace", "codeforge-workspace");
@@ -313,15 +318,35 @@ export default function Home() {
 
   useEffect(() => {
     if (!mascotDragging) return;
+    const applyPosition = () => {
+      mascotDragFrame.current = null;
+      const next = mascotNextPosition.current;
+      const node = mascotRef.current;
+      if (!next || !node) return;
+      node.style.left = `${next.x}px`;
+      node.style.top = `${next.y}px`;
+      node.style.right = "auto";
+      node.style.bottom = "auto";
+    };
     const move = (event: PointerEvent) => {
-      const width = mascotRef.current?.offsetWidth || 230;
-      const height = mascotRef.current?.offsetHeight || 285;
+      const width = mascotRef.current?.offsetWidth || 205;
+      const height = mascotRef.current?.offsetHeight || 255;
       const x = Math.min(window.innerWidth - 16 - width, Math.max(16, event.clientX - mascotDragOffset.current.x));
       const y = Math.min(window.innerHeight - 16 - height, Math.max(16, event.clientY - mascotDragOffset.current.y));
-      setMascotPosition({ x, y });
+      mascotNextPosition.current = { x, y };
+      if (Math.abs(event.clientX - mascotDragStart.current.x) > 3 || Math.abs(event.clientY - mascotDragStart.current.y) > 3) {
+        mascotDragged.current = true;
+      }
+      if (mascotDragFrame.current === null) mascotDragFrame.current = window.requestAnimationFrame(applyPosition);
     };
     const stop = (event: PointerEvent) => {
+      if (mascotDragFrame.current !== null) {
+        window.cancelAnimationFrame(mascotDragFrame.current);
+        mascotDragFrame.current = null;
+      }
+      applyPosition();
       setMascotDragging(false);
+      if (mascotNextPosition.current) setMascotPosition(mascotNextPosition.current);
       const bounds = codePanelRef.current?.getBoundingClientRect();
       if (!bounds || pageView !== "workspace" || showAi || showMascotAiPrompt) return;
       const droppedOnCode = event.clientX >= bounds.left && event.clientX <= bounds.right && event.clientY >= bounds.top && event.clientY <= bounds.bottom;
@@ -335,6 +360,7 @@ export default function Home() {
     return () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", stop);
+      if (mascotDragFrame.current !== null) window.cancelAnimationFrame(mascotDragFrame.current);
     };
   }, [mascotDragging, pageView, showAi, showMascotAiPrompt]);
 
@@ -391,17 +417,31 @@ export default function Home() {
   function showSubmitMascot(results: Result[]) {
     if (!results.length) return;
     const failed = results.find((item) => item.status !== "AC");
-    if (!failed) setMascotMessage(1);
-    else if (failed.status === "CE" || failed.status === "TLE") setMascotMessage(6);
-    else setMascotMessage(5);
+    if (!failed) setMascotMessage(2);
+    else if (failed.status === "CE" || failed.status === "TLE") setMascotMessage(7);
+    else setMascotMessage(6);
   }
 
   function startMascotDrag(event: React.PointerEvent<HTMLElement>) {
+    if (event.button !== 0) return;
     const rect = mascotRef.current?.getBoundingClientRect();
     if (!rect) return;
+    event.preventDefault();
+    event.stopPropagation();
     mascotDragOffset.current = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+    mascotDragStart.current = { x: event.clientX, y: event.clientY };
+    mascotDragged.current = false;
+    mascotNextPosition.current = { x: rect.left, y: rect.top };
     setMascotPosition({ x: rect.left, y: rect.top });
     setMascotDragging(true);
+  }
+
+  function clickMascotCharacter() {
+    if (mascotDragged.current) {
+      mascotDragged.current = false;
+      return;
+    }
+    cycleMascot();
   }
 
   async function runTests(submit = false) {
@@ -444,7 +484,7 @@ export default function Home() {
         }
       }
     } catch (error) {
-      if (submit) setMascotMessage(5);
+      if (submit) setMascotMessage(6);
       toast(error instanceof Error ? error.message : "C++ 判题服务暂不可用");
     } finally {
       setRunning(false);
@@ -952,7 +992,7 @@ export default function Home() {
         <div className="ai-summary"><span>当前题目</span><b>{problem.id} · {problem.title}</b><small>{problem.samples.length} 个测试点将随题面一并发送</small></div>
         <button className="generate-button" disabled={aiBusy} onClick={askAi}>{aiBusy ? "正在思考并编写 C++…" : `✦ 使用 ${provider === "deepseek" ? "DeepSeek" : provider === "openai" ? "OpenAI" : "自定义 API"} 生成 C++17 解答`}</button>
       </div></div>}
-      {themeMode === "girl" && (mascotVisible ? <aside ref={mascotRef} className={`desktop-mascot mood-${mascotState.mood} ${mascotDragging ? "dragging" : ""}`} aria-label="CodeNow 编程伙伴" style={mascotPosition ? { left: mascotPosition.x, top: mascotPosition.y, right: "auto", bottom: "auto" } : undefined}><button className="mascot-close" aria-label="暂时隐藏桌宠" title="暂时隐藏桌宠" onClick={() => setMascotVisible(false)}>×</button><button className="mascot-drag-handle" aria-label="拖动桌宠位置" title="拖动桌宠位置" onPointerDown={startMascotDrag}>↕</button><button className="mascot-bubble" onClick={cycleMascot}>{mascotState.message}<small>点击换表情，拖动小把手移动</small></button><button className="mascot-character" aria-label="和 CodeNow 编程伙伴互动" onClick={cycleMascot}><span className={`mascot-sprite-frame sprite-${mascotState.sprite}`} aria-hidden="true"><img src="/codenow/mascot-sprites.png" alt="" /></span><span className="sr-only">切换 CodeNow 编程伙伴表情</span></button></aside> : <button className="mascot-reopen" onClick={() => setMascotVisible(true)} title="召回 CodeNow 编程伙伴"><img src="/codenow/icon.jpg" alt="" />召回伙伴</button>)}
+      {themeMode === "girl" && (mascotVisible ? <aside ref={mascotRef} className={`desktop-mascot mood-${mascotState.mood} ${mascotDragging ? "dragging" : ""}`} aria-label="CodeNow 编程伙伴" style={mascotPosition ? { left: mascotPosition.x, top: mascotPosition.y, right: "auto", bottom: "auto" } : undefined}><button className="mascot-close" aria-label="暂时隐藏桌宠" title="暂时隐藏桌宠" onClick={() => setMascotVisible(false)}>×</button><button className="mascot-drag-handle" aria-label="拖动桌宠位置" title="拖动桌宠位置" onPointerDown={startMascotDrag}>↕</button><button className="mascot-bubble" onClick={cycleMascot}>{mascotState.message}<small>点击换表情，按住人物可拖动</small></button><button className={`mascot-character ${mascotState.sprite === 6 ? "original-state" : ""}`} aria-label="和 CodeNow 编程伙伴互动" onPointerDown={startMascotDrag} onClick={clickMascotCharacter}>{mascotState.sprite === 6 ? <img className="mascot-original" src="/codenow/mascot.png" alt="" aria-hidden="true" /> : <span className={`mascot-sprite-frame sprite-${mascotState.sprite}`} aria-hidden="true"><img src="/codenow/mascot-sprites.png" alt="" /></span>}<span className="sr-only">切换 CodeNow 编程伙伴表情</span></button></aside> : <button className="mascot-reopen" onClick={() => setMascotVisible(true)} title="召回 CodeNow 编程伙伴"><img src="/codenow/icon.jpg" alt="" />召回伙伴</button>)}
       {notice && <div className="toast">{notice}</div>}
     </main>
   );
