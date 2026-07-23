@@ -5,15 +5,32 @@ type UpstreamData = {
   error?: { message?: string };
 };
 
+function resolveChatUrl(endpoint: string) {
+  const url = new URL(endpoint.trim());
+  if (url.protocol !== "https:") throw new Error("API Endpoint 必须使用 HTTPS");
+  const path = url.pathname.replace(/\/+$/, "");
+  url.pathname = /\/chat\/completions$/i.test(path) ? path : `${path}/chat/completions`;
+  return url;
+}
+
+async function readUpstream(response: Response): Promise<UpstreamData> {
+  const text = await response.text();
+  try {
+    return JSON.parse(text) as UpstreamData;
+  } catch {
+    throw new Error(response.ok ? "AI 返回了无法解析的内容" : `AI 服务返回异常（HTTP ${response.status}）`);
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { apiKey, endpoint, model, rawProblem } = await request.json();
     if (!apiKey || !endpoint || !model || !rawProblem) return NextResponse.json({ error: "AI 配置和题目原文不能为空" }, { status: 400 });
-    if (!/^https:\/\//i.test(String(endpoint))) return NextResponse.json({ error: "API Endpoint 必须使用 HTTPS" }, { status: 400 });
     if (typeof rawProblem !== "string" || rawProblem.trim().length < 20) return NextResponse.json({ error: "题目原文过短" }, { status: 400 });
     if (rawProblem.length > 60_000) return NextResponse.json({ error: "题目原文不能超过 60000 个字符" }, { status: 400 });
 
-    const base = String(endpoint).replace(/\/$/, "");
+    const chatUrl = resolveChatUrl(String(endpoint));
+    const isDeepSeek = /(^|\.)api\.deepseek\.com$/i.test(chatUrl.hostname);
     const messages = [
       {
         role: "system",
@@ -29,18 +46,20 @@ description、inputFormat、outputFormat 要忠实保留数学符号、数据范
     ];
 
     async function callUpstream(jsonMode: boolean) {
-      const body: Record<string, unknown> = { model, temperature: 0.1, max_tokens: 7000, messages };
+      const body: Record<string, unknown> = { model, temperature: 0.1, max_tokens: 4000, stream: false, messages };
       if (jsonMode) body.response_format = { type: "json_object" };
-      return fetch(`${base}/chat/completions`, {
+      if (isDeepSeek) body.thinking = { type: "disabled" };
+      return fetch(chatUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
         body: JSON.stringify(body),
+        signal: AbortSignal.timeout(45_000),
       });
     }
 
     let response = await callUpstream(true);
     if (!response.ok && (response.status === 400 || response.status === 422)) response = await callUpstream(false);
-    const data = await response.json() as UpstreamData;
+    const data = await readUpstream(response);
     if (!response.ok) return NextResponse.json({ error: data.error?.message || "上游 AI 服务请求失败" }, { status: response.status });
     const content = data.choices?.[0]?.message?.content?.trim() || "";
     const cleaned = content.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
@@ -50,6 +69,13 @@ description、inputFormat、outputFormat 要忠实保留数学符号、数据范
     const problem = JSON.parse(cleaned.slice(start, end + 1));
     return NextResponse.json({ problem });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "AI 题目生成失败" }, { status: 500 });
+    const message = error instanceof Error ? error.message : "AI 题目生成失败";
+    if (/timeout|timed out|abort/i.test(message) || (error instanceof Error && error.name === "TimeoutError")) {
+      return NextResponse.json({ error: "AI 响应超时，请重试或改用 DeepSeek V4 Flash" }, { status: 504 });
+    }
+    if (/fetch failed|network|socket|connect/i.test(message)) {
+      return NextResponse.json({ error: "暂时无法连接 AI 服务，请检查 API Endpoint 后重试" }, { status: 502 });
+    }
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
