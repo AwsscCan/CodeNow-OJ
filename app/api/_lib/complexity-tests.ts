@@ -15,14 +15,66 @@ function resolveChatUrl(endpoint: string) {
 }
 
 function parseJson(content: string): unknown {
-  const cleaned = content.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "").trim();
-  const objectStart = cleaned.indexOf("{");
-  const objectEnd = cleaned.lastIndexOf("}");
-  const arrayStart = cleaned.indexOf("[");
-  const arrayEnd = cleaned.lastIndexOf("]");
-  if (objectStart >= 0 && objectEnd > objectStart) return JSON.parse(cleaned.slice(objectStart, objectEnd + 1));
-  if (arrayStart >= 0 && arrayEnd > arrayStart) return JSON.parse(cleaned.slice(arrayStart, arrayEnd + 1));
+  const cleaned = content.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
+  const candidates = extractJsonCandidates(cleaned);
+  for (const candidate of candidates) {
+    for (const attempt of repairJsonCandidates(candidate)) {
+      try { return JSON.parse(attempt); } catch { /* try next repair */ }
+    }
+  }
   throw new Error("AI 未返回可解析的 JSON");
+}
+
+function extractJsonCandidates(text: string) {
+  const candidates: string[] = [];
+  for (const [open, close] of [["{", "}"], ["[", "]"]] as const) {
+    const start = text.indexOf(open);
+    if (start < 0) continue;
+    const end = findMatchingJsonEnd(text, start, open, close);
+    if (end > start) candidates.push(text.slice(start, end + 1));
+  }
+  const objectStart = text.indexOf("{");
+  const objectEnd = text.lastIndexOf("}");
+  if (objectStart >= 0 && objectEnd > objectStart) candidates.push(text.slice(objectStart, objectEnd + 1));
+  const arrayStart = text.indexOf("[");
+  const arrayEnd = text.lastIndexOf("]");
+  if (arrayStart >= 0 && arrayEnd > arrayStart) candidates.push(text.slice(arrayStart, arrayEnd + 1));
+  return Array.from(new Set(candidates));
+}
+
+function findMatchingJsonEnd(text: string, start: number, open: string, close: string) {
+  let depth = 0;
+  let quote = "";
+  let escaped = false;
+  for (let index = start; index < text.length; index += 1) {
+    const char = text[index];
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === quote) quote = "";
+      continue;
+    }
+    if (char === '"' || char === "'") { quote = char; continue; }
+    if (char === open) depth += 1;
+    if (char === close) {
+      depth -= 1;
+      if (depth === 0) return index;
+    }
+  }
+  return -1;
+}
+
+function repairJsonCandidates(value: string) {
+  const normalized = value
+    .replace(/^\uFEFF/, "")
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/,\s*([}\]])/g, "$1");
+  const missingCommaFixed = normalized
+    .replace(/("(?:\\.|[^"\\])*"|true|false|null|-?\d+(?:\.\d+)?|[}\]])\s*\n\s*("[$A-Z_a-z][^"]*"\s*:)/g, "$1,\n$2")
+    .replace(/("(?:\\.|[^"\\])*"|true|false|null|-?\d+(?:\.\d+)?|[}\]])\s+(?="[$A-Z_a-z][^"]*"\s*:)/g, "$1,");
+  const singleQuoteFixed = missingCommaFixed.replace(/'([^'\\]*(?:\\.[^'\\]*)*)'\s*:/g, (_, key: string) => `"${key.replace(/"/g, '\\"')}":`);
+  return Array.from(new Set([value, normalized, missingCommaFixed, singleQuoteFixed]));
 }
 
 function appendWithinLimit(chunks: string[], value: string, size: { value: number }) {
@@ -133,7 +185,7 @@ export async function generateComplexityAwareTests(options: { apiKey: string; en
 只返回 JSON：${schema}
 其中至少 ${requiredPerformance} 个 category=performance、至少 ${requiredAdversarial} 个 category=adversarial，其余覆盖最小值、上下界、特殊结构、溢出、错误贪心和普通随机形态。performance 必须在题面约束内达到足以淘汰主要暴力算法的真实规模，scale 必须与展开后的输入一致；targets 和 reason 要具体。每个 output 必须独立计算并复核。
 ${compressed}
-硬性规则：严格遵守输入组数、数据范围和格式；不得只改标签伪装压力点；不得重复已有测试点；不得输出 Markdown 或解释。` },
+硬性规则：严格遵守输入组数、数据范围和格式；不得只改标签伪装压力点；不得重复已有测试点；不得输出 Markdown 或解释；字符串中的换行必须写成 \\n，不要在字符串内部直接换行；每个属性之间必须有英文逗号。` },
     { role: "user", content: `${problemText}
 已有测试点摘要（不要重复）：${JSON.stringify(compactExisting(existingInputs))}` },
   ], Math.max(3600, target * 260), 0.08);
