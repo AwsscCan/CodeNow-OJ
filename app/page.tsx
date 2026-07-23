@@ -70,19 +70,19 @@ function readMigratedSetting(currentKey: string, legacyKey: string) {
   return legacy;
 }
 
-const mascotStates: { mood: MascotMood; face: number; message: string }[] = [
-  { mood: "smile", face: 0, message: "今天也一起 AC 吧。还是说，你会先被我看穿呢？" },
-  { mood: "laugh", face: 1, message: "我们来比比胜负吧，先 AC 的人赢……怎么样？" },
-  { mood: "smug", face: 2, message: "あれ？这里忘记考虑边界了吧。被我发现啦。" },
-  { mood: "surprised", face: 6, message: "诶？这个输出，和你想的不太一样哦。" },
-  { mood: "gentle", face: 8, message: "だいじょうぶ。慢慢来，我会等你把思路理清楚。" },
-  { mood: "annoyed", face: 4, message: "もう……又错一个测试点。要不要我给你一点提示？" },
-  { mood: "angry", face: 7, message: "こら，编译错误还想提交？先把红线消掉啦。" },
-  { mood: "smug", face: 2, message: "如果这次一遍过，我就承认你很厉害。只有这一次哦。" },
-  { mood: "laugh", face: 1, message: "すごいじゃん！不过，隐藏测试可没这么容易放过你。" },
-  { mood: "gentle", face: 8, message: "复杂度也要看哦。只会暴力的话，可赢不了我。" },
-  { mood: "surprised", face: 6, message: "咦，你刚才是不是偷偷写了个很聪明的做法？" },
-  { mood: "smile", face: 0, message: "那就约好了：你认真写，我认真看着你。" },
+const mascotStates: { mood: MascotMood; sprite: number; message: string }[] = [
+  { mood: "smile", sprite: 0, message: "今天也一起 AC 吧。还是说，你会先被我看穿呢？" },
+  { mood: "laugh", sprite: 1, message: "我们来比比胜负吧，先 AC 的人赢……怎么样？" },
+  { mood: "smug", sprite: 2, message: "あれ？这里忘记考虑边界了吧。被我发现啦。" },
+  { mood: "surprised", sprite: 3, message: "诶？这个输出，和你想的不太一样哦。" },
+  { mood: "gentle", sprite: 0, message: "だいじょうぶ。慢慢来，我会等你把思路理清楚。" },
+  { mood: "annoyed", sprite: 4, message: "もう……又错一个测试点。要不要我给你一点提示？" },
+  { mood: "angry", sprite: 5, message: "こら，编译错误还想提交？先把红线消掉啦。" },
+  { mood: "smug", sprite: 2, message: "如果这次一遍过，我就承认你很厉害。只有这一次哦。" },
+  { mood: "laugh", sprite: 1, message: "すごいじゃん！不过，隐藏测试可没这么容易放过你。" },
+  { mood: "gentle", sprite: 0, message: "复杂度也要看哦。只会暴力的话，可赢不了我。" },
+  { mood: "surprised", sprite: 3, message: "咦，你刚才是不是偷偷写了个很聪明的做法？" },
+  { mood: "smile", sprite: 0, message: "那就约好了：你认真写，我认真看着你。" },
 ];
 
 const acwingCourse = acwingCourseData as BundledProblem[];
@@ -931,7 +931,7 @@ export default function Home() {
         <div className="ai-summary"><span>当前题目</span><b>{problem.id} · {problem.title}</b><small>{problem.samples.length} 个测试点将随题面一并发送</small></div>
         <button className="generate-button" disabled={aiBusy} onClick={askAi}>{aiBusy ? "正在思考并编写 C++…" : `✦ 使用 ${provider === "deepseek" ? "DeepSeek" : provider === "openai" ? "OpenAI" : "自定义 API"} 生成 C++17 解答`}</button>
       </div></div>}
-      {themeMode === "girl" && (mascotVisible ? <aside ref={mascotRef} className={`desktop-mascot mood-${mascotState.mood} ${mascotDragging ? "dragging" : ""}`} aria-label="CodeNow 编程伙伴" style={mascotPosition ? { left: mascotPosition.x, top: mascotPosition.y, right: "auto", bottom: "auto" } : undefined}><button className="mascot-close" aria-label="暂时隐藏桌宠" title="暂时隐藏桌宠" onClick={() => setMascotVisible(false)}>×</button><button className="mascot-drag-handle" aria-label="拖动桌宠位置" title="拖动桌宠位置" onPointerDown={startMascotDrag}>↕</button><button className="mascot-bubble" onClick={cycleMascot}>{mascotState.message}<small>点击换表情，拖动小把手移动</small></button><span className={`mascot-expression face-${mascotState.face}`} aria-hidden="true"><img src="/codenow/expression-guide.png" alt="" /></span><button className="mascot-character" aria-label="和 CodeNow 编程伙伴互动" onClick={cycleMascot}><img src="/codenow/mascot.png" alt="抱着笔记本电脑的 CodeNow 编程伙伴" /></button></aside> : <button className="mascot-reopen" onClick={() => setMascotVisible(true)} title="召回 CodeNow 编程伙伴"><img src="/codenow/icon.jpg" alt="" />召回伙伴</button>)}
+      {themeMode === "girl" && (mascotVisible ? <aside ref={mascotRef} className={`desktop-mascot mood-${mascotState.mood} ${mascotDragging ? "dragging" : ""}`} aria-label="CodeNow 编程伙伴" style={mascotPosition ? { left: mascotPosition.x, top: mascotPosition.y, right: "auto", bottom: "auto" } : undefined}><button className="mascot-close" aria-label="暂时隐藏桌宠" title="暂时隐藏桌宠" onClick={() => setMascotVisible(false)}>×</button><button className="mascot-drag-handle" aria-label="拖动桌宠位置" title="拖动桌宠位置" onPointerDown={startMascotDrag}>↕</button><button className="mascot-bubble" onClick={cycleMascot}>{mascotState.message}<small>点击换表情，拖动小把手移动</small></button><button className="mascot-character" aria-label="和 CodeNow 编程伙伴互动" onClick={cycleMascot}><span className={`mascot-sprite-frame sprite-${mascotState.sprite}`} aria-hidden="true"><img src="/codenow/mascot-sprites.png" alt="" /></span><span className="sr-only">切换 CodeNow 编程伙伴表情</span></button></aside> : <button className="mascot-reopen" onClick={() => setMascotVisible(true)} title="召回 CodeNow 编程伙伴"><img src="/codenow/icon.jpg" alt="" />召回伙伴</button>)}
       {notice && <div className="toast">{notice}</div>}
     </main>
   );
