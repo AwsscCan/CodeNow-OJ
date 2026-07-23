@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeforge-oj-7f23.steinoscar720.chatgpt.site/problem.schema.json",
+  "title": "CodeForge OJ Problem Import V1",
+  "description": "CodeForge OJ 题目与测试点导入格式。所有文件必须使用 UTF-8 编码。",
+  "type": "object",
+  "required": ["title", "description", "inputFormat", "outputFormat", "samples"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "type": "integer", "const": 1, "default": 1 },
+    "id": { "type": "string", "minLength": 1, "maxLength": 32, "pattern": "^[A-Za-z0-9_-]+$" },
+    "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "difficulty": { "type": "string", "enum": ["入门", "普及", "提高"], "default": "入门" },
+    "time": { "type": "string", "minLength": 1, "default": "1000 ms" },
+    "memory": { "type": "string", "minLength": 1, "default": "128 MB" },
+    "description": { "type": "string", "minLength": 1 },
+    "inputFormat": { "type": "string", "minLength": 1 },
+    "outputFormat": { "type": "string", "minLength": 1 },
+    "samples": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["input", "output"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "integer", "minimum": 1 },
+          "input": { "type": "string" },
+          "output": { "type": "string" }
+        }
+      }
+    }
+  }
+}

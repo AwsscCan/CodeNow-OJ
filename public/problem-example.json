@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "id": "U1001",
+  "title": "两数之和",
+  "difficulty": "入门",
+  "time": "1000 ms",
+  "memory": "128 MB",
+  "description": "给定两个整数 a 和 b，输出它们的和。",
+  "inputFormat": "一行两个整数 a 和 b，以空格分隔。",
+  "outputFormat": "输出一个整数，表示 a + b。",
+  "samples": [
+    { "id": 1, "input": "1 2", "output": "3" },
+    { "id": 2, "input": "100 -27", "output": "73" },
+    { "id": 3, "input": "5\n8", "output": "13" }
+  ]
+}
