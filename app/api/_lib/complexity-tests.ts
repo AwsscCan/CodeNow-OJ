@@ -397,7 +397,7 @@ ${content.slice(0, 12_000)}`;
   select(unique, target);
 
   return {
-    tests: selected.slice(0, target).map(({ input, output }) => ({ input, output })),
+    tests: selected.slice(0, target).map(({ input, output, category, scale, targets, reason }) => ({ input, output, category, scale, targets, reason })),
     report: {
       expectedTimeComplexity: plan.expectedTimeComplexity,
       expectedSpaceComplexity: plan.expectedSpaceComplexity,

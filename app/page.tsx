@@ -5,7 +5,7 @@ import type { CSSProperties } from "react";
 import { CppEditor } from "./CppEditor";
 import acwingCourseData from "../public/acwing-course.json";
 
-type TestCase = { id: number; input: string; output: string };
+type TestCase = { id: number; input: string; output: string; category?: string; scale?: number; targets?: string; reason?: string };
 type Problem = {
   id: string;
   title: string;
@@ -88,6 +88,15 @@ const mascotStates: { mood: MascotMood; sprite: number; message: string }[] = [
 ];
 
 const acwingCourse = acwingCourseData as BundledProblem[];
+const testCategoryLabels: Record<string, string> = {
+  boundary: "边界",
+  special: "特殊",
+  ordinary: "普通",
+  adversarial: "反例",
+  performance: "性能",
+  sample: "样例",
+  manual: "手动",
+};
 const acwingFolders = Array.from(new Set(acwingCourse.flatMap((problem) => {
   const parts = problem.folder.split("/");
   return parts.map((_, index) => parts.slice(0, index + 1).join("/"));
@@ -604,6 +613,10 @@ export default function Home() {
     setProblem((item) => ({ ...item, samples: item.samples.map((test) => test.id === id ? { ...test, [field]: value } : test) }));
   }
 
+  function updateTestCategory(id: number, category: string) {
+    setProblem((item) => ({ ...item, samples: item.samples.map((test) => test.id === id ? { ...test, category } : test) }));
+  }
+
   function chooseProvider(next: AiProvider) {
     setProvider(next);
     if (next === "deepseek") {
@@ -1023,7 +1036,7 @@ export default function Home() {
           ) : (
             <div className="tests-content">
               <div className="tests-heading"><div><h2>测试点管理</h2><p>{generatingTests && testGenerationStatus ? testGenerationStatus : "AI 会分批生成测试点：先拿到小批可用数据，再逐步补足边界、反例与性能点。"}</p></div><div className="test-actions"><select aria-label="AI 生成测试点数量" value={testPointCount} onChange={(e) => setTestPointCount(Number(e.target.value))}><option value={12}>12 个</option><option value={18}>18 个</option><option value={24}>24 个</option></select><button className="ai-tests-button" disabled={generatingTests} onClick={generateMoreTests}>{generatingTests ? "正在分批生成…" : "✦ AI 分批生成测试点"}</button><button onClick={addTest}>＋ 手动添加</button></div></div>
-              {problem.samples.map((test, index) => <div className="test-editor" key={test.id}><header><b>测试点 {index + 1}</b><span>{results.find((r) => r.id === test.id)?.status || "待测试"}</span></header><label>输入<textarea value={test.input} onChange={(e) => updateTest(test.id, "input", e.target.value)} /></label><label>期望输出<textarea value={test.output} onChange={(e) => updateTest(test.id, "output", e.target.value)} /></label></div>)}
+              {problem.samples.map((test, index) => <div className="test-editor" key={test.id}><header><b>测试点 {index + 1}<select className={`test-type-tag type-${test.category || "manual"}`} title={test.targets || test.reason || "可手动修改测试点类型"} aria-label={`修改测试点 ${index + 1} 类型`} value={test.category || "manual"} onChange={(e) => updateTestCategory(test.id, e.target.value)}>{Object.entries(testCategoryLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>{typeof test.scale === "number" && test.scale > 1 && <small>规模 {test.scale}</small>}</b><span>{results.find((r) => r.id === test.id)?.status || "待测试"}</span></header><label>输入<textarea value={test.input} onChange={(e) => updateTest(test.id, "input", e.target.value)} /></label><label>期望输出<textarea value={test.output} onChange={(e) => updateTest(test.id, "output", e.target.value)} /></label></div>)}
             </div>
           )}
         </article>
