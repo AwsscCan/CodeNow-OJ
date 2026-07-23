@@ -71,13 +71,18 @@ function readMigratedSetting(currentKey: string, legacyKey: string) {
 }
 
 const mascotStates: { mood: MascotMood; face: number; message: string }[] = [
-  { mood: "smile", face: 0, message: "今天也一起 AC 吧！" },
-  { mood: "laugh", face: 1, message: "写得不错，我在旁边看着你推进。" },
-  { mood: "smug", face: 2, message: "边界条件偷偷藏起来了，抓住它。" },
-  { mood: "surprised", face: 6, message: "咦，这里可能有一个小 bug。" },
-  { mood: "gentle", face: 8, message: "别急，先把思路拆成几步。" },
-  { mood: "annoyed", face: 4, message: "唔……先看看第一个没通过的测试点吧。" },
-  { mood: "angry", face: 7, message: "编译器都生气啦，先处理红色下划线。" },
+  { mood: "smile", face: 0, message: "今天也一起 AC 吧。还是说，你会先被我看穿呢？" },
+  { mood: "laugh", face: 1, message: "我们来比比胜负吧，先 AC 的人赢……怎么样？" },
+  { mood: "smug", face: 2, message: "あれ？这里忘记考虑边界了吧。被我发现啦。" },
+  { mood: "surprised", face: 6, message: "诶？这个输出，和你想的不太一样哦。" },
+  { mood: "gentle", face: 8, message: "だいじょうぶ。慢慢来，我会等你把思路理清楚。" },
+  { mood: "annoyed", face: 4, message: "もう……又错一个测试点。要不要我给你一点提示？" },
+  { mood: "angry", face: 7, message: "こら，编译错误还想提交？先把红线消掉啦。" },
+  { mood: "smug", face: 2, message: "如果这次一遍过，我就承认你很厉害。只有这一次哦。" },
+  { mood: "laugh", face: 1, message: "すごいじゃん！不过，隐藏测试可没这么容易放过你。" },
+  { mood: "gentle", face: 8, message: "复杂度也要看哦。只会暴力的话，可赢不了我。" },
+  { mood: "surprised", face: 6, message: "咦，你刚才是不是偷偷写了个很聪明的做法？" },
+  { mood: "smile", face: 0, message: "那就约好了：你认真写，我认真看着你。" },
 ];
 
 const acwingCourse = acwingCourseData as BundledProblem[];
