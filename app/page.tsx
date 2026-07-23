@@ -71,19 +71,19 @@ function readMigratedSetting(currentKey: string, legacyKey: string) {
 }
 
 const mascotStates: { mood: MascotMood; sprite: number; message: string }[] = [
-  { mood: "smile", sprite: 6, message: "今日はここで見てるね。ちゃんと考えてるか、すぐ分かっちゃうよ。" },
-  { mood: "smile", sprite: 0, message: "今日も一緒に AC しよっか。……それとも、先に私に見抜かれちゃう？" },
-  { mood: "laugh", sprite: 1, message: "勝負しよ？先に AC したほうが勝ち。ふふ、負けないよ。" },
-  { mood: "smug", sprite: 2, message: "あれ？その境界条件、忘れてない？見つけちゃった。" },
-  { mood: "surprised", sprite: 3, message: "えっ、その出力……思ってたのと違うんじゃない？" },
-  { mood: "gentle", sprite: 0, message: "大丈夫。焦らなくていいよ。まずは考え方を整理しよ。" },
-  { mood: "annoyed", sprite: 4, message: "また WA？もう、甘いなあ。最初に落ちたケースから見直して。" },
-  { mood: "angry", sprite: 5, message: "コンパイルエラーのまま提出？ダメ。赤い線、全部消してから。" },
-  { mood: "smug", sprite: 2, message: "一発 AC できたら、少しだけ褒めてあげる。少しだけね。" },
-  { mood: "laugh", sprite: 1, message: "すごいじゃん。でも、隠しテストはそんなに優しくないよ？" },
-  { mood: "gentle", sprite: 0, message: "計算量も見てね。力任せだけじゃ、私には勝てないよ。" },
-  { mood: "surprised", sprite: 3, message: "おや？今の実装、ちょっと賢いかも。油断できないね。" },
-  { mood: "smile", sprite: 0, message: "約束ね。君はちゃんと考える。私はちゃんと見てるから。" },
+  { mood: "smile", sprite: 6, message: "我就在这里看着你写哦。ふふ，偷懒的话我可是会发现的。" },
+  { mood: "smile", sprite: 0, message: "今天也一起 AC 吧。ね，要不要来比一比谁先看穿题意？" },
+  { mood: "laugh", sprite: 1, message: "勝負しよ？你先写，我来猜你会在哪个边界摔一跤。" },
+  { mood: "smug", sprite: 2, message: "あれ？这个边界条件是不是被你悄悄略过去了？" },
+  { mood: "surprised", sprite: 3, message: "诶，这个输出不太对吧。もう一回，认真看一遍？" },
+  { mood: "gentle", sprite: 0, message: "大丈夫，慢慢来。先把思路理顺，代码自然就会听话。" },
+  { mood: "annoyed", sprite: 4, message: "又 WA 了？もう，太天真啦。先看第一个没过的点。" },
+  { mood: "angry", sprite: 5, message: "编译错误还提交？だめ。红线不消掉，我可不会放你过去。" },
+  { mood: "smug", sprite: 2, message: "如果一发 AC，我就稍微夸你一下。ほんの少しだけ。" },
+  { mood: "laugh", sprite: 1, message: "すごいじゃん！不过隐藏测试可没我这么温柔哦。" },
+  { mood: "gentle", sprite: 0, message: "复杂度也要看，ね。只会暴力的话，可赢不了我。" },
+  { mood: "surprised", sprite: 3, message: "おや？刚才这段实现有点聪明嘛，我差点就被你骗到了。" },
+  { mood: "smile", sprite: 0, message: "那就约好了：你认真写，我认真看。ふふ，别输给我哦。" },
 ];
 
 const acwingCourse = acwingCourseData as BundledProblem[];
