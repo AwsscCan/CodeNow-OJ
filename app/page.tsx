@@ -53,6 +53,7 @@ type AiProvider = "deepseek" | "openai" | "custom";
 type ArchivedProblem = { problem: Problem; folder: string; archivedAt: string };
 type ChatMessage = { role: "user" | "assistant"; content: string };
 type BundledProblem = Problem & { folder: string; sourceUrl: string; extractionStatus: "complete" | "needs_review" };
+type SubmissionRecord = { id: string; problemId: string; problemTitle: string; status: string; passed: string; sourceCode: string; submittedAt: string };
 type CatalogEntry = { kind: "built-in"; id: string } | { kind: "acwing"; id: string; item: BundledProblem } | { kind: "archive"; id: string; item: ArchivedProblem };
 
 const naturalCollator = new Intl.Collator("zh-CN", { numeric: true, sensitivity: "base" });
@@ -152,7 +153,9 @@ export default function Home() {
   const [collapsedFolders, setCollapsedFolders] = useState<string[]>([]);
   const [includeSubfolders, setIncludeSubfolders] = useState(true);
   const [libraryReady, setLibraryReady] = useState(false);
-  const [history, setHistory] = useState<{ time: string; status: string; passed: string }[]>([]);
+  const [history, setHistory] = useState<SubmissionRecord[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [selectedSubmission, setSelectedSubmission] = useState<SubmissionRecord | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -233,6 +236,21 @@ export default function Home() {
     if (libraryReady) setArchives((items) => items.map((item) => item.problem.id === problem.id ? { ...item, problem } : item));
   }, [problem, libraryReady]);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    setHistoryLoading(true);
+    setSelectedSubmission(null);
+    fetch(`/api/submissions?problemId=${encodeURIComponent(problem.id)}`, { signal: controller.signal })
+      .then(async (response) => {
+        const data = await response.json() as { history?: SubmissionRecord[]; error?: string };
+        if (!response.ok) throw new Error(data.error || "无法读取提交记录");
+        setHistory(Array.isArray(data.history) ? data.history : []);
+      })
+      .catch((error) => { if (error instanceof Error && error.name !== "AbortError") toast(error.message); })
+      .finally(() => { if (!controller.signal.aborted) setHistoryLoading(false); });
+    return () => controller.abort();
+  }, [problem.id]);
+
   const apiKey = apiKeys[provider];
   const orderedFolders = Array.from(new Set([...folders, ...acwingFolders])).sort(compareFolderPaths);
   const visibleFolders = orderedFolders.filter((folder) => {
@@ -260,6 +278,8 @@ export default function Home() {
   }
 
   async function runTests(submit = false) {
+    const submittedCode = code;
+    const submittedProblem = { id: problem.id, title: problem.title };
     setRunning(true);
     setCompilerDiagnostic("");
     setConsoleTab("results");
@@ -276,14 +296,52 @@ export default function Home() {
       setCompilerDiagnostic(next.find((item) => item.status === "CE")?.actual || "");
       if (submit) {
         const ok = next.filter((item) => item.status === "AC").length;
-        setHistory((items) => [{ time: new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }), status: ok === next.length ? "答案正确" : "未通过", passed: `${ok}/${next.length}` }, ...items]);
-        toast(ok === next.length ? "提交成功：答案正确" : `提交完成：通过 ${ok}/${next.length} 个测试点`);
+        const record: SubmissionRecord = {
+          id: crypto.randomUUID(),
+          problemId: submittedProblem.id,
+          problemTitle: submittedProblem.title,
+          status: ok === next.length ? "答案正确" : "未通过",
+          passed: `${ok}/${next.length}`,
+          sourceCode: submittedCode,
+          submittedAt: new Date().toISOString(),
+        };
+        try {
+          const saveResponse = await fetch("/api/submissions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(record) });
+          const saved = await saveResponse.json() as { record?: SubmissionRecord; error?: string };
+          if (!saveResponse.ok || !saved.record) throw new Error(saved.error || "保存提交记录失败");
+          if (problem.id === submittedProblem.id) setHistory((items) => [saved.record!, ...items]);
+          toast(ok === next.length ? "提交成功：答案正确，记录已保存" : `提交完成：通过 ${ok}/${next.length} 个测试点，记录已保存`);
+        } catch (saveError) {
+          toast(`${ok === next.length ? "答案正确" : `通过 ${ok}/${next.length}`}，但${saveError instanceof Error ? saveError.message : "保存提交记录失败"}`);
+        }
       }
     } catch (error) {
       toast(error instanceof Error ? error.message : "C++ 判题服务暂不可用");
     } finally {
       setRunning(false);
     }
+  }
+
+  async function deleteSubmission(event: React.MouseEvent, record: SubmissionRecord) {
+    event.stopPropagation();
+    if (!window.confirm(`确定删除 ${new Date(record.submittedAt).toLocaleString("zh-CN")} 的提交记录吗？`)) return;
+    try {
+      const response = await fetch(`/api/submissions?id=${encodeURIComponent(record.id)}`, { method: "DELETE" });
+      const data = await response.json() as { ok?: boolean; error?: string };
+      if (!response.ok || !data.ok) throw new Error(data.error || "删除提交记录失败");
+      setHistory((items) => items.filter((item) => item.id !== record.id));
+      if (selectedSubmission?.id === record.id) setSelectedSubmission(null);
+      toast("提交记录已删除");
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "删除提交记录失败");
+    }
+  }
+
+  function restoreSubmission(record: SubmissionRecord) {
+    setCode(record.sourceCode);
+    setCompilerDiagnostic("");
+    setSelectedSubmission(null);
+    toast("已将该次提交的代码载入编辑器");
   }
 
   function importProblem(file?: File) {
@@ -398,14 +456,23 @@ export default function Home() {
     setNextProblemId(id);
   }
 
-  function confirmRenameProblem() {
+  async function confirmRenameProblem() {
     if (!renamingProblemId) return;
     const nextId = nextProblemId.trim();
     if (!/^[A-Za-z][A-Za-z0-9_-]{0,19}$/.test(nextId)) return toast("题号需以字母开头，仅含字母、数字、下划线或短横线，最长 20 位");
     const duplicate = nextId.toUpperCase() === initialProblem.id.toUpperCase() || acwingCourse.some((item) => item.id.toUpperCase() === nextId.toUpperCase()) || archives.some((item) => item.problem.id !== renamingProblemId && item.problem.id.toUpperCase() === nextId.toUpperCase());
     if (duplicate) return toast(`题号 ${nextId} 已存在，请更换题号`);
+    const previousId = renamingProblemId;
+    const renamedProblem = archives.find((item) => item.problem.id === previousId)?.problem;
+    try {
+      const response = await fetch("/api/submissions", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ oldProblemId: previousId, newProblemId: nextId, problemTitle: renamedProblem?.title || problem.title }) });
+      if (!response.ok) { const data = await response.json() as { error?: string }; throw new Error(data.error || "无法同步提交记录"); }
+    } catch (error) {
+      return toast(error instanceof Error ? error.message : "无法同步提交记录");
+    }
     setArchives((items) => items.map((item) => item.problem.id === renamingProblemId ? { ...item, problem: { ...item.problem, id: nextId } } : item));
     setProblem((item) => item.id === renamingProblemId ? { ...item, id: nextId } : item);
+    setHistory((items) => items.map((item) => item.problemId === previousId ? { ...item, problemId: nextId } : item));
     setRenamingProblemId(null);
     setNextProblemId("");
     toast(`题号已修改为 ${nextId}`);
@@ -597,7 +664,7 @@ export default function Home() {
           <div className="console-panel">
             <div className="console-tabs"><button className={consoleTab === "results" ? "active" : ""} onClick={() => setConsoleTab("results")}>测试结果</button><button className={consoleTab === "history" ? "active" : ""} onClick={() => setConsoleTab("history")}>提交记录</button>{results.length > 0 && <span className={score === 100 ? "score good" : "score"}>{passed}/{results.length} 通过 · {score} 分</span>}</div>
             <div className="console-content">
-              {consoleTab === "history" ? (history.length ? history.map((item, index) => <div className="history-row" key={index}><span>{item.time}</span><b className={item.status === "答案正确" ? "ok" : "bad"}>{item.status}</b><span>{item.passed}</span><code>GNU C++17</code></div>) : <div className="empty-state"><strong>暂无提交记录</strong><span>完成一次提交后，结果会显示在这里。</span></div>) : results.length ? results.map((result, index) => <div className="result-row" key={result.id}><span className={`status-dot ${result.status.toLowerCase()}`}>{result.status === "AC" ? "✓" : "!"}</span><b>测试点 {index + 1}</b><code>{result.status}</code><span>{result.duration} ms</span><small>{result.status === "AC" ? "输出正确" : result.status === "CE" ? result.actual : `期望 ${result.expected}，得到 ${result.actual}`}</small></div>) : <div className="empty-state"><span className="terminal-icon">›_</span><strong>C++17 判题器就绪</strong><span>点击“运行测试”进行服务端编译与执行。</span></div>}
+              {consoleTab === "history" ? (historyLoading ? <div className="empty-state"><strong>正在读取提交记录…</strong></div> : history.length ? history.map((item) => <div className="history-row" key={item.id}><button className="history-open" onClick={() => setSelectedSubmission(item)} title="查看本次提交代码"><span>{new Date(item.submittedAt).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}</span><b className={item.status === "答案正确" ? "ok" : "bad"}>{item.status}</b><span>{item.passed}</span><code>GNU C++17</code></button><button className="history-delete" aria-label={`删除 ${item.submittedAt} 的提交记录`} title="删除记录" onClick={(event) => deleteSubmission(event, item)}>删</button></div>) : <div className="empty-state"><strong>暂无提交记录</strong><span>完成一次提交后，结果会永久保存在这里。</span></div>) : results.length ? results.map((result, index) => <div className="result-row" key={result.id}><span className={`status-dot ${result.status.toLowerCase()}`}>{result.status === "AC" ? "✓" : "!"}</span><b>测试点 {index + 1}</b><code>{result.status}</code><span>{result.duration} ms</span><small>{result.status === "AC" ? "输出正确" : result.status === "CE" ? result.actual : `期望 ${result.expected}，得到 ${result.actual}`}</small></div>) : <div className="empty-state"><span className="terminal-icon">›_</span><strong>C++17 判题器就绪</strong><span>点击“运行测试”进行服务端编译与执行。</span></div>}
             </div>
           </div>
           <footer className="statusbar"><span>✓ IntelliSense</span><span>Ln {cursor.line}, Col {cursor.column}</span><span>UTF-8</span><span>Spaces: 4</span><span>GNU C++17</span></footer>
@@ -642,6 +709,13 @@ export default function Home() {
         <label>新题号<input autoFocus value={nextProblemId} onChange={(e) => setNextProblemId(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") confirmRenameProblem(); }} placeholder="如 ALG001" maxLength={20} /></label>
         <small>以字母开头，可使用字母、数字、下划线和短横线。</small>
         <button className="generate-button" onClick={confirmRenameProblem}>保存新题号</button>
+      </div></div>}
+
+      {selectedSubmission && <div className="modal-backdrop" onMouseDown={() => setSelectedSubmission(null)}><div className="modal submission-modal" onMouseDown={(event) => event.stopPropagation()}>
+        <button className="modal-close" onClick={() => setSelectedSubmission(null)}>×</button><span className="modal-kicker">SUBMISSION SNAPSHOT</span><h2>{selectedSubmission.problemId} · 提交代码</h2>
+        <p>{new Date(selectedSubmission.submittedAt).toLocaleString("zh-CN")} · {selectedSubmission.status} · 通过 {selectedSubmission.passed}</p>
+        <pre><code>{selectedSubmission.sourceCode}</code></pre>
+        <div className="submission-actions"><button onClick={() => setSelectedSubmission(null)}>关闭</button><button onClick={() => restoreSubmission(selectedSubmission)}>载入到编辑器</button></div>
       </div></div>}
 
       {showChat && <div className="chat-backdrop" onMouseDown={() => setShowChat(false)}><aside className="chat-drawer" onMouseDown={(e) => e.stopPropagation()}>
