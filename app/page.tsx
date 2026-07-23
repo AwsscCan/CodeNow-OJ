@@ -413,13 +413,13 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ apiKey, endpoint, model, problem, count: testPointCount }),
       });
-      const data = await response.json() as { tests?: TestCase[]; error?: string };
+      const data = await response.json() as { tests?: TestCase[]; error?: string; warning?: string | null };
       if (!response.ok || !data.tests) throw new Error(data.error || "AI 测试点生成失败");
       const existing = new Set(problem.samples.map((item) => `${item.input}\u0000${item.output}`));
       const fresh = data.tests.filter((item) => !existing.has(`${item.input}\u0000${item.output}`));
       setProblem((item) => ({ ...item, samples: [...item.samples, ...fresh] }));
       setResults([]);
-      toast(`AI 已补充 ${fresh.length} 个不重复测试点`);
+      toast(data.warning || `AI 已补充 ${fresh.length} 个不重复测试点`);
     } catch (error) {
       toast(error instanceof Error ? error.message : "AI 测试点生成失败");
     } finally {
