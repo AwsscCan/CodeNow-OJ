@@ -258,7 +258,7 @@ ${schema}
 
 export async function generateComplexityAwareTests(options: { apiKey: string; endpoint: string; model: string; problem: Record<string, unknown>; count: number }) {
   const { apiKey, endpoint, model, problem } = options;
-  const target = Math.max(2, Math.min(24, Math.floor(options.count)));
+  const target = Math.max(1, Math.min(24, Math.floor(options.count)));
   const chatUrl = resolveChatUrl(endpoint);
   const isDeepSeek = /(^|\.)api\.deepseek\.com$/i.test(chatUrl.hostname);
 

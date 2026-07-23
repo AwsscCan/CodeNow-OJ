@@ -834,12 +834,14 @@ export default function Home() {
     setGeneratingTests(true);
     setTestGenerationStatus("准备分批生成…");
     try {
-      const batchSize = 4;
-      const totalBatches = Math.ceil(testPointCount / batchSize);
+      const targetTotal = Math.max(1, testPointCount);
+      const batchSize = 3;
+      const maxAttempts = Math.max(Math.ceil(targetTotal / batchSize) * 3, 8);
       const existing = new Set(problem.samples.map((item) => `${item.input}\u0000${item.output}`));
       const currentProblem = { ...problem, samples: [...problem.samples] };
       const accepted: TestCase[] = [];
       const failedBatches: string[] = [];
+      let stalledAttempts = 0;
       let performanceCount = 0;
       let adversarialCount = 0;
       const batchFocus = [
@@ -863,7 +865,7 @@ export default function Home() {
               model,
               problem: {
                 ...currentProblem,
-                generationContext: `本次是第 ${batchIndex + 1}/${totalBatches} 批${retry ? "补救生成" : "生成"}。本批目标：${batchFocus[Math.min(batchIndex, batchFocus.length - 1)]} 前面批次的 input/output 已放入 samples，请把它们当作已生成测试点，严禁重复，并优先补充不同规模、不同边界和不同算法陷阱。`,
+                generationContext: `本次是第 ${batchIndex + 1} 次${retry ? "补救生成" : "生成"}。当前已经成功生成 ${accepted.length}/${targetTotal} 个，本次只需要再生成 ${count} 个全新的测试点。本批目标：${batchFocus[batchIndex % batchFocus.length]} 前面批次的 input/output 已放入 samples，请把它们当作已生成测试点，严禁重复，并优先补充不同规模、不同边界、不同算法陷阱和不同标签类型。`,
               },
               count,
             }),
@@ -896,23 +898,26 @@ export default function Home() {
         }
       }
 
-      for (let batchIndex = 0; batchIndex < totalBatches && accepted.length < testPointCount; batchIndex += 1) {
-        const count = Math.min(batchSize, testPointCount - accepted.length);
-        setTestGenerationStatus(`正在生成第 ${batchIndex + 1}/${totalBatches} 批…`);
+      for (let attempt = 0; accepted.length < targetTotal && attempt < maxAttempts && stalledAttempts < 5; attempt += 1) {
+        const count = Math.min(batchSize, targetTotal - accepted.length);
+        setTestGenerationStatus(`正在补足测试点 ${accepted.length}/${targetTotal}（第 ${attempt + 1} 次尝试）…`);
         try {
-          await requestBatch(batchIndex, count);
+          const added = await requestBatch(attempt, count);
+          stalledAttempts = added > 0 ? 0 : stalledAttempts + 1;
         } catch (firstError) {
-          setTestGenerationStatus(`第 ${batchIndex + 1}/${totalBatches} 批失败，正在用小批量补救…`);
+          setTestGenerationStatus(`第 ${attempt + 1} 次生成不稳定，正在用小批量补救…`);
           try {
-            await requestBatch(batchIndex, Math.min(2, count), true);
+            const added = await requestBatch(attempt, Math.min(2, count), true);
+            stalledAttempts = added > 0 ? 0 : stalledAttempts + 1;
           } catch (retryError) {
-            failedBatches.push(`第 ${batchIndex + 1} 批：${retryError instanceof Error ? retryError.message : firstError instanceof Error ? firstError.message : "生成失败"}`);
+            stalledAttempts += 1;
+            failedBatches.push(`第 ${attempt + 1} 次：${retryError instanceof Error ? retryError.message : firstError instanceof Error ? firstError.message : "生成失败"}`);
           }
         }
       }
 
       if (!accepted.length) throw new Error(failedBatches[0] || "AI 没有生成可用测试点");
-      toast(`${accepted.length >= testPointCount ? "分批生成完成" : "已尽量生成"}：新增 ${accepted.length} 个测试点，含 ${performanceCount} 个性能点、${adversarialCount} 个反例点${failedBatches.length ? `；${failedBatches.length} 批未成功，可再次点击继续补足` : ""}`);
+      toast(`${accepted.length >= targetTotal ? "分批生成完成" : "已尽量生成"}：新增 ${accepted.length} 个测试点，含 ${performanceCount} 个性能点、${adversarialCount} 个反例点${accepted.length < targetTotal ? "；模型连续返回重复或空结果，可再次点击继续从现有结果补足" : ""}${failedBatches.length ? `；${failedBatches.length} 次未成功` : ""}`);
     } catch (error) {
       toast(error instanceof Error ? error.message : "AI 测试点生成失败");
     } finally {
