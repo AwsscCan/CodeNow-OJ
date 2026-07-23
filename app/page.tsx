@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { CppEditor } from "./CppEditor";
 
 type TestCase = { id: number; input: string; output: string };
 type Problem = {
@@ -82,6 +83,8 @@ export default function Home() {
   const [consoleTab, setConsoleTab] = useState<"results" | "history">("results");
   const [results, setResults] = useState<Result[]>([]);
   const [running, setRunning] = useState(false);
+  const [compilerDiagnostic, setCompilerDiagnostic] = useState("");
+  const [cursor, setCursor] = useState({ line: 1, column: 1 });
   const [notice, setNotice] = useState("");
   const [showImport, setShowImport] = useState(false);
   const [importMode, setImportMode] = useState<"paste" | "json">("paste");
@@ -113,8 +116,6 @@ export default function Home() {
 
   const passed = results.filter((r) => r.status === "AC").length;
   const score = results.length ? Math.round((passed / results.length) * 100) : 0;
-  const lineCount = useMemo(() => code.split("\n").length, [code]);
-
   function toast(message: string) {
     setNotice(message);
     window.setTimeout(() => setNotice(""), 2600);
@@ -122,6 +123,7 @@ export default function Home() {
 
   async function runTests(submit = false) {
     setRunning(true);
+    setCompilerDiagnostic("");
     setConsoleTab("results");
     try {
       const response = await fetch("/api/judge", {
@@ -133,6 +135,7 @@ export default function Home() {
       if (!response.ok || !data.results) throw new Error(data.error || "C++ 判题服务暂不可用");
       const next = data.results;
       setResults(next);
+      setCompilerDiagnostic(next.find((item) => item.status === "CE")?.actual || "");
       if (submit) {
         const ok = next.filter((item) => item.status === "AC").length;
         setHistory((items) => [{ time: new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }), status: ok === next.length ? "答案正确" : "未通过", passed: `${ok}/${next.length}` }, ...items]);
@@ -200,6 +203,7 @@ export default function Home() {
       const generated = normalizeImportedProblem(data.problem);
       setProblem(generated);
       setCode(starterCode);
+      setCompilerDiagnostic("");
       setResults([]);
       setTab("problem");
       setShowImport(false);
@@ -223,6 +227,7 @@ export default function Home() {
       const data = await response.json() as { code?: string; error?: string };
       if (!response.ok || !data.code) throw new Error(data.error || "生成失败");
       setCode(data.code.replace(/^```(?:cpp|c\+\+|cc|cxx)?\s*/i, "").replace(/```\s*$/, ""));
+      setCompilerDiagnostic("");
       setShowAi(false);
       toast("AI 已生成解答，请运行测试验证");
     } catch (error) {
@@ -269,15 +274,15 @@ export default function Home() {
         <div className="resize-handle" />
 
         <section className="code-panel">
-          <div className="editor-toolbar"><div className="file-tab"><span>C++</span> main.cpp <i>●</i></div><div><select aria-label="编程语言" value="cpp17" disabled><option value="cpp17">GNU C++17 · GCC</option></select><button onClick={() => { setCode(starterCode); toast("C++ 模板已重置"); }}>↻</button><button>⚙</button></div></div>
-          <div className="editor-area"><div className="line-numbers">{Array.from({ length: Math.max(lineCount, 14) }, (_, i) => <span key={i}>{i + 1}</span>)}</div><textarea aria-label="代码编辑器" spellCheck={false} value={code} onChange={(e) => setCode(e.target.value)} /></div>
+          <div className="editor-toolbar"><div className="file-tab"><span>C++</span> main.cpp <i>●</i></div><div><select aria-label="编程语言" value="cpp17" disabled><option value="cpp17">GNU C++17 · GCC</option></select><button title="重置 C++ 模板" onClick={() => { setCode(starterCode); setCompilerDiagnostic(""); toast("C++ 模板已重置"); }}>↻</button><button title="编辑器设置">⚙</button></div></div>
+          <div className="editor-area"><CppEditor value={code} compilerDiagnostic={compilerDiagnostic} onChange={(next) => { setCode(next); setCompilerDiagnostic(""); }} onCursorChange={(line, column) => setCursor({ line, column })} /></div>
           <div className="console-panel">
             <div className="console-tabs"><button className={consoleTab === "results" ? "active" : ""} onClick={() => setConsoleTab("results")}>测试结果</button><button className={consoleTab === "history" ? "active" : ""} onClick={() => setConsoleTab("history")}>提交记录</button>{results.length > 0 && <span className={score === 100 ? "score good" : "score"}>{passed}/{results.length} 通过 · {score} 分</span>}</div>
             <div className="console-content">
               {consoleTab === "history" ? (history.length ? history.map((item, index) => <div className="history-row" key={index}><span>{item.time}</span><b className={item.status === "答案正确" ? "ok" : "bad"}>{item.status}</b><span>{item.passed}</span><code>GNU C++17</code></div>) : <div className="empty-state"><strong>暂无提交记录</strong><span>完成一次提交后，结果会显示在这里。</span></div>) : results.length ? results.map((result, index) => <div className="result-row" key={result.id}><span className={`status-dot ${result.status.toLowerCase()}`}>{result.status === "AC" ? "✓" : "!"}</span><b>测试点 {index + 1}</b><code>{result.status}</code><span>{result.duration} ms</span><small>{result.status === "AC" ? "输出正确" : result.status === "CE" ? result.actual : `期望 ${result.expected}，得到 ${result.actual}`}</small></div>) : <div className="empty-state"><span className="terminal-icon">›_</span><strong>C++17 判题器就绪</strong><span>点击“运行测试”进行服务端编译与执行。</span></div>}
             </div>
           </div>
-          <footer className="statusbar"><span>分支：main</span><span>Ln {lineCount}, Col 1</span><span>UTF-8</span><span>Spaces: 4</span><span>GNU C++17</span></footer>
+          <footer className="statusbar"><span>✓ IntelliSense</span><span>Ln {cursor.line}, Col {cursor.column}</span><span>UTF-8</span><span>Spaces: 4</span><span>GNU C++17</span></footer>
         </section>
       </section>
 
