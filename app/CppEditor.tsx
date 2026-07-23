@@ -8,11 +8,102 @@ loader.config({ paths: { vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.56.0/
 
 let configured = false;
 
+const cppControlKeywords = [
+  "if", "else", "switch", "case", "default", "for", "while", "do", "break", "continue", "return", "goto", "try", "catch", "throw",
+];
+const cppTypeKeywords = [
+  "bool", "char", "char8_t", "char16_t", "char32_t", "double", "float", "int", "long", "short", "signed", "unsigned", "void", "wchar_t",
+  "auto", "decltype", "size_t", "ptrdiff_t", "int64_t", "uint64_t", "int32_t", "uint32_t", "string", "vector", "array", "deque", "list",
+  "queue", "priority_queue", "stack", "set", "multiset", "map", "multimap", "unordered_set", "unordered_map", "pair", "tuple", "bitset",
+];
+const cppModifierKeywords = [
+  "const", "constexpr", "consteval", "constinit", "static", "extern", "inline", "virtual", "explicit", "mutable", "volatile", "register",
+  "friend", "using", "namespace", "typedef", "template", "typename", "class", "struct", "union", "enum", "public", "private", "protected",
+  "operator", "new", "delete", "sizeof", "alignof", "noexcept", "override", "final",
+];
+const cppConstantKeywords = ["true", "false", "nullptr", "NULL"];
+const cppStdSymbols = [
+  "std", "cin", "cout", "cerr", "clog", "endl", "ios", "sort", "stable_sort", "lower_bound", "upper_bound", "binary_search", "max", "min",
+  "swap", "reverse", "unique", "next_permutation", "prev_permutation", "gcd", "lcm", "abs", "sqrt", "pow", "begin", "end", "push_back",
+  "emplace_back", "pop_back", "insert", "erase", "find", "count", "size", "empty", "front", "back", "top",
+];
+
+function installCppTokenizer(monaco: Monaco) {
+  monaco.languages.setMonarchTokensProvider("cpp", {
+    defaultToken: "",
+    tokenPostfix: ".cpp",
+    controlKeywords: cppControlKeywords,
+    typeKeywords: cppTypeKeywords,
+    modifierKeywords: cppModifierKeywords,
+    constantKeywords: cppConstantKeywords,
+    stdSymbols: cppStdSymbols,
+    operators: [
+      "=", ">", "<", "!", "~", "?", ":", "==", "<=", ">=", "!=", "&&", "||", "++", "--", "+", "-", "*", "/", "&", "|", "^", "%", "<<",
+      ">>", "+=", "-=", "*=", "/=", "&=", "|=", "^=", "%=", "<<=", ">>=", "->", "::", ".",
+    ],
+    symbols: /[=><!~?:&|+\-*\/\^%]+/,
+    escapes: /\\(?:[abfnrtv\\"']|x[0-9A-Fa-f]+|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8})/,
+    tokenizer: {
+      root: [
+        [/^\s*#\s*[a-zA-Z_]\w*/, "keyword.directive.cpp"],
+        [/[a-zA-Z_]\w*/, {
+          cases: {
+            "@controlKeywords": "keyword.control.cpp",
+            "@typeKeywords": "keyword.type.cpp",
+            "@modifierKeywords": "keyword.modifier.cpp",
+            "@constantKeywords": "constant.language.cpp",
+            "@stdSymbols": "support.function.cpp",
+            "@default": "identifier.cpp",
+          },
+        }],
+        { include: "@whitespace" },
+        [/[{}()\[\]]/, "@brackets"],
+        [/[<>](?!@symbols)/, "@brackets"],
+        [/@symbols/, { cases: { "@operators": "operator.cpp", "@default": "" } }],
+        [/\d*\.\d+([eE][\-+]?\d+)?[fFlL]?/, "number.float.cpp"],
+        [/0[xX][0-9a-fA-F]+[uUlL]*/, "number.hex.cpp"],
+        [/\d+[uUlL]*/, "number.cpp"],
+        [/[;,.]/, "delimiter.cpp"],
+        [/"([^"\\]|\\.)*$/, "string.invalid.cpp"],
+        [/"/, { token: "string.quote.cpp", bracket: "@open", next: "@string" }],
+        [/'([^'\\]|\\.)'/, "string.char.cpp"],
+        [/'.*$/, "string.invalid.cpp"],
+      ],
+      string: [
+        [/[^\\"]+/, "string.cpp"],
+        [/@escapes/, "string.escape.cpp"],
+        [/\\./, "string.escape.invalid.cpp"],
+        [/"/, { token: "string.quote.cpp", bracket: "@close", next: "@pop" }],
+      ],
+      whitespace: [
+        [/[ \t\r\n]+/, ""],
+        [/\/\*/, "comment.cpp", "@comment"],
+        [/\/\/.*$/, "comment.cpp"],
+      ],
+      comment: [
+        [/[^\/*]+/, "comment.cpp"],
+        [/\*\//, "comment.cpp", "@pop"],
+        [/[\/*]/, "comment.cpp"],
+      ],
+    },
+  } as MonacoLanguages.IMonarchLanguage);
+}
+
 function configureCpp(monaco: Monaco) {
   monaco.editor.defineTheme("codenow-vscode", {
     base: "vs-dark",
     inherit: true,
     rules: [
+      { token: "keyword.directive.cpp", foreground: "C586C0", fontStyle: "bold" },
+      { token: "keyword.control.cpp", foreground: "C586C0", fontStyle: "bold" },
+      { token: "keyword.type.cpp", foreground: "4EC9B0" },
+      { token: "keyword.modifier.cpp", foreground: "569CD6" },
+      { token: "constant.language.cpp", foreground: "569CD6" },
+      { token: "support.function.cpp", foreground: "DCDCAA" },
+      { token: "identifier.cpp", foreground: "D4D4D4" },
+      { token: "number.float.cpp", foreground: "B5CEA8" },
+      { token: "number.hex.cpp", foreground: "B5CEA8" },
+      { token: "string.escape.cpp", foreground: "D7BA7D" },
       { token: "keyword", foreground: "C586C0", fontStyle: "bold" },
       { token: "keyword.control", foreground: "C586C0" },
       { token: "type", foreground: "4EC9B0" },
@@ -51,6 +142,16 @@ function configureCpp(monaco: Monaco) {
     base: "vs",
     inherit: true,
     rules: [
+      { token: "keyword.directive.cpp", foreground: "AF00DB", fontStyle: "bold" },
+      { token: "keyword.control.cpp", foreground: "AF00DB", fontStyle: "bold" },
+      { token: "keyword.type.cpp", foreground: "267F99" },
+      { token: "keyword.modifier.cpp", foreground: "0000FF" },
+      { token: "constant.language.cpp", foreground: "0000FF" },
+      { token: "support.function.cpp", foreground: "795E26" },
+      { token: "identifier.cpp", foreground: "1F2430" },
+      { token: "number.float.cpp", foreground: "098658" },
+      { token: "number.hex.cpp", foreground: "098658" },
+      { token: "string.escape.cpp", foreground: "EE0000" },
       { token: "keyword", foreground: "AF00DB", fontStyle: "bold" },
       { token: "keyword.control", foreground: "AF00DB" },
       { token: "type", foreground: "267F99" },
@@ -85,6 +186,16 @@ function configureCpp(monaco: Monaco) {
     base: "vs",
     inherit: true,
     rules: [
+      { token: "keyword.directive.cpp", foreground: "B84F5B", fontStyle: "bold" },
+      { token: "keyword.control.cpp", foreground: "B84F5B", fontStyle: "bold" },
+      { token: "keyword.type.cpp", foreground: "476A78" },
+      { token: "keyword.modifier.cpp", foreground: "9D5A74" },
+      { token: "constant.language.cpp", foreground: "9D5A74" },
+      { token: "support.function.cpp", foreground: "8A633D" },
+      { token: "identifier.cpp", foreground: "463733" },
+      { token: "number.float.cpp", foreground: "B46A30" },
+      { token: "number.hex.cpp", foreground: "B46A30" },
+      { token: "string.escape.cpp", foreground: "C7743F" },
       { token: "keyword", foreground: "B84F5B", fontStyle: "bold" },
       { token: "keyword.control", foreground: "B84F5B" },
       { token: "type", foreground: "476A78" },
@@ -122,6 +233,7 @@ function configureCpp(monaco: Monaco) {
 
   if (configured) return;
   configured = true;
+  installCppTokenizer(monaco);
 
   monaco.languages.registerCompletionItemProvider("cpp", {
     triggerCharacters: ["#", ":", ".", "<"],
