@@ -14,7 +14,7 @@ from bs4 import BeautifulSoup, Tag
 
 INDEX_URL = "https://www.cnblogs.com/littlehb/p/15393332.html"
 OUTPUT = Path(__file__).resolve().parents[1] / "public" / "acwing-course.json"
-HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; CodeForgeOJ/1.0; educational import)"}
+HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; CodeNowOJ/1.0; educational import)"}
 
 
 def clean(text: str) -> str:

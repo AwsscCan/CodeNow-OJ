@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://codeforge-oj-7f23.steinoscar720.chatgpt.site/problem.schema.json",
-  "title": "CodeForge OJ Problem Import V1",
-  "description": "CodeForge OJ 题目与测试点导入格式。所有文件必须使用 UTF-8 编码。",
+  "title": "CodeNow OJ Problem Import V1",
+  "description": "CodeNow OJ 题目与测试点导入格式。所有文件必须使用 UTF-8 编码。",
   "type": "object",
   "required": ["title", "description", "inputFormat", "outputFormat", "samples"],
   "additionalProperties": false,

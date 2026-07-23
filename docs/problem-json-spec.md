@@ -1,4 +1,4 @@
-# CodeForge OJ 题目 JSON 规范（V1）
+# CodeNow OJ 题目 JSON 规范（V1）
 
 文件必须使用 UTF-8 编码，根节点必须是 JSON 对象。
 

@@ -9,7 +9,7 @@ loader.config({ paths: { vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.56.0/
 let configured = false;
 
 function configureCpp(monaco: Monaco) {
-  monaco.editor.defineTheme("codeforge-vscode", {
+  monaco.editor.defineTheme("codenow-vscode", {
     base: "vs-dark",
     inherit: true,
     rules: [
@@ -47,7 +47,7 @@ function configureCpp(monaco: Monaco) {
       "minimap.background": "#10151F",
     },
   });
-  monaco.editor.defineTheme("codeforge-vscode-light", {
+  monaco.editor.defineTheme("codenow-vscode-light", {
     base: "vs",
     inherit: true,
     rules: [
@@ -134,7 +134,7 @@ function configureCpp(monaco: Monaco) {
   });
 
   monaco.languages.registerInlayHintsProvider("cpp", {
-    displayName: "CodeForge C++ parameter hints",
+    displayName: "CodeNow C++ parameter hints",
     provideInlayHints(model, range) {
       const hints: MonacoLanguages.InlayHint[] = [];
       const names: Record<string, [string, string]> = { sort: ["first:", "last:"], lower_bound: ["first:", "last:"] };
@@ -242,7 +242,7 @@ export function CppEditor({ value, themeMode, compilerDiagnostic, onChange, onCu
     const model = editor.getModel();
     if (model) {
       model.updateOptions({ tabSize: 4, insertSpaces: true });
-      monaco.editor.setModelMarkers(model, "codeforge-local", getLocalMarkers(model.getValue(), monaco));
+      monaco.editor.setModelMarkers(model, "codenow-local", getLocalMarkers(model.getValue(), monaco));
       monaco.editor.setModelMarkers(model, "gcc", getCompilerMarkers(model.getValue(), compilerDiagnostic, monaco));
     }
     editor.onDidChangeCursorPosition(({ position }) => onCursorChange(position.lineNumber, position.column));
@@ -254,14 +254,14 @@ export function CppEditor({ value, themeMode, compilerDiagnostic, onChange, onCu
     language="cpp"
     path="main.cpp"
     value={value}
-    theme={themeMode === "light" ? "codeforge-vscode-light" : "codeforge-vscode"}
+    theme={themeMode === "light" ? "codenow-vscode-light" : "codenow-vscode"}
     beforeMount={configureCpp}
     onMount={handleMount}
     onChange={(next) => {
       const updated = next ?? "";
       const model = editorRef.current?.getModel();
       if (model && monacoRef.current) {
-        monacoRef.current.editor.setModelMarkers(model, "codeforge-local", getLocalMarkers(updated, monacoRef.current));
+        monacoRef.current.editor.setModelMarkers(model, "codenow-local", getLocalMarkers(updated, monacoRef.current));
         monacoRef.current.editor.setModelMarkers(model, "gcc", []);
       }
       onChange(updated);

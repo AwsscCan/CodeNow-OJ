@@ -50,6 +50,7 @@ int main() {
 
 type Result = { id: number; status: "AC" | "WA" | "RE" | "CE" | "TLE"; actual: string; expected: string; duration: number };
 type AiProvider = "deepseek" | "openai" | "custom";
+type ThemeMode = "light" | "dark" | "girl";
 type ArchivedProblem = { problem: Problem; folder: string; archivedAt: string };
 type ChatMessage = { role: "user" | "assistant"; content: string };
 type BundledProblem = Problem & { folder: string; sourceUrl: string; extractionStatus: "complete" | "needs_review" };
@@ -57,6 +58,21 @@ type SubmissionRecord = { id: string; problemId: string; problemTitle: string; s
 type CatalogEntry = { kind: "built-in"; id: string } | { kind: "acwing"; id: string; item: BundledProblem } | { kind: "archive"; id: string; item: ArchivedProblem };
 
 const naturalCollator = new Intl.Collator("zh-CN", { numeric: true, sensitivity: "base" });
+
+function readMigratedSetting(currentKey: string, legacyKey: string) {
+  const current = localStorage.getItem(currentKey);
+  if (current !== null) return current;
+  const legacy = localStorage.getItem(legacyKey);
+  if (legacy !== null) localStorage.setItem(currentKey, legacy);
+  return legacy;
+}
+
+const mascotMessages = [
+  "今天也一起 AC 吧！",
+  "卡住时可以问 AI，我会陪你整理思路。",
+  "别忘了检查边界和时空复杂度哦。",
+  "提交前先跑一遍测试点吧。",
+];
 
 const acwingCourse = acwingCourseData as BundledProblem[];
 const acwingFolders = Array.from(new Set(acwingCourse.flatMap((problem) => {
@@ -137,7 +153,7 @@ export default function Home() {
   const [consoleTab, setConsoleTab] = useState<"results" | "history">("results");
   const [results, setResults] = useState<Result[]>([]);
   const [running, setRunning] = useState(false);
-  const [themeMode, setThemeMode] = useState<"light" | "dark">("dark");
+  const [themeMode, setThemeMode] = useState<ThemeMode>("dark");
   const [themeReady, setThemeReady] = useState(false);
   const [editorTheme, setEditorTheme] = useState<"light" | "dark">("dark");
   const [editorThemeReady, setEditorThemeReady] = useState(false);
@@ -177,10 +193,12 @@ export default function Home() {
   const [history, setHistory] = useState<SubmissionRecord[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [selectedSubmission, setSelectedSubmission] = useState<SubmissionRecord | null>(null);
+  const [mascotVisible, setMascotVisible] = useState(true);
+  const [mascotMessage, setMascotMessage] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const saved = localStorage.getItem("codeforge-workspace");
+    const saved = readMigratedSetting("codenow-workspace", "codeforge-workspace");
     if (saved) {
       try {
         const data = JSON.parse(saved);
@@ -191,32 +209,32 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem("codeforge-workspace", JSON.stringify({ problem, code }));
+    localStorage.setItem("codenow-workspace", JSON.stringify({ problem, code }));
   }, [problem, code]);
 
   useEffect(() => {
-    const saved = localStorage.getItem("codeforge-theme");
-    if (saved === "light" || saved === "dark") setThemeMode(saved);
+    const saved = readMigratedSetting("codenow-theme", "codeforge-theme");
+    if (saved === "light" || saved === "dark" || saved === "girl") setThemeMode(saved);
     else if (window.matchMedia?.("(prefers-color-scheme: light)").matches) setThemeMode("light");
     setThemeReady(true);
   }, []);
 
   useEffect(() => {
-    if (themeReady) localStorage.setItem("codeforge-theme", themeMode);
+    if (themeReady) localStorage.setItem("codenow-theme", themeMode);
   }, [themeMode, themeReady]);
 
   useEffect(() => {
-    const saved = localStorage.getItem("codeforge-editor-theme");
+    const saved = readMigratedSetting("codenow-editor-theme", "codeforge-editor-theme");
     if (saved === "light" || saved === "dark") setEditorTheme(saved);
     setEditorThemeReady(true);
   }, []);
 
   useEffect(() => {
-    if (editorThemeReady) localStorage.setItem("codeforge-editor-theme", editorTheme);
+    if (editorThemeReady) localStorage.setItem("codenow-editor-theme", editorTheme);
   }, [editorTheme, editorThemeReady]);
 
   useEffect(() => {
-    const saved = localStorage.getItem("codeforge-api-keys");
+    const saved = readMigratedSetting("codenow-api-keys", "codeforge-api-keys");
     if (saved) {
       try {
         const keys = JSON.parse(saved) as Partial<Record<AiProvider, unknown>>;
@@ -231,11 +249,11 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (apiKeysReady) localStorage.setItem("codeforge-api-keys", JSON.stringify(apiKeys));
+    if (apiKeysReady) localStorage.setItem("codenow-api-keys", JSON.stringify(apiKeys));
   }, [apiKeys, apiKeysReady]);
 
   useEffect(() => {
-    const saved = localStorage.getItem("codeforge-problem-library");
+    const saved = readMigratedSetting("codenow-problem-library", "codeforge-problem-library");
     if (saved) {
       try {
         const data = JSON.parse(saved) as { archives?: ArchivedProblem[]; folders?: string[]; selectedFolder?: string; collapsedFolders?: string[]; folderOrder?: string[]; includeSubfolders?: boolean };
@@ -251,8 +269,17 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (libraryReady) localStorage.setItem("codeforge-problem-library", JSON.stringify({ archives, folders, selectedFolder, collapsedFolders, folderOrder, includeSubfolders }));
+    if (libraryReady) localStorage.setItem("codenow-problem-library", JSON.stringify({ archives, folders, selectedFolder, collapsedFolders, folderOrder, includeSubfolders }));
   }, [archives, folders, selectedFolder, collapsedFolders, folderOrder, includeSubfolders, libraryReady]);
+
+  useEffect(() => {
+    const saved = readMigratedSetting("codenow-mascot-visible", "codeforge-mascot-visible");
+    if (saved === "false") setMascotVisible(false);
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("codenow-mascot-visible", String(mascotVisible));
+  }, [mascotVisible]);
 
   useEffect(() => {
     if (libraryReady) setArchives((items) => items.map((item) => item.problem.id === problem.id ? { ...item, problem } : item));
@@ -669,14 +696,15 @@ export default function Home() {
   return (
     <main className={`app-shell theme-${themeMode}`}>
       <header className="topbar">
-        <div className="brand"><span className="brand-mark">C<span>F</span></span><span>CodeForge</span><em>OJ</em></div>
+        <div className="brand"><img className="brand-mark" src="/codenow/icon.jpg" alt="CodeNow 图标" /><span>CodeNow</span><em>OJ</em></div>
         <nav><button className={pageView === "library" ? "nav-active" : ""} onClick={() => setPageView("library")}>题库</button><button className={pageView === "workspace" ? "nav-active" : ""} onClick={() => setPageView("workspace")}>做题</button><button onClick={() => toast("比赛功能正在开发中，敬请期待")}>比赛</button><button onClick={() => toast("讨论区正在开发中，敬请期待")}>讨论</button></nav>
-        <div className="header-actions"><button className="icon-button theme-toggle" aria-label={`切换到${themeMode === "dark" ? "亮色" : "暗色"}模式`} title={`切换到${themeMode === "dark" ? "亮色" : "暗色"}模式`} onClick={() => setThemeMode((mode) => mode === "dark" ? "light" : "dark")}>{themeMode === "dark" ? "☀" : "◐"}</button><span className="avatar">LR</span><div className="user-copy"><b>LinR</b><small>Lv.12 · 1842</small></div></div>
+        <div className="header-actions"><label className="theme-picker" title="切换网站主题"><span aria-hidden="true">✦</span><select aria-label="网站主题" value={themeMode} onChange={(event) => setThemeMode(event.target.value as ThemeMode)}><option value="light">亮色</option><option value="dark">暗色</option><option value="girl">少女</option></select></label><span className="avatar">LR</span><div className="user-copy"><b>LinR</b><small>Lv.12 · 1842</small></div></div>
       </header>
 
       {pageView === "library" ? <section className="library-page">
         <div className="library-hero">
-          <div><span>CODEFORGE PROBLEM SET</span><h1>我的题库</h1><p>选择一道题进入专注的 C++ 编程与判题工作区。</p></div>
+          <div><span>CODENOW PROBLEM SET</span><h1>我的题库</h1><p>选择一道题进入专注的 C++ 编程与判题工作区。</p></div>
+          <div className="girl-portrait-stack" aria-hidden="true"><img src="/codenow/portrait-ribbon.jpg" alt="" /><img src="/codenow/portrait-classroom.jpg" alt="" /><img src="/codenow/portrait-sailor.jpg" alt="" /></div>
           <button onClick={() => { if (selectedFolder === "全部题目") setSelectedFolder("默认题库"); setShowImport(true); }}>＋ 添加题目</button>
         </div>
         <div className="library-page-body">
@@ -825,6 +853,7 @@ export default function Home() {
         <div className="ai-summary"><span>当前题目</span><b>{problem.id} · {problem.title}</b><small>{problem.samples.length} 个测试点将随题面一并发送</small></div>
         <button className="generate-button" disabled={aiBusy} onClick={askAi}>{aiBusy ? "正在思考并编写 C++…" : `✦ 使用 ${provider === "deepseek" ? "DeepSeek" : provider === "openai" ? "OpenAI" : "自定义 API"} 生成 C++17 解答`}</button>
       </div></div>}
+      {themeMode === "girl" && (mascotVisible ? <aside className="desktop-mascot" aria-label="CodeNow 编程伙伴"><button className="mascot-close" aria-label="暂时隐藏桌宠" title="暂时隐藏桌宠" onClick={() => setMascotVisible(false)}>×</button><button className="mascot-bubble" onClick={() => setMascotMessage((value) => (value + 1) % mascotMessages.length)}>{mascotMessages[mascotMessage]}<small>点击我换一句</small></button><button className="mascot-character" aria-label="和 CodeNow 编程伙伴互动" onClick={() => setMascotMessage((value) => (value + 1) % mascotMessages.length)}><img src="/codenow/mascot.png" alt="抱着笔记本电脑的 CodeNow 编程伙伴" /></button></aside> : <button className="mascot-reopen" onClick={() => setMascotVisible(true)} title="召回 CodeNow 编程伙伴"><img src="/codenow/icon.jpg" alt="" />召回伙伴</button>)}
       {notice && <div className="toast">{notice}</div>}
     </main>
   );
