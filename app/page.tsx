@@ -208,8 +208,10 @@ export default function Home() {
   const [mascotMessage, setMascotMessage] = useState(0);
   const [mascotPosition, setMascotPosition] = useState<MascotPosition | null>(null);
   const [mascotDragging, setMascotDragging] = useState(false);
+  const [showMascotAiPrompt, setShowMascotAiPrompt] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const mascotRef = useRef<HTMLElement>(null);
+  const codePanelRef = useRef<HTMLElement>(null);
   const mascotDragOffset = useRef({ x: 0, y: 0 });
 
   useEffect(() => {
@@ -318,14 +320,23 @@ export default function Home() {
       const y = Math.min(window.innerHeight - 16 - height, Math.max(16, event.clientY - mascotDragOffset.current.y));
       setMascotPosition({ x, y });
     };
-    const stop = () => setMascotDragging(false);
+    const stop = (event: PointerEvent) => {
+      setMascotDragging(false);
+      const bounds = codePanelRef.current?.getBoundingClientRect();
+      if (!bounds || pageView !== "workspace" || showAi || showMascotAiPrompt) return;
+      const droppedOnCode = event.clientX >= bounds.left && event.clientX <= bounds.right && event.clientY >= bounds.top && event.clientY <= bounds.bottom;
+      if (droppedOnCode) {
+        setMascotMessage(2);
+        setShowMascotAiPrompt(true);
+      }
+    };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", stop, { once: true });
     return () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", stop);
     };
-  }, [mascotDragging]);
+  }, [mascotDragging, pageView, showAi, showMascotAiPrompt]);
 
   useEffect(() => {
     if (libraryReady) setArchives((items) => items.map((item) => item.problem.id === problem.id ? { ...item, problem } : item));
@@ -847,7 +858,7 @@ export default function Home() {
 
         <div className="resize-handle" />
 
-        <section className={`code-panel editor-theme-${editorTheme}`}>
+        <section ref={codePanelRef} className={`code-panel editor-theme-${editorTheme}`}>
           <div className="coding-companion-scene" aria-hidden="true"><img src="/codenow/portrait-classroom.jpg" alt="" /></div>
           <div className="editor-toolbar"><div className="file-tab"><span>C++</span> main.cpp <i>●</i></div><div><select aria-label="编程语言" value="cpp17" disabled><option value="cpp17">GNU C++17 · GCC</option></select><button title="重置 C++ 模板" onClick={() => { setCode(starterCode); setCompilerDiagnostic(""); toast("C++ 模板已重置"); }}>↻</button><label className="editor-theme-picker" title="切换编辑器主题"><span aria-hidden="true">◐</span><select aria-label="编辑器主题" value={editorTheme} onChange={(event) => setEditorTheme(event.target.value as EditorTheme)}><option value="dark">暗色</option><option value="light">亮色</option><option value="girl">少女</option></select></label></div></div>
           <div className="editor-area"><CppEditor value={code} themeMode={editorTheme} compilerDiagnostic={compilerDiagnostic} onChange={(next) => { setCode(next); setCompilerDiagnostic(""); }} onCursorChange={(line, column) => setCursor({ line, column })} /></div>
@@ -919,6 +930,12 @@ export default function Home() {
         </div>
         <footer><textarea value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) sendChat(); }} placeholder="询问思路、复杂度、代码报错……（Ctrl + Enter 发送）" /><button disabled={chatBusy || !chatInput.trim()} onClick={sendChat}>发送</button></footer>
       </aside></div>}
+
+      {showMascotAiPrompt && <div className="modal-backdrop" onMouseDown={() => setShowMascotAiPrompt(false)}><div className="modal mascot-ai-modal" onMouseDown={(e) => e.stopPropagation()}>
+        <button className="modal-close" onClick={() => setShowMascotAiPrompt(false)}>×</button><span className="modal-kicker">TAKAGI CHALLENGE</span><h2>要不要让我来挑战这题？</h2>
+        <p>把我拖到代码旁边，是想偷偷让我帮你写解答吗？我们来比比胜负吧：我先用 AI 写一份 C++17，你来负责找出有没有破绽。</p>
+        <div className="mascot-ai-actions"><button onClick={() => setShowMascotAiPrompt(false)}>还是自己来</button><button onClick={() => { setShowMascotAiPrompt(false); setShowAi(true); }}>使用 AI 解题</button></div>
+      </div></div>}
 
       {showAi && <div className="modal-backdrop" onMouseDown={() => setShowAi(false)}><div className="modal ai-modal" onMouseDown={(e) => e.stopPropagation()}>
         <button className="modal-close" onClick={() => setShowAi(false)}>×</button><span className="modal-kicker purple">AI COPILOT</span><h2>让 AI 编写解答</h2>
