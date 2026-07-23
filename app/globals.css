@@ -113,3 +113,9 @@ button { cursor:pointer; }
 @media(prefers-reduced-motion:reduce){.mascot-character{animation:none}.mood-laugh .mascot-character,.mood-smug .mascot-character,.mood-surprised .mascot-character,.mood-gentle .mascot-character,.mood-annoyed .mascot-character,.mood-angry .mascot-character{animation:none}}
 @keyframes drawer-in { from { opacity:0; transform:translateX(28px); } } @keyframes pop { from { opacity:0; transform:scale(.96) translateY(8px); } } @keyframes toast { from { opacity:0; transform:translate(-50%,8px); } }
 @media(max-width:1100px){.user-copy{display:none}.topbar nav button{padding:0 11px}.problem-content{padding-left:24px;padding-right:24px}.workspace-actions button{padding:0 9px}.workspace-actions button:first-child{display:none}.theme-girl .girl-portrait-stack{display:none}.desktop-mascot{right:5px;transform:scale(.88);transform-origin:right bottom}}
+
+.theme-girl .topbar,.theme-girl .library-page-sidebar,.theme-girl .library-catalog,.theme-girl .workspace-bar,.theme-girl .problem-panel,.theme-girl .modal,.theme-girl .chat-drawer,.editor-theme-girl .editor-toolbar,.editor-theme-girl .console-panel,.coding-companion-scene span,.mascot-bubble { backdrop-filter:none!important; }
+.desktop-mascot { contain:layout paint style; will-change:left,top; }
+.desktop-mascot.dragging,.desktop-mascot.dragging .mascot-character { filter:none!important; animation:none!important; }
+.mascot-character { will-change:transform; }
+.coding-companion-scene,.coding-companion-scene img { filter:none!important; }

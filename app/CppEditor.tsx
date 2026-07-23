@@ -268,6 +268,9 @@ type Props = {
 export function CppEditor({ value, themeMode, compilerDiagnostic, onChange, onCursorChange }: Props) {
   const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<Monaco | null>(null);
+  const localMarkerTimer = useRef<number | null>(null);
+  const cursorFrame = useRef<number | null>(null);
+  const latestCursor = useRef({ line: 1, column: 1 });
 
   useEffect(() => {
     const model = editorRef.current?.getModel();
@@ -283,9 +286,21 @@ export function CppEditor({ value, themeMode, compilerDiagnostic, onChange, onCu
       monaco.editor.setModelMarkers(model, "codenow-local", getLocalMarkers(model.getValue(), monaco));
       monaco.editor.setModelMarkers(model, "gcc", getCompilerMarkers(model.getValue(), compilerDiagnostic, monaco));
     }
-    editor.onDidChangeCursorPosition(({ position }) => onCursorChange(position.lineNumber, position.column));
+    editor.onDidChangeCursorPosition(({ position }) => {
+      latestCursor.current = { line: position.lineNumber, column: position.column };
+      if (cursorFrame.current !== null) return;
+      cursorFrame.current = window.requestAnimationFrame(() => {
+        cursorFrame.current = null;
+        onCursorChange(latestCursor.current.line, latestCursor.current.column);
+      });
+    });
     editor.focus();
   };
+
+  useEffect(() => () => {
+    if (localMarkerTimer.current !== null) window.clearTimeout(localMarkerTimer.current);
+    if (cursorFrame.current !== null) window.cancelAnimationFrame(cursorFrame.current);
+  }, []);
 
   return <Editor
     height="100%"
@@ -299,7 +314,12 @@ export function CppEditor({ value, themeMode, compilerDiagnostic, onChange, onCu
       const updated = next ?? "";
       const model = editorRef.current?.getModel();
       if (model && monacoRef.current) {
-        monacoRef.current.editor.setModelMarkers(model, "codenow-local", getLocalMarkers(updated, monacoRef.current));
+        const monaco = monacoRef.current;
+        if (localMarkerTimer.current !== null) window.clearTimeout(localMarkerTimer.current);
+        localMarkerTimer.current = window.setTimeout(() => {
+          localMarkerTimer.current = null;
+          monaco.editor.setModelMarkers(model, "codenow-local", getLocalMarkers(updated, monaco));
+        }, 180);
         monacoRef.current.editor.setModelMarkers(model, "gcc", []);
       }
       onChange(updated);
@@ -311,7 +331,7 @@ export function CppEditor({ value, themeMode, compilerDiagnostic, onChange, onCu
       fontSize: 13,
       fontLigatures: true,
       lineHeight: 21,
-      minimap: { enabled: true, scale: 1, showSlider: "mouseover" },
+      minimap: { enabled: false },
       quickSuggestions: { other: true, comments: false, strings: false },
       suggestOnTriggerCharacters: true,
       inlineSuggest: { enabled: true, showToolbar: "onHover" },
@@ -328,9 +348,9 @@ export function CppEditor({ value, themeMode, compilerDiagnostic, onChange, onCu
       renderValidationDecorations: "on",
       renderWhitespace: "selection",
       scrollBeyondLastLine: false,
-      smoothScrolling: true,
-      cursorSmoothCaretAnimation: "on",
-      cursorBlinking: "smooth",
+      smoothScrolling: false,
+      cursorSmoothCaretAnimation: "off",
+      cursorBlinking: "blink",
       padding: { top: 12, bottom: 12 },
       wordWrap: "off",
     }}

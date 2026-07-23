@@ -219,6 +219,7 @@ export default function Home() {
   const mascotDragged = useRef(false);
   const mascotNextPosition = useRef<MascotPosition | null>(null);
   const mascotDragFrame = useRef<number | null>(null);
+  const mascotDragSize = useRef({ width: 205, height: 255 });
 
   useEffect(() => {
     const saved = readMigratedSetting("codenow-workspace", "codeforge-workspace");
@@ -330,8 +331,7 @@ export default function Home() {
       node.style.bottom = "auto";
     };
     const move = (event: PointerEvent) => {
-      const width = mascotRef.current?.offsetWidth || 205;
-      const height = mascotRef.current?.offsetHeight || 255;
+      const { width, height } = mascotDragSize.current;
       const x = Math.min(window.innerWidth - 16 - width, Math.max(16, event.clientX - mascotDragOffset.current.x));
       const y = Math.min(window.innerHeight - 16 - height, Math.max(16, event.clientY - mascotDragOffset.current.y));
       mascotNextPosition.current = { x, y };
@@ -432,6 +432,7 @@ export default function Home() {
     if (!rect) return;
     event.preventDefault();
     event.stopPropagation();
+    mascotDragSize.current = { width: rect.width, height: rect.height };
     mascotDragOffset.current = { x: event.clientX - rect.left, y: event.clientY - rect.top };
     mascotDragStart.current = { x: event.clientX, y: event.clientY };
     mascotDragged.current = false;
