@@ -323,6 +323,7 @@ export default function Home() {
     const applySplit = () => {
       workspaceResizeFrame.current = null;
       setWorkspaceSplit(workspaceNextSplit.current);
+      workspaceRef.current?.style.setProperty("--problem-ratio", `${workspaceNextSplit.current}%`);
     };
     const move = (event: PointerEvent) => {
       const bounds = workspaceRef.current?.getBoundingClientRect();
@@ -482,7 +483,9 @@ export default function Home() {
   function startWorkspaceResize(event: React.PointerEvent<HTMLButtonElement>) {
     if (event.button !== 0) return;
     event.preventDefault();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
     workspaceNextSplit.current = workspaceSplit;
+    workspaceRef.current?.style.setProperty("--problem-ratio", `${workspaceSplit}%`);
     setWorkspaceResizing(true);
   }
 
