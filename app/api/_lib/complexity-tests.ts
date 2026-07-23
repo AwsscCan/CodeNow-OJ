@@ -168,6 +168,28 @@ function findTestList(parsed: unknown): unknown[] | null {
   return null;
 }
 
+// Patterns that indicate AI laziness — "..." / "……" / "略" etc.
+const ELLIPSIS_PATTERNS = [
+  /\.{2,}/,              // "..." or "...." 省略号
+  /…{2,}/,               // "……" 中文省略号
+  /\betc\.?\b/i,          // "etc" / "etc."
+  /[（(]?\s*略\s*[)）]?/,  // "(略)" "略"
+  /[（(]?\s*同上\s*[)）]?/, // "(同上)"
+  /[（(]?\s*下同\s*[)）]?/, // "(下同)"
+  /以此类推/,              // "以此类推"
+  /依此类推/,              // "依此类推"
+  /重复.*次/,              // "重复N次"
+  /类似.*[以到].*/,        // "类似...到..."
+  /\bplaceholder\b/i,     // "placeholder"
+  /\bTODO\b/,             // "TODO"
+  /\bsame as above\b/i,   // "same as above"
+];
+
+function isInvalidTestData(value: string): boolean {
+  const normalized = value.replace(/\\n/g, "\n");
+  return ELLIPSIS_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
 function parseTests(content: string): GeneratedTest[] {
   const parsed = parseJson(content);
   const list = findTestList(parsed);
@@ -178,9 +200,14 @@ function parseTests(content: string): GeneratedTest[] {
     const input = readFirst(test, ["input", "stdin", "input_data", "in", "输入", "输入数据", "标准输入", "测试输入", "样例输入"]);
     const output = readFirst(test, ["output", "stdout", "expectedOutput", "expected_output", "expected", "answer", "output_data", "out", "输出", "输出数据", "标准输出", "预期输出", "期望输出", "答案", "样例输出"]);
     try {
+      const materializedInput = materialize(input, test.inputParts);
+      const materializedOutput = materialize(output, test.outputParts);
+      if (isInvalidTestData(materializedInput) || isInvalidTestData(materializedOutput)) {
+        return []; // Reject tests with ellipsis/placeholders
+      }
       return [{
-        input: materialize(input, test.inputParts),
-        output: materialize(output, test.outputParts),
+        input: materializedInput,
+        output: materializedOutput,
         category: String(test.category || "ordinary").toLowerCase(),
         scale: Math.max(1, Math.floor(Number(test.scale) || 1)),
         targets: String(test.targets || ""),
@@ -218,36 +245,22 @@ function makePlan(parsed: unknown): ComplexityPlan {
 
 function buildStrictPrompt(options: { target: number; requiredPerformance: number; requiredAdversarial: number; schema: string }) {
   const { target, requiredPerformance, requiredAdversarial, schema } = options;
-  return `你是在线评测系统的测试数据生成器。你必须只输出一个 JSON 对象，除此之外不能输出任何文字。
+  // Optimized prompt: concise, token-efficient, with strict JSON output constraints
+  return `你是 OJ 测试数据生成器。只输出一个 JSON 对象，无 Markdown/代码块/解释。
 
-硬性输出格式：
-1. 顶层必须且只能包含 "analysis" 和 "tests" 两个字段。
-2. "tests" 必须是数组，长度必须是 ${target}。
-3. 每个测试点对象必须使用英文键名：input、output、category、scale、targets、reason。
-4. 禁止使用中文键名，例如“输入”“输出”“测试点”“答案”。
-5. input 和 output 必须是字符串，必须同时存在，不能为空。
-6. JSON 字符串里的换行必须写成 \\n，不能在字符串内部直接换行。
-7. 不允许 Markdown，不允许代码块，不允许解释，不允许多余前后缀。
+结构要求：顶层的 analysis 和 tests。tests 数组长度=${target}。键名必须英文(input/output/category/scale/targets/reason)。
 
-唯一允许结构：
+输出格式：
 ${schema}
 
-正确示例：
-{"analysis":{"expectedTimeComplexity":"O(n)","expectedSpaceComplexity":"O(1)","bruteForceToReject":["O(n^2) 枚举"],"stressScale":100000,"stressInputStrategy":"最大 n 随机数据"},"tests":[{"input":"3\\n1 2 3\\n","output":"6\\n","category":"ordinary","scale":3,"targets":"基础正确性","reason":"检查普通样例"}]}
-
-错误示例（禁止这样输出）：
-- {"测试点":[{"输入":"...","输出":"..."}]}
-- [{"stdin":"...","stdout":"..."}]
-- 下面是 JSON：...
-- \`\`\`json ... \`\`\`
-
-测试点要求：
-1. 严格遵守题面输入格式、数据范围和输出规则。
-2. 每个 output 必须独立计算并复核，不能留空，不能写“略/待计算/unknown”。
-3. 至少 ${requiredPerformance} 个 category="performance"，规模要足以淘汰明显暴力算法。
-4. 至少 ${requiredAdversarial} 个 category="adversarial"，针对边界、贪心误判、溢出、特殊结构等。
-5. 其余覆盖最小值、最大值、普通随机、极端分布、重复值、单调结构。
-6. 不要重复已有测试点。`;
+硬性规则：
+- input/output 必须是 UTF-8 字符串，不能为空、不能写”略/待计算/unknown”
+- 字符串内换行用 \\n，禁止字符串内物理换行
+- category: 至少${requiredPerformance}个performance、${requiredAdversarial}个adversarial，其余boundary/special/ordinary
+- input/output 必须逐行写出完整数据，严禁使用"..."、"……"、"略"、"同上"、"以此类推"等任何省略或缩写
+- input 如包含多行数据，每一行都必须写出，不能用省略号代表中间行
+- 严禁重复已有测试点
+- 只输出纯 JSON，无前后缀`;
 }
 
 export async function generateComplexityAwareTests(options: { apiKey: string; endpoint: string; model: string; problem: Record<string, unknown>; count: number; referenceSolution?: string }) {
@@ -316,7 +329,7 @@ ${JSON.stringify(compactExisting(existingInputs), null, 2)}`;
   let content = await callAi([
     { role: "system", content: systemPrompt },
     { role: "user", content: `${userPrompt}${generationContext}` },
-  ], Math.max(4200, target * 320), 0.08);
+  ], Math.max(3000, target * 280), 0.08);
 
   let parsed: unknown;
   let candidates: GeneratedTest[];
@@ -325,25 +338,10 @@ ${JSON.stringify(compactExisting(existingInputs), null, 2)}`;
     candidates = parseTests(content);
     if (!candidates.length) throw new Error("empty-tests");
   } catch {
-    const repairPrompt = `${buildStrictPrompt({ target, requiredPerformance, requiredAdversarial, schema })}
-
-你正在修复上一次不合格的返回。上一次返回没有产生任何同时包含英文 input 和 output 的测试点。
-
-修复任务：
-1. 必须基于下面题面重新生成 ${target} 个测试点。
-2. 不要沿用中文键名，不要使用 stdin/stdout。
-3. 每个测试点必须有英文字符串字段 input 和 output。
-4. 只返回 JSON 对象。
-
-题面：
-${buildProblemText(problem)}
-
-已有测试点摘要（不要重复）：
-${JSON.stringify(compactExisting(existingInputs), null, 2)}
-${generationContext}
-
-上一次原始返回（仅供你理解错误，不要照抄格式）：
-${content.slice(0, AI_JSON_REPAIR_MAX_RAW_LENGTH)}`;
+    const repairPrompt = `上次返回没有产生有效测试点。请重新生成${target}个。必须英文键名，只输出JSON。
+题面：${buildProblemText(problem).split("\n").slice(0, 12).join("\n")}
+已有(勿重复)：${JSON.stringify(compactExisting(existingInputs))}${generationContext}
+上次错误输出参考：${content.slice(0, AI_JSON_REPAIR_MAX_RAW_LENGTH)}`;
     content = await callAi([{ role: "user", content: repairPrompt }], Math.max(4200, target * 300), 0.03);
     parsed = parseJson(content);
     candidates = parseTests(content);
@@ -377,21 +375,8 @@ ${content.slice(0, AI_JSON_REPAIR_MAX_RAW_LENGTH)}`;
 
   if (unique.length < target) {
     const missing = target - unique.length;
-    const refillPrompt = `${buildStrictPrompt({ target: missing, requiredPerformance: 0, requiredAdversarial: 0, schema })}
-
-你正在补足上一轮没有给够数量的测试点。
-必须只生成 ${missing} 个全新的测试点，不要解释，不要 Markdown。
-这些测试点已经存在，禁止重复：
-${JSON.stringify(compactExisting([...existingInputs, ...unique]), null, 2)}
-
-补足重点：
-1. 优先补还没覆盖的数据类型：最小值、最大值、重复值、单调结构、随机中等规模、性能压力、反例陷阱。
-2. category 必须在 boundary、special、ordinary、adversarial、performance 中选择。
-3. 每个对象必须同时包含英文 input 和 output 字符串。
-
-题面：
-${buildProblemText(problem)}
-${generationContext}`;
+    const refillPrompt = `补足${missing}个新测试点。只输出JSON。禁止重复这些：${JSON.stringify(compactExisting([...existingInputs, ...unique]))}
+题面：${buildProblemText(problem).split("\n").slice(0, 12).join("\n")}${generationContext}`;
     try {
       const refillContent = await callAi([{ role: "user", content: refillPrompt }], Math.max(2200, missing * 360), 0.04);
       addUniqueTests(parseTests(refillContent));

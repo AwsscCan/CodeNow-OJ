@@ -4,12 +4,14 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
 import type { CSSProperties } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useProblemStore, STARTER_CODE } from "../../stores/problem-store";
+import { useLibraryStore } from "../../stores/library-store";
 import { useAiStore } from "../../stores/ai-store";
 import { useThemeStore } from "../../stores/theme-store";
 import { useToast } from "../../hooks/use-toast";
 import { useJudge } from "../../hooks/use-judge";
 import { DesktopMascot } from "../../components/mascot";
 import { Toast } from "../../components/toast";
+import { formatCppCode } from "../../lib/format-cpp";
 import type { Result, SubmissionRecord } from "../../stores/problem-store";
 
 const CppEditor = lazy(() => import("../../CppEditor").then((m) => ({ default: m.CppEditor })));
@@ -29,6 +31,7 @@ export default function ProblemPage() {
   const problemId = String(params.id || "P1001");
 
   const store = useProblemStore();
+  const libraryStore = useLibraryStore();
   const aiStore = useAiStore();
   const theme = useThemeStore();
   const { notice, toast } = useToast();
@@ -56,8 +59,27 @@ export default function ProblemPage() {
 
   // Load problem from store
   useEffect(() => {
-    // If the problem in the store doesn't match URL param, navigate to library
+    // Problem state is set by library page or persisted in localStorage
   }, [problemId]);
+
+  // Sync test cases back to library archive when they change
+  useEffect(() => {
+    if (store.problem.samples.length > 0) {
+      libraryStore.syncProblemSamples(store.problem.id, store.problem.samples);
+    }
+  }, [store.problem.id, store.problem.samples.length]);
+
+  // Sync on unmount and visibility change (ensure persistence)
+  useEffect(() => {
+    const flush = () => libraryStore.syncProblemSamples(store.problem.id, store.problem.samples);
+    window.addEventListener("beforeunload", flush);
+    document.addEventListener("visibilitychange", flush);
+    return () => {
+      flush();
+      window.removeEventListener("beforeunload", flush);
+      document.removeEventListener("visibilitychange", flush);
+    };
+  }, [store.problem.id, store.problem.samples]);
 
   // Fetch submission history
   useEffect(() => {
@@ -381,7 +403,8 @@ export default function ProblemPage() {
             <div className="file-tab"><span>C++</span> main.cpp <i>●</i></div>
             <div>
               <select aria-label="编程语言" value="cpp17" disabled><option value="cpp17">GNU C++17 · GCC</option></select>
-              <button title="重置 C++ 模板" onClick={() => { store.resetCode(); toast("C++ 模板已重置"); }}>↻</button>
+              <button title="格式化代码 (Shift+Alt+F)" onClick={() => { store.setCode(formatCppCode(store.code)); toast("代码已格式化"); }}>↻ 格式化</button>
+              <button title="重置 C++ 模板" onClick={() => { store.resetCode(); toast("C++ 模板已重置"); }}>↺</button>
               <label className="editor-theme-picker" title="切换编辑器主题">
                 <span aria-hidden="true">◐</span>
                 <select aria-label="编辑器主题" value={theme.editorTheme} onChange={(e) => theme.setEditorTheme(e.target.value as "light"|"dark"|"girl")}>

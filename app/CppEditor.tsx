@@ -3,6 +3,7 @@
 import Editor, { loader, type Monaco, type OnMount } from "@monaco-editor/react";
 import { memo, useEffect, useRef } from "react";
 import type { editor as MonacoEditor, languages as MonacoLanguages } from "monaco-editor";
+import { formatCppCode } from "./lib/format-cpp";
 
 loader.config({ paths: { vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.56.0/min/vs" } });
 
@@ -416,6 +417,39 @@ function configureCpp(monaco: Monaco) {
       return { range: new monaco.Range(position.lineNumber, word.startColumn, position.lineNumber, word.endColumn), contents: [{ value: hoverDocs[word.word] }] };
     },
   });
+
+  // Real-time C++ auto-formatting provider
+  monaco.languages.registerDocumentFormattingEditProvider("cpp", {
+    displayName: "CodeNow C++ Formatter",
+    async provideDocumentFormattingEdits(model) {
+      const text = model.getValue();
+      const formattedText = formatCppCode(text);
+      if (formattedText === text) return [];
+      return [{
+        range: model.getFullModelRange(),
+        text: formattedText,
+      }];
+    },
+  });
+
+  // Format on typing `}` and `;`
+  monaco.languages.registerOnTypeFormattingEditProvider("cpp", {
+    autoFormatTriggerCharacters: ["}", ";", "\n"],
+    async provideOnTypeFormattingEdits(model, position, _ch, _options) {
+      // Let the full formatter handle it
+      const text = model.getValue();
+      return [{
+        range: model.getFullModelRange(),
+        text,
+      }];
+    },
+  });
+
+  // Register Shift+Alt+F keyboard shortcut for format
+  monaco.editor.addKeybindingRule({
+    keybinding: monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyF,
+    command: "editor.action.formatDocument",
+  });
 }
 
 function getLocalMarkers(value: string, monaco: Monaco): MonacoEditor.IMarkerData[] {
@@ -551,6 +585,10 @@ export const CppEditor = memo(function CppEditor({ value, themeMode, compilerDia
       autoClosingQuotes: "always",
       autoIndent: "full",
       formatOnPaste: true,
+      formatOnType: true,
+      tabSize: 4,
+      insertSpaces: true,
+      detectIndentation: false,
       folding: true,
       glyphMargin: true,
       renderValidationDecorations: "on",

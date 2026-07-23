@@ -111,6 +111,7 @@ type LibraryStore = {
   removeArchive: (id: string) => void;
   updateArchive: (id: string, updater: (item: ArchivedProblem) => ArchivedProblem) => void;
   renameProblem: (oldId: string, newId: string) => void;
+  syncProblemSamples: (problemId: string, samples: TestCase[]) => void;
 
   setFolders: (folders: string[]) => void;
   addFolder: (folder: string) => void;
@@ -150,6 +151,14 @@ export const useLibraryStore = create<LibraryStore>()(
         collapsedFolders: s.collapsedFolders.filter((f) => !folderContains(f, folder)),
         folderOrder: s.folderOrder.filter((f) => !folderContains(f, folder)),
         archives: s.archives.map((a) => folderContains(a.folder, folder) ? { ...a, folder: folderParent(folder) || "默认题库" } : a),
+      })),
+      // Sync test cases back to the library archive when user modifies them in workspace
+      syncProblemSamples: (problemId, samples) => set((s) => ({
+        archives: s.archives.map((a) =>
+          a.problem.id === problemId
+            ? { ...a, problem: { ...a.problem, samples }, archivedAt: new Date().toISOString() }
+            : a
+        ),
       })),
       setSelectedFolder: (selectedFolder) => set({ selectedFolder }),
       toggleCollapsed: (folder) => set((s) => ({
