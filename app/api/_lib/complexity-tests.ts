@@ -179,6 +179,33 @@ function parseTests(content: string): GeneratedTest[] {
     } catch { return []; }
   });
 }
+
+function buildProblemText(problem: Record<string, unknown>) {
+  return `题号：${String(problem.id || "")}
+标题：${String(problem.title || "")}
+时间限制：${String(problem.time || "未知")}
+内存限制：${String(problem.memory || "未知")}
+题目描述：
+${String(problem.description || "")}
+
+输入格式：
+${String(problem.inputFormat || "")}
+
+输出格式：
+${String(problem.outputFormat || "")}`;
+}
+
+function makePlan(parsed: unknown): ComplexityPlan {
+  const planRaw = (parsed && typeof parsed === "object" ? (parsed as { analysis?: Partial<ComplexityPlan> }).analysis : {}) || {};
+  return {
+    expectedTimeComplexity: String(planRaw.expectedTimeComplexity || "未明确"),
+    expectedSpaceComplexity: String(planRaw.expectedSpaceComplexity || "未明确"),
+    bruteForceToReject: Array.isArray(planRaw.bruteForceToReject) ? planRaw.bruteForceToReject.map(String).filter(Boolean).slice(0, 6) : [],
+    stressScale: Math.max(1, Math.floor(Number(planRaw.stressScale) || 1)),
+    stressInputStrategy: String(planRaw.stressInputStrategy || "在题面约束内取较大规模"),
+  };
+}
+
 export async function generateComplexityAwareTests(options: { apiKey: string; endpoint: string; model: string; problem: Record<string, unknown>; count: number }) {
   const { apiKey, endpoint, model, problem } = options;
   const target = Math.max(6, Math.min(24, Math.floor(options.count)));
@@ -186,7 +213,7 @@ export async function generateComplexityAwareTests(options: { apiKey: string; en
   const isDeepSeek = /(^|\.)api\.deepseek\.com$/i.test(chatUrl.hostname);
 
   async function callAi(messages: { role: string; content: string }[], maxTokens: number, temperature = 0.1) {
-    const deadline = Date.now() + 36_000;
+    const deadline = Date.now() + 45_000;
     async function send(jsonMode: boolean) {
       const body: Record<string, unknown> = { model, temperature, max_tokens: maxTokens, stream: false, messages };
       if (jsonMode) body.response_format = { type: "json_object" };
@@ -203,13 +230,6 @@ export async function generateComplexityAwareTests(options: { apiKey: string; en
     return data.choices?.[0]?.message?.content || "";
   }
 
-  const problemText = `题号：${String(problem.id || "")}
-标题：${String(problem.title || "")}
-时间限制：${String(problem.time || "未知")}
-内存限制：${String(problem.memory || "未知")}
-描述：${String(problem.description || "")}
-输入格式：${String(problem.inputFormat || "")}
-输出格式：${String(problem.outputFormat || "")}`;
   const requiredPerformance = Math.max(2, Math.ceil(target / 8));
   const requiredAdversarial = Math.max(2, Math.ceil(target / 8));
   const existingInputs = Array.isArray(problem.samples) ? problem.samples : [];
@@ -217,28 +237,76 @@ export async function generateComplexityAwareTests(options: { apiKey: string; en
     const item = raw as { input?: unknown; output?: unknown };
     return { input: String(item.input || "").slice(0, 180), output: String(item.output || "").slice(0, 100) };
   });
-  const schema = `{"analysis":{"expectedTimeComplexity":"...","expectedSpaceComplexity":"...","bruteForceToReject":["..."],"stressScale":整数,"stressInputStrategy":"..."},"tests":[{"input":"输入文本","output":"正确输出文本","category":"boundary|special|ordinary|adversarial|performance","scale":主规模整数,"targets":"针对的错误算法","reason":"设计理由"}]}`;
-  const compressed = `大数据可用 inputParts/outputParts 代替字符串。parts 只允许 literal、repeat、range、cycle，例如 {"type":"repeat","value":"7","count":100000,"separator":" "}；换行使用 literal。`;
-  const content = await callAi([
-    { role: "system", content: `你是专业 OJ 测试数据工程师。一次完成复杂度分析并生成恰好 ${target} 个互不重复、可直接判题的确定性测试点。
 
-只返回 JSON：${schema}
-其中至少 ${requiredPerformance} 个 category=performance、至少 ${requiredAdversarial} 个 category=adversarial，其余覆盖最小值、上下界、特殊结构、溢出、错误贪心和普通随机形态。performance 必须在题面约束内达到足以淘汰主要暴力算法的真实规模，scale 必须与展开后的输入一致；targets 和 reason 要具体。每个 output 必须独立计算并复核。
-${compressed}
-硬性规则：严格遵守输入组数、数据范围和格式；不得只改标签伪装压力点；不得重复已有测试点；不得输出 Markdown 或解释；字符串中的换行必须写成 \\n，不要在字符串内部直接换行；每个属性之间必须有英文逗号。` },
-    { role: "user", content: `${problemText}
-已有测试点摘要（不要重复）：${JSON.stringify(compactExisting(existingInputs))}` },
-  ], Math.max(3600, target * 260), 0.08);
+  const schema = `{
+  "analysis": {
+    "expectedTimeComplexity": "例如 O(n log n)",
+    "expectedSpaceComplexity": "例如 O(n)",
+    "bruteForceToReject": ["会被压力点卡掉的错误/暴力算法"],
+    "stressScale": 100000,
+    "stressInputStrategy": "压力数据构造策略"
+  },
+  "tests": [
+    {
+      "input": "完整输入文本，必须可直接运行",
+      "output": "正确输出文本",
+      "category": "boundary|special|ordinary|adversarial|performance",
+      "scale": 1,
+      "targets": "针对什么错误算法或边界遗漏",
+      "reason": "为什么这个测试点必要"
+    }
+  ]
+}`;
 
-  const parsed = parseJson(content) as { analysis?: Partial<ComplexityPlan> };
-  const planRaw = parsed.analysis || {};
-  const plan: ComplexityPlan = {
-    expectedTimeComplexity: String(planRaw.expectedTimeComplexity || "未明确"),
-    expectedSpaceComplexity: String(planRaw.expectedSpaceComplexity || "未明确"),
-    bruteForceToReject: Array.isArray(planRaw.bruteForceToReject) ? planRaw.bruteForceToReject.map(String).filter(Boolean).slice(0, 6) : [],
-    stressScale: Math.max(1, Math.floor(Number(planRaw.stressScale) || 1)),
-    stressInputStrategy: String(planRaw.stressInputStrategy || "在题面约束内取较大规模"),
-  };
+  const systemPrompt = `你是专业 OJ 测试数据工程师。请根据题面一次性生成 ${target} 个可直接判题的确定性测试点。
+只返回 JSON，不要 Markdown，不要解释。JSON 必须符合这个结构：
+${schema}
+
+要求：
+1. 每个测试点必须严格符合题目的输入格式、数据范围和输出规则。
+2. 每个 output 必须是你独立计算并复核后的正确答案，不能留空，不能写“略”。
+3. 至少 ${requiredPerformance} 个 performance 测试点，规模要足以淘汰明显暴力算法。
+4. 至少 ${requiredAdversarial} 个 adversarial 测试点，针对边界、贪心误判、溢出、特殊结构等。
+5. 其余测试点覆盖最小值、最大值、普通随机、极端分布、重复值、单调结构等。
+6. 不要重复已有测试点。
+7. 字符串里的换行写成 \\n；如果输入很大，可以用 inputParts/outputParts 压缩表示：
+   {"type":"literal","value":"..."}、
+   {"type":"repeat","value":"7","count":100000,"separator":" "}、
+   {"type":"range","start":1,"end":100000,"separator":" "}、
+   {"type":"cycle","values":["0","1"],"count":100000,"separator":" "}。`;
+
+  const userPrompt = `${buildProblemText(problem)}
+
+已有测试点摘要（不要重复）：
+${JSON.stringify(compactExisting(existingInputs), null, 2)}`;
+
+  let content = await callAi([
+    { role: "system", content: systemPrompt },
+    { role: "user", content: userPrompt },
+  ], Math.max(4200, target * 320), 0.08);
+
+  let parsed: unknown;
+  let candidates: GeneratedTest[];
+  try {
+    parsed = parseJson(content);
+    candidates = parseTests(content);
+  } catch {
+    const repairPrompt = `下面是某个 AI 对 OJ 测试点生成任务的原始返回，但它不是合格 JSON 或字段不规范。请把它修正为严格 JSON：
+${schema}
+
+修正规则：只保留有完整 input/output 的测试点；字段名统一为 input/output/category/scale/targets/reason；如果原返回不足 ${Math.max(6, Math.min(12, target))} 个，请基于题面补足一批小到中等规模、可手算复核的测试点。只返回 JSON。
+
+题面：
+${buildProblemText(problem)}
+
+原始返回：
+${content.slice(0, 12_000)}`;
+    content = await callAi([{ role: "user", content: repairPrompt }], Math.max(3200, target * 240), 0.05);
+    parsed = parseJson(content);
+    candidates = parseTests(content);
+  }
+
+  const plan = makePlan(parsed);
   const minimumStressScale = Math.max(2, Math.floor(plan.stressScale * 0.7));
 
   function qualifiesPerformance(test: GeneratedTest) {
@@ -250,8 +318,6 @@ ${compressed}
     return test.category === "adversarial" && test.targets.trim().length >= 4 && test.reason.trim().length >= 4;
   }
 
-  const candidates = parseTests(content);
-
   const fingerprints = new Set<string>((existingInputs as { input?: unknown; output?: unknown }[]).map((test) => `${String(test.input || "")}\u0000${String(test.output || "")}`));
   const unique: GeneratedTest[] = [];
   for (const test of candidates) {
@@ -262,7 +328,11 @@ ${compressed}
       if (unique.length >= target) break;
     }
   }
-  if (!unique.length) throw new Error("AI 没有生成可用测试点，请确认题面包含完整的数据范围与输入输出格式");
+
+  if (!unique.length) {
+    throw new Error(`AI 没有生成可用测试点：收到的返回中没有同时包含 input 和 output 的测试点。请确认题面有完整输入输出格式，或换用更强模型后重试。`);
+  }
+
   const performance = unique.filter(qualifiesPerformance);
   const adversarial = unique.filter(qualifiesAdversarial);
   const selected: GeneratedTest[] = [];
@@ -277,8 +347,18 @@ ${compressed}
   select(performance, requiredPerformance);
   select(adversarial, requiredAdversarial);
   select(unique, target);
+
   return {
     tests: selected.slice(0, target).map(({ input, output }) => ({ input, output })),
-    report: { expectedTimeComplexity: plan.expectedTimeComplexity, expectedSpaceComplexity: plan.expectedSpaceComplexity, stressScale: plan.stressScale, performanceCount: selected.filter(qualifiesPerformance).length, adversarialCount: selected.filter(qualifiesAdversarial).length, requestedCount: target, generatedCount: selected.length, partial: selected.length < target || performance.length < requiredPerformance || adversarial.length < requiredAdversarial },
+    report: {
+      expectedTimeComplexity: plan.expectedTimeComplexity,
+      expectedSpaceComplexity: plan.expectedSpaceComplexity,
+      stressScale: plan.stressScale,
+      performanceCount: selected.filter(qualifiesPerformance).length,
+      adversarialCount: selected.filter(qualifiesAdversarial).length,
+      requestedCount: target,
+      generatedCount: selected.length,
+      partial: selected.length < target || performance.length < requiredPerformance || adversarial.length < requiredAdversarial,
+    },
   };
 }
