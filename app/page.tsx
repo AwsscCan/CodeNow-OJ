@@ -50,6 +50,14 @@ type AiProvider = "deepseek" | "openai" | "custom";
 type ArchivedProblem = { problem: Problem; folder: string; archivedAt: string };
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
+function folderContains(folder: string, parent: string) {
+  return folder === parent || folder.startsWith(`${parent}/`);
+}
+
+function folderName(folder: string) {
+  return folder.split("/").pop() || folder;
+}
+
 function normalizeImportedProblem(input: unknown): Problem {
   if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("根节点必须是 JSON 对象");
   const data = input as Record<string, unknown>;
@@ -197,6 +205,11 @@ export default function Home() {
   }, [problem, libraryReady]);
 
   const apiKey = apiKeys[provider];
+  const orderedFolders = [...folders].sort((a, b) => a.localeCompare(b, "zh-CN"));
+  const selectedArchives = selectedFolder === "全部题目" ? archives : archives.filter((item) => folderContains(item.folder, selectedFolder));
+  const searchQuery = librarySearch.trim().toLowerCase();
+  const displayedArchives = selectedArchives.filter((item) => !searchQuery || `${item.problem.id} ${item.problem.title}`.toLowerCase().includes(searchQuery));
+  const showBuiltInProblem = (selectedFolder === "全部题目" || folderContains("默认题库", selectedFolder)) && (!searchQuery || `${initialProblem.id} ${initialProblem.title}`.toLowerCase().includes(searchQuery));
 
   const passed = results.filter((r) => r.status === "AC").length;
   const score = results.length ? Math.round((passed / results.length) * 100) : 0;
@@ -303,11 +316,15 @@ export default function Home() {
   function createFolder() {
     const name = newFolderName.trim();
     if (!name) return;
-    if (folders.includes(name)) return toast("该文件夹已存在");
-    setFolders((items) => [...items, name]);
-    setSelectedFolder(name);
+    if (/[\\/]/.test(name)) return toast("文件夹名称不能包含斜杠");
+    const parent = selectedFolder === "全部题目" ? "" : selectedFolder;
+    if (parent.split("/").filter(Boolean).length >= 5) return toast("最多支持 5 级文件夹");
+    const path = parent ? `${parent}/${name}` : name;
+    if (folders.includes(path)) return toast("该文件夹已存在");
+    setFolders((items) => [...items, path]);
+    setSelectedFolder(path);
     setNewFolderName("");
-    toast(`已创建文件夹「${name}」`);
+    toast(`已创建${parent ? "子" : ""}文件夹「${path}」`);
   }
 
   function moveArchivedProblem(id: string, folder: string) {
@@ -431,20 +448,20 @@ export default function Home() {
           <aside className="library-page-sidebar">
             <h3>题目文件夹</h3>
             <button className={selectedFolder === "全部题目" ? "active" : ""} onClick={() => setSelectedFolder("全部题目")}><span>▦ 全部题目</span><b>{archives.length + 1}</b></button>
-            {folders.map((folder) => <button key={folder} className={selectedFolder === folder ? "active" : ""} onClick={() => setSelectedFolder(folder)}><span>▱ {folder}</span><b>{archives.filter((item) => item.folder === folder).length + (folder === "默认题库" ? 1 : 0)}</b></button>)}
-            <div className="new-folder page-folder"><input value={newFolderName} onChange={(e) => setNewFolderName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") createFolder(); }} placeholder="新文件夹名称" /><button onClick={createFolder}>＋</button></div>
+            {orderedFolders.map((folder) => <button key={folder} title={folder} style={{ paddingLeft: `${10 + (folder.split("/").length - 1) * 14}px` }} className={selectedFolder === folder ? "active" : ""} onClick={() => setSelectedFolder(folder)}><span>{folder.includes("/") ? "└" : "▱"} {folderName(folder)}</span><b>{archives.filter((item) => folderContains(item.folder, folder)).length + (folder === "默认题库" ? 1 : 0)}</b></button>)}
+            <div className="folder-create-caption">{selectedFolder === "全部题目" ? "新建根文件夹" : `在「${folderName(selectedFolder)}」中新建`}</div><div className="new-folder page-folder"><input value={newFolderName} onChange={(e) => setNewFolderName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") createFolder(); }} placeholder="文件夹名称" /><button title="新建文件夹" onClick={createFolder}>＋</button></div>
           </aside>
           <main className="library-catalog">
-            <div className="catalog-toolbar"><div><h2>{selectedFolder}</h2><span>{archives.length + 1} 道题目已收录</span></div><label><span>⌕</span><input value={librarySearch} onChange={(e) => setLibrarySearch(e.target.value)} placeholder="搜索编号或题目名称" /></label></div>
+            <div className="catalog-toolbar"><div><h2 className="folder-breadcrumb">{selectedFolder === "全部题目" ? "全部题目" : selectedFolder.split("/").map((part, index) => <span key={`${part}-${index}`}>{index > 0 && <i>›</i>}{part}</span>)}</h2><span>{selectedArchives.length + (showBuiltInProblem ? 1 : 0)} 道题目已收录（含子文件夹）</span></div><label><span>⌕</span><input value={librarySearch} onChange={(e) => setLibrarySearch(e.target.value)} placeholder="搜索编号或题目名称" /></label></div>
             <div className="catalog-header"><span>题目</span><span>难度</span><span>测试点</span><span>分类</span><span></span></div>
             <div className="catalog-list">
-              {(selectedFolder === "全部题目" || selectedFolder === "默认题库") && (!librarySearch.trim() || `${initialProblem.id} ${initialProblem.title}`.toLowerCase().includes(librarySearch.trim().toLowerCase())) && <article className="catalog-row built-in">
+              {showBuiltInProblem && <article className="catalog-row built-in">
                 <button onClick={() => { setProblem(initialProblem); setCode(starterCode); setResults([]); setCompilerDiagnostic(""); setPageView("workspace"); }}><code>{initialProblem.id}</code><div><b>{initialProblem.title}</b><small>经典入门题 · 内置题目</small></div></button><span className="difficulty beginner">{initialProblem.difficulty}</span><span>{initialProblem.samples.length} 个</span><span>默认题库</span><i>进入做题 →</i>
               </article>}
-              {(selectedFolder === "全部题目" ? archives : archives.filter((item) => item.folder === selectedFolder)).filter((item) => !librarySearch.trim() || `${item.problem.id} ${item.problem.title}`.toLowerCase().includes(librarySearch.trim().toLowerCase())).map((item) => <article className="catalog-row" key={item.problem.id}>
-                <button onClick={() => openArchivedProblem(item)}><code>{item.problem.id}</code><div><b>{item.problem.title}</b><small>{new Date(item.archivedAt).toLocaleDateString("zh-CN")} 归档</small></div></button><span className={`difficulty ${item.problem.difficulty === "提高" ? "advanced" : item.problem.difficulty === "普及" ? "normal" : "beginner"}`}>{item.problem.difficulty}</span><span>{item.problem.samples.length} 个</span><select aria-label={`移动 ${item.problem.title} 到文件夹`} value={item.folder} onChange={(e) => moveArchivedProblem(item.problem.id, e.target.value)}>{folders.map((folder) => <option key={folder}>{folder}</option>)}</select><i onClick={() => openArchivedProblem(item)}>进入做题 →</i>
+              {displayedArchives.map((item) => <article className="catalog-row" key={item.problem.id}>
+                <button onClick={() => openArchivedProblem(item)}><code>{item.problem.id}</code><div><b>{item.problem.title}</b><small>{new Date(item.archivedAt).toLocaleDateString("zh-CN")} 归档</small></div></button><span className={`difficulty ${item.problem.difficulty === "提高" ? "advanced" : item.problem.difficulty === "普及" ? "normal" : "beginner"}`}>{item.problem.difficulty}</span><span>{item.problem.samples.length} 个</span><select aria-label={`移动 ${item.problem.title} 到文件夹`} value={item.folder} onChange={(e) => moveArchivedProblem(item.problem.id, e.target.value)}>{orderedFolders.map((folder) => <option key={folder} value={folder}>{"　".repeat(folder.split("/").length - 1)}{folderName(folder)}</option>)}</select><i onClick={() => openArchivedProblem(item)}>进入做题 →</i>
               </article>)}
-              {archives.length === 0 && selectedFolder !== "默认题库" && selectedFolder !== "全部题目" && <div className="catalog-empty"><b>此文件夹暂无题目</b><span>点击“添加题目”导入 JSON，或粘贴题面让 AI 自动生成。</span></div>}
+              {!showBuiltInProblem && displayedArchives.length === 0 && <div className="catalog-empty"><b>{searchQuery ? "没有匹配的题目" : "此文件夹及子文件夹暂无题目"}</b><span>{searchQuery ? "请尝试其他编号或标题关键词。" : "点击“添加题目”导入 JSON，或粘贴题面让 AI 自动生成。"}</span></div>}
             </div>
           </main>
         </div>
@@ -494,7 +511,7 @@ export default function Home() {
       {showImport && <div className="modal-backdrop" onMouseDown={() => setShowImport(false)}><div className="modal import-modal" onMouseDown={(e) => e.stopPropagation()}>
         <button className="modal-close" onClick={() => setShowImport(false)}>×</button>
         <span className="modal-kicker">快速开始</span><h2>添加一道练习题</h2>
-        <div className="import-meta-fields"><label className="archive-target">自定义题号<input value={customProblemId} onChange={(e) => setCustomProblemId(e.target.value)} placeholder="可选，如 MY001" maxLength={20} /></label><label className="archive-target">归档到<select value={selectedFolder} onChange={(e) => setSelectedFolder(e.target.value)}>{folders.map((folder) => <option key={folder}>{folder}</option>)}</select></label></div>
+        <div className="import-meta-fields"><label className="archive-target">自定义题号<input value={customProblemId} onChange={(e) => setCustomProblemId(e.target.value)} placeholder="可选，如 MY001" maxLength={20} /></label><label className="archive-target">归档到<select value={selectedFolder} onChange={(e) => setSelectedFolder(e.target.value)}>{orderedFolders.map((folder) => <option key={folder} value={folder}>{"　".repeat(folder.split("/").length - 1)}{folderName(folder)}</option>)}</select></label></div>
         <div className="import-tabs"><button className={importMode === "paste" ? "active" : ""} onClick={() => setImportMode("paste")}>✦ 粘贴题面</button><button className={importMode === "json" ? "active" : ""} onClick={() => setImportMode("json")}>⇧ 导入 JSON</button></div>
         {importMode === "paste" ? <>
           <p>直接复制题目全文，AI 会整理题面并生成可立即运行的测试点。</p>
