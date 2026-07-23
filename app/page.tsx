@@ -71,18 +71,18 @@ function readMigratedSetting(currentKey: string, legacyKey: string) {
 }
 
 const mascotStates: { mood: MascotMood; sprite: number; message: string }[] = [
-  { mood: "smile", sprite: 0, message: "今天也一起 AC 吧。还是说，你会先被我看穿呢？" },
-  { mood: "laugh", sprite: 1, message: "我们来比比胜负吧，先 AC 的人赢……怎么样？" },
-  { mood: "smug", sprite: 2, message: "あれ？这里忘记考虑边界了吧。被我发现啦。" },
-  { mood: "surprised", sprite: 3, message: "诶？这个输出，和你想的不太一样哦。" },
-  { mood: "gentle", sprite: 0, message: "だいじょうぶ。慢慢来，我会等你把思路理清楚。" },
-  { mood: "annoyed", sprite: 4, message: "もう……又错一个测试点。要不要我给你一点提示？" },
-  { mood: "angry", sprite: 5, message: "こら，编译错误还想提交？先把红线消掉啦。" },
-  { mood: "smug", sprite: 2, message: "如果这次一遍过，我就承认你很厉害。只有这一次哦。" },
-  { mood: "laugh", sprite: 1, message: "すごいじゃん！不过，隐藏测试可没这么容易放过你。" },
-  { mood: "gentle", sprite: 0, message: "复杂度也要看哦。只会暴力的话，可赢不了我。" },
-  { mood: "surprised", sprite: 3, message: "咦，你刚才是不是偷偷写了个很聪明的做法？" },
-  { mood: "smile", sprite: 0, message: "那就约好了：你认真写，我认真看着你。" },
+  { mood: "smile", sprite: 0, message: "今日も一緒に AC しよっか。……それとも、先に私に見抜かれちゃう？" },
+  { mood: "laugh", sprite: 1, message: "勝負しよ？先に AC したほうが勝ち。ふふ、負けないよ。" },
+  { mood: "smug", sprite: 2, message: "あれ？その境界条件、忘れてない？見つけちゃった。" },
+  { mood: "surprised", sprite: 3, message: "えっ、その出力……思ってたのと違うんじゃない？" },
+  { mood: "gentle", sprite: 0, message: "大丈夫。焦らなくていいよ。まずは考え方を整理しよ。" },
+  { mood: "annoyed", sprite: 4, message: "また WA？もう、甘いなあ。最初に落ちたケースから見直して。" },
+  { mood: "angry", sprite: 5, message: "コンパイルエラーのまま提出？ダメ。赤い線、全部消してから。" },
+  { mood: "smug", sprite: 2, message: "一発 AC できたら、少しだけ褒めてあげる。少しだけね。" },
+  { mood: "laugh", sprite: 1, message: "すごいじゃん。でも、隠しテストはそんなに優しくないよ？" },
+  { mood: "gentle", sprite: 0, message: "計算量も見てね。力任せだけじゃ、私には勝てないよ。" },
+  { mood: "surprised", sprite: 3, message: "おや？今の実装、ちょっと賢いかも。油断できないね。" },
+  { mood: "smile", sprite: 0, message: "約束ね。君はちゃんと考える。私はちゃんと見てるから。" },
 ];
 
 const acwingCourse = acwingCourseData as BundledProblem[];
@@ -859,7 +859,7 @@ export default function Home() {
         <div className="resize-handle" />
 
         <section ref={codePanelRef} className={`code-panel editor-theme-${editorTheme}`}>
-          <div className="coding-companion-scene" aria-hidden="true"><img src="/codenow/portrait-classroom.jpg" alt="" /></div>
+          <div className="coding-companion-scene" aria-hidden="true"><img src="/codenow/portrait-classroom.jpg" alt="" /><span>ちゃんと見てるよ。</span></div>
           <div className="editor-toolbar"><div className="file-tab"><span>C++</span> main.cpp <i>●</i></div><div><select aria-label="编程语言" value="cpp17" disabled><option value="cpp17">GNU C++17 · GCC</option></select><button title="重置 C++ 模板" onClick={() => { setCode(starterCode); setCompilerDiagnostic(""); toast("C++ 模板已重置"); }}>↻</button><label className="editor-theme-picker" title="切换编辑器主题"><span aria-hidden="true">◐</span><select aria-label="编辑器主题" value={editorTheme} onChange={(event) => setEditorTheme(event.target.value as EditorTheme)}><option value="dark">暗色</option><option value="light">亮色</option><option value="girl">少女</option></select></label></div></div>
           <div className="editor-area"><CppEditor value={code} themeMode={editorTheme} compilerDiagnostic={compilerDiagnostic} onChange={(next) => { setCode(next); setCompilerDiagnostic(""); }} onCursorChange={(line, column) => setCursor({ line, column })} /></div>
           <div className="console-panel">
@@ -932,8 +932,8 @@ export default function Home() {
       </aside></div>}
 
       {showMascotAiPrompt && <div className="modal-backdrop" onMouseDown={() => setShowMascotAiPrompt(false)}><div className="modal mascot-ai-modal" onMouseDown={(e) => e.stopPropagation()}>
-        <button className="modal-close" onClick={() => setShowMascotAiPrompt(false)}>×</button><span className="modal-kicker">TAKAGI CHALLENGE</span><h2>要不要让我来挑战这题？</h2>
-        <p>把我拖到代码旁边，是想偷偷让我帮你写解答吗？我们来比比胜负吧：我先用 AI 写一份 C++17，你来负责找出有没有破绽。</p>
+        <button className="modal-close" onClick={() => setShowMascotAiPrompt(false)}>×</button><span className="modal-kicker">TAKAGI CHALLENGE</span><h2>AI 解题，来比一局？</h2>
+        <p>把我拖到代码旁边，是想让我出手吗？勝負しよ。先让 AI 写一份 C++17，你来挑错。要是看不出来，可就算我赢咯。</p>
         <div className="mascot-ai-actions"><button onClick={() => setShowMascotAiPrompt(false)}>还是自己来</button><button onClick={() => { setShowMascotAiPrompt(false); setShowAi(true); }}>使用 AI 解题</button></div>
       </div></div>}
 
