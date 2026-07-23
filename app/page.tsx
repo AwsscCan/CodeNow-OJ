@@ -899,7 +899,7 @@ export default function Home() {
         <div className="resize-handle" />
 
         <section ref={codePanelRef} className={`code-panel editor-theme-${editorTheme}`}>
-          <div className="coding-companion-scene" aria-hidden="true"><img src="/codenow/portrait-classroom.jpg" alt="" /><span>ちゃんと見てるよ。</span></div>
+          <div className="coding-companion-scene" aria-hidden="true"><img src="/codenow/portrait-classroom.jpg" alt="" /><span>我在看哦 · ちゃんと見てるよ</span></div>
           <div className="editor-toolbar"><div className="file-tab"><span>C++</span> main.cpp <i>●</i></div><div><select aria-label="编程语言" value="cpp17" disabled><option value="cpp17">GNU C++17 · GCC</option></select><button title="重置 C++ 模板" onClick={() => { setCode(starterCode); setCompilerDiagnostic(""); toast("C++ 模板已重置"); }}>↻</button><label className="editor-theme-picker" title="切换编辑器主题"><span aria-hidden="true">◐</span><select aria-label="编辑器主题" value={editorTheme} onChange={(event) => setEditorTheme(event.target.value as EditorTheme)}><option value="dark">暗色</option><option value="light">亮色</option><option value="girl">少女</option></select></label></div></div>
           <div className="editor-area"><CppEditor value={code} themeMode={editorTheme} compilerDiagnostic={compilerDiagnostic} onChange={(next) => { setCode(next); setCompilerDiagnostic(""); }} onCursorChange={(line, column) => setCursor({ line, column })} /></div>
           <div className="console-panel">
