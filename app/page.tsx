@@ -629,21 +629,25 @@ export default function Home() {
     if (!apiKey.trim()) return toast("请先在 AI 解题中配置 API Key");
     setGeneratingTests(true);
     try {
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 45_000);
       const response = await fetch("/api/generate-tests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ apiKey, endpoint, model, problem, count: testPointCount }),
+        signal: controller.signal,
       });
-      const data = await response.json() as { tests?: TestCase[]; error?: string; complexityReport?: { expectedTimeComplexity: string; stressScale: number; performanceCount: number; adversarialCount: number; rejectedAndRegenerated: number } };
+      window.clearTimeout(timeout);
+      const data = await response.json().catch(() => ({ error: `生成服务返回异常（HTTP ${response.status}）` })) as { tests?: TestCase[]; error?: string; complexityReport?: { expectedTimeComplexity: string; stressScale: number; performanceCount: number; adversarialCount: number; requestedCount: number; generatedCount: number; partial: boolean } };
       if (!response.ok || !data.tests) throw new Error(data.error || "AI 测试点生成失败");
       const existing = new Set(problem.samples.map((item) => `${item.input}\u0000${item.output}`));
       const fresh = data.tests.filter((item) => !existing.has(`${item.input}\u0000${item.output}`));
       setProblem((item) => ({ ...item, samples: [...item.samples, ...fresh] }));
       setResults([]);
       const report = data.complexityReport;
-      toast(report ? `已生成 ${fresh.length} 个测试点：${report.performanceCount} 个性能点、${report.adversarialCount} 个强反例，压力规模 ${report.stressScale}` : `AI 已补充 ${fresh.length} 个不重复测试点`);
+      toast(report ? `${report.partial ? "已快速生成可用数据" : "生成完成"}：${fresh.length} 个新测试点，含 ${report.performanceCount} 个性能点、${report.adversarialCount} 个强反例` : `AI 已补充 ${fresh.length} 个不重复测试点`);
     } catch (error) {
-      toast(error instanceof Error ? error.message : "AI 测试点生成失败");
+      toast(error instanceof DOMException && error.name === "AbortError" ? "生成超过 45 秒已停止，请改用较少测试点后重试" : error instanceof Error ? error.message : "AI 测试点生成失败");
     } finally {
       setGeneratingTests(false);
     }
@@ -761,7 +765,7 @@ export default function Home() {
             </div>
           ) : (
             <div className="tests-content">
-              <div className="tests-heading"><div><h2>测试点管理</h2><p>AI 会先分析时空复杂度，并自动重生成无法卡掉暴力算法的测试点。</p></div><div className="test-actions"><select aria-label="AI 生成测试点数量" value={testPointCount} onChange={(e) => setTestPointCount(Number(e.target.value))}><option value={12}>12 个</option><option value={18}>18 个</option><option value={24}>24 个</option></select><button className="ai-tests-button" disabled={generatingTests} onClick={generateMoreTests}>{generatingTests ? "分析复杂度并生成…" : "✦ AI 生成测试点"}</button><button onClick={addTest}>＋ 手动添加</button></div></div>
+              <div className="tests-heading"><div><h2>测试点管理</h2><p>AI 会在一次请求中完成复杂度分析、边界覆盖与性能测试点生成。</p></div><div className="test-actions"><select aria-label="AI 生成测试点数量" value={testPointCount} onChange={(e) => setTestPointCount(Number(e.target.value))}><option value={12}>12 个</option><option value={18}>18 个</option><option value={24}>24 个</option></select><button className="ai-tests-button" disabled={generatingTests} onClick={generateMoreTests}>{generatingTests ? "正在快速生成…" : "✦ AI 生成测试点"}</button><button onClick={addTest}>＋ 手动添加</button></div></div>
               {problem.samples.map((test, index) => <div className="test-editor" key={test.id}><header><b>测试点 {index + 1}</b><span>{results.find((r) => r.id === test.id)?.status || "待测试"}</span></header><label>输入<textarea value={test.input} onChange={(e) => updateTest(test.id, "input", e.target.value)} /></label><label>期望输出<textarea value={test.output} onChange={(e) => updateTest(test.id, "output", e.target.value)} /></label></div>)}
             </div>
           )}
