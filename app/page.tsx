@@ -93,7 +93,8 @@ export default function Home() {
   const [rawProblemText, setRawProblemText] = useState("");
   const [generatingProblem, setGeneratingProblem] = useState(false);
   const [showAi, setShowAi] = useState(false);
-  const [apiKey, setApiKey] = useState("");
+  const [apiKeys, setApiKeys] = useState<Record<AiProvider, string>>({ deepseek: "", openai: "", custom: "" });
+  const [apiKeysReady, setApiKeysReady] = useState(false);
   const [provider, setProvider] = useState<AiProvider>("deepseek");
   const [endpoint, setEndpoint] = useState("https://api.deepseek.com");
   const [model, setModel] = useState("deepseek-v4-flash");
@@ -126,6 +127,27 @@ export default function Home() {
   useEffect(() => {
     if (themeReady) localStorage.setItem("codeforge-theme", themeMode);
   }, [themeMode, themeReady]);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("codeforge-api-keys");
+    if (saved) {
+      try {
+        const keys = JSON.parse(saved) as Partial<Record<AiProvider, unknown>>;
+        setApiKeys({
+          deepseek: typeof keys.deepseek === "string" ? keys.deepseek : "",
+          openai: typeof keys.openai === "string" ? keys.openai : "",
+          custom: typeof keys.custom === "string" ? keys.custom : "",
+        });
+      } catch { /* ignore malformed local state */ }
+    }
+    setApiKeysReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (apiKeysReady) localStorage.setItem("codeforge-api-keys", JSON.stringify(apiKeys));
+  }, [apiKeys, apiKeysReady]);
+
+  const apiKey = apiKeys[provider];
 
   const passed = results.filter((r) => r.status === "AC").length;
   const score = results.length ? Math.round((passed / results.length) * 100) : 0;
@@ -198,6 +220,15 @@ export default function Home() {
       setEndpoint("");
       setModel("");
     }
+  }
+
+  function updateApiKey(value: string) {
+    setApiKeys((keys) => ({ ...keys, [provider]: value }));
+  }
+
+  function clearApiKey() {
+    setApiKeys((keys) => ({ ...keys, [provider]: "" }));
+    toast(`${provider === "deepseek" ? "DeepSeek" : provider === "openai" ? "OpenAI" : "自定义 API"} Key 已从本机清除`);
   }
 
   async function generateProblemFromText() {
@@ -313,7 +344,7 @@ export default function Home() {
           </div>
           {provider === "custom" && <div className="inline-fields"><input value={endpoint} onChange={(e) => setEndpoint(e.target.value)} placeholder="API Endpoint" /><input value={model} onChange={(e) => setModel(e.target.value)} placeholder="模型 ID" /></div>}
           {provider === "deepseek" && <label className="compact-model">模型<select value={model} onChange={(e) => setModel(e.target.value)}><option value="deepseek-v4-flash">DeepSeek V4 Flash · 快速</option><option value="deepseek-v4-pro">DeepSeek V4 Pro · 高质量</option></select></label>}
-          <label className="raw-problem-label">API Key<input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="仅用于本次生成，不会保存" autoComplete="off" /></label>
+          <label className="raw-problem-label">API Key<div className="api-key-input"><input type="password" value={apiKey} onChange={(e) => updateApiKey(e.target.value)} placeholder="输入后会保存在本机浏览器" autoComplete="off" />{apiKey && <button type="button" onClick={clearApiKey}>清除</button>}</div><small className="storage-note">仅保存在当前浏览器，不会写入网站服务器</small></label>
           <div className="generation-warning"><b>AI 测试点提示</b><span>系统会覆盖样例、边界值和特殊情况，但生成结果仍可能有误；可在生成后手动检查和修改。</span></div>
           <button className="generate-button" disabled={generatingProblem} onClick={generateProblemFromText}>{generatingProblem ? "正在理解题目并计算测试点…" : "✦ 生成题目与测试点"}</button>
         </> : <>
@@ -331,7 +362,7 @@ export default function Home() {
 
       {showAi && <div className="modal-backdrop" onMouseDown={() => setShowAi(false)}><div className="modal ai-modal" onMouseDown={(e) => e.stopPropagation()}>
         <button className="modal-close" onClick={() => setShowAi(false)}>×</button><span className="modal-kicker purple">AI COPILOT</span><h2>让 AI 编写解答</h2>
-        <p>选择 API 服务商。密钥仅随本次请求转发，不会保存到本站。</p>
+        <p>选择 API 服务商。每个服务商的密钥会分别保存在当前浏览器中，下次可直接使用。</p>
         <div className="provider-switch">
           <button className={provider === "deepseek" ? "active deepseek" : ""} onClick={() => chooseProvider("deepseek")}><b>DeepSeek</b><small>DS 官方 API</small></button>
           <button className={provider === "openai" ? "active" : ""} onClick={() => chooseProvider("openai")}><b>OpenAI</b><small>官方兼容接口</small></button>
@@ -339,7 +370,7 @@ export default function Home() {
         </div>
         {provider === "deepseek" && <div className="provider-note"><span>DS</span><p>已使用 DeepSeek 官方 Chat Completions 接口。<a href="https://api-docs.deepseek.com/" target="_blank" rel="noreferrer">查看官方文档 ↗</a></p></div>}
         <label>API Endpoint<input value={endpoint} onChange={(e) => setEndpoint(e.target.value)} placeholder="https://api.deepseek.com" /></label>
-        <label>API Key<input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="仅用于当前请求" autoComplete="off" /></label>
+        <label>API Key<div className="api-key-input"><input type="password" value={apiKey} onChange={(e) => updateApiKey(e.target.value)} placeholder="输入后会保存在本机浏览器" autoComplete="off" />{apiKey && <button type="button" onClick={clearApiKey}>清除</button>}</div><small className="storage-note">仅保存在当前浏览器，不会写入网站服务器</small></label>
         <label>模型{provider === "deepseek" ? <select value={model} onChange={(e) => setModel(e.target.value)}><option value="deepseek-v4-flash">DeepSeek V4 Flash · 快速</option><option value="deepseek-v4-pro">DeepSeek V4 Pro · 高质量</option></select> : <input value={model} onChange={(e) => setModel(e.target.value)} placeholder="模型 ID" />}</label>
         <div className="ai-summary"><span>当前题目</span><b>{problem.id} · {problem.title}</b><small>{problem.samples.length} 个测试点将随题面一并发送</small></div>
         <button className="generate-button" disabled={aiBusy} onClick={askAi}>{aiBusy ? "正在思考并编写 C++…" : `✦ 使用 ${provider === "deepseek" ? "DeepSeek" : provider === "openai" ? "OpenAI" : "自定义 API"} 生成 C++17 解答`}</button>
