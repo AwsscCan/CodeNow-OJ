@@ -1,18 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
+import { rateLimit } from "../_lib/rate-limit";
 import { generateComplexityAwareTests } from "../_lib/complexity-tests";
+import { validateEndpoint } from "../_lib/validate-endpoint";
+import { AI_MAX_RAW_PROBLEM_LENGTH, AI_TIMEOUT_MS } from "../_lib/constants";
 
 type UpstreamData = {
   choices?: { message?: { content?: string } }[];
   error?: { message?: string };
 };
-
-function resolveChatUrl(endpoint: string) {
-  const url = new URL(endpoint.trim());
-  if (url.protocol !== "https:") throw new Error("API Endpoint 必须使用 HTTPS");
-  const path = url.pathname.replace(/\/+$/, "");
-  url.pathname = /\/chat\/completions$/i.test(path) ? path : `${path}/chat/completions`;
-  return url;
-}
 
 async function readUpstream(response: Response): Promise<UpstreamData> {
   const text = await response.text();
@@ -24,13 +19,19 @@ async function readUpstream(response: Response): Promise<UpstreamData> {
 }
 
 export async function POST(request: NextRequest) {
-  try {
-    const { apiKey, endpoint, model, rawProblem } = await request.json();
-    if (!apiKey || !endpoint || !model || !rawProblem) return NextResponse.json({ error: "AI 配置和题目原文不能为空" }, { status: 400 });
-    if (typeof rawProblem !== "string" || rawProblem.trim().length < 20) return NextResponse.json({ error: "题目原文过短" }, { status: 400 });
-    if (rawProblem.length > 60_000) return NextResponse.json({ error: "题目原文不能超过 60000 个字符" }, { status: 400 });
+  const rl = rateLimit(request, "ai");
+  if (!rl.allowed) return NextResponse.json({ error: "请求过于频繁，请稍后重试" }, { status: 429 });
 
-    const chatUrl = resolveChatUrl(String(endpoint));
+  try {
+    let { apiKey, endpoint, model, rawProblem } = await request.json();
+
+    apiKey = process.env.AI_API_KEY || apiKey;
+    if (!apiKey) return NextResponse.json({ error: "未配置 AI API Key" }, { status: 400 });
+    if (!endpoint || !model || !rawProblem) return NextResponse.json({ error: "AI 配置和题目原文不能为空" }, { status: 400 });
+    if (typeof rawProblem !== "string" || rawProblem.trim().length < 20) return NextResponse.json({ error: "题目原文过短" }, { status: 400 });
+    if (rawProblem.length > AI_MAX_RAW_PROBLEM_LENGTH) return NextResponse.json({ error: `题目原文不能超过 ${AI_MAX_RAW_PROBLEM_LENGTH} 个字符` }, { status: 400 });
+
+    const chatUrl = validateEndpoint(String(endpoint));
     const isDeepSeek = /(^|\.)api\.deepseek\.com$/i.test(chatUrl.hostname);
     const messages = [
       {
@@ -74,7 +75,7 @@ export async function POST(request: NextRequest) {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(45_000),
+        signal: AbortSignal.timeout(AI_TIMEOUT_MS),
       });
     }
 
@@ -100,6 +101,9 @@ export async function POST(request: NextRequest) {
     }
     if (/fetch failed|network|socket|connect/i.test(message)) {
       return NextResponse.json({ error: "暂时无法连接 AI 服务，请检查 API Endpoint 后重试" }, { status: 502 });
+    }
+    if (/不支持的 API/.test(message)) {
+      return NextResponse.json({ error: message }, { status: 400 });
     }
     return NextResponse.json({ error: message }, { status: 500 });
   }

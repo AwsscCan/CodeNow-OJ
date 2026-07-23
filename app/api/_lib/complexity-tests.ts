@@ -1,3 +1,7 @@
+import { validateEndpoint } from "./validate-endpoint";
+import { verifyTests, filterVerifiedTests } from "./verify-tests";
+import { AI_TIMEOUT_MS, AI_JSON_REPAIR_MAX_RAW_LENGTH, MAX_EXPANDED_CHARS } from "./constants";
+
 type UpstreamData = { choices?: { message?: { content?: string } }[]; error?: { message?: string } };
 type Part = { type?: unknown; value?: unknown; count?: unknown; separator?: unknown; start?: unknown; end?: unknown; step?: unknown; values?: unknown };
 type RawTest = {
@@ -7,16 +11,6 @@ type RawTest = {
 } & Record<string, unknown>;
 type GeneratedTest = { input: string; output: string; category: string; scale: number; targets: string; reason: string };
 type ComplexityPlan = { expectedTimeComplexity: string; expectedSpaceComplexity: string; bruteForceToReject: string[]; stressScale: number; stressInputStrategy: string };
-
-const MAX_EXPANDED_CHARS = 300_000;
-
-function resolveChatUrl(endpoint: string) {
-  const url = new URL(endpoint.trim());
-  if (url.protocol !== "https:") throw new Error("API Endpoint 必须使用 HTTPS");
-  const path = url.pathname.replace(/\/+$/, "");
-  url.pathname = /\/chat\/completions$/i.test(path) ? path : `${path}/chat/completions`;
-  return url;
-}
 
 function parseJson(content: string): unknown {
   const cleaned = content.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
@@ -256,14 +250,15 @@ ${schema}
 6. 不要重复已有测试点。`;
 }
 
-export async function generateComplexityAwareTests(options: { apiKey: string; endpoint: string; model: string; problem: Record<string, unknown>; count: number }) {
+export async function generateComplexityAwareTests(options: { apiKey: string; endpoint: string; model: string; problem: Record<string, unknown>; count: number; referenceSolution?: string }) {
   const { apiKey, endpoint, model, problem } = options;
+  const referenceSolution = options.referenceSolution || "";
   const target = Math.max(1, Math.min(24, Math.floor(options.count)));
-  const chatUrl = resolveChatUrl(endpoint);
+  const chatUrl = validateEndpoint(endpoint);
   const isDeepSeek = /(^|\.)api\.deepseek\.com$/i.test(chatUrl.hostname);
 
   async function callAi(messages: { role: string; content: string }[], maxTokens: number, temperature = 0.1) {
-    const deadline = Date.now() + 45_000;
+    const deadline = Date.now() + AI_TIMEOUT_MS;
     async function send(jsonMode: boolean) {
       const body: Record<string, unknown> = { model, temperature, max_tokens: maxTokens, stream: false, messages };
       if (jsonMode) body.response_format = { type: "json_object" };
@@ -348,7 +343,7 @@ ${JSON.stringify(compactExisting(existingInputs), null, 2)}
 ${generationContext}
 
 上一次原始返回（仅供你理解错误，不要照抄格式）：
-${content.slice(0, 12_000)}`;
+${content.slice(0, AI_JSON_REPAIR_MAX_RAW_LENGTH)}`;
     content = await callAi([{ role: "user", content: repairPrompt }], Math.max(4200, target * 300), 0.03);
     parsed = parseJson(content);
     candidates = parseTests(content);
@@ -424,8 +419,43 @@ ${generationContext}`;
   select(adversarial, requiredAdversarial);
   select(unique, target);
 
+  const finalSelected = selected.slice(0, target).map(({ input, output, category, scale, targets, reason }) => ({ input, output, category, scale, targets, reason }));
+
+  // Judge0-based verification when a reference solution is provided
+  let verifiedCount = 0;
+  if (referenceSolution.trim()) {
+    try {
+      const verified = await verifyTests(finalSelected, referenceSolution);
+      const good = filterVerifiedTests(verified);
+      verifiedCount = good.length;
+      if (good.length > 0) {
+        // Replace with verified tests only; fall back to unverified if none pass
+        const performanceAfter = good.filter(qualifiesPerformance).length;
+        const adversarialAfter = good.filter(qualifiesAdversarial).length;
+        const partialAfter = good.length < target || performanceAfter < requiredPerformance || adversarialAfter < requiredAdversarial;
+        return {
+          tests: good,
+          report: {
+            expectedTimeComplexity: plan.expectedTimeComplexity,
+            expectedSpaceComplexity: plan.expectedSpaceComplexity,
+            stressScale: plan.stressScale,
+            performanceCount: performanceAfter,
+            adversarialCount: adversarialAfter,
+            requestedCount: target,
+            generatedCount: good.length,
+            partial: partialAfter,
+            verifiedCount: good.length,
+            totalVerified: verified.length,
+          },
+        };
+      }
+    } catch {
+      // Verification failed (e.g. Judge0 down) — return tests unverified, this is OK
+    }
+  }
+
   return {
-    tests: selected.slice(0, target).map(({ input, output, category, scale, targets, reason }) => ({ input, output, category, scale, targets, reason })),
+    tests: finalSelected,
     report: {
       expectedTimeComplexity: plan.expectedTimeComplexity,
       expectedSpaceComplexity: plan.expectedSpaceComplexity,
@@ -433,8 +463,9 @@ ${generationContext}`;
       performanceCount: selected.filter(qualifiesPerformance).length,
       adversarialCount: selected.filter(qualifiesAdversarial).length,
       requestedCount: target,
-      generatedCount: selected.length,
-      partial: selected.length < target || performance.length < requiredPerformance || adversarial.length < requiredAdversarial,
+      generatedCount: finalSelected.length,
+      partial: finalSelected.length < target || performance.length < requiredPerformance || adversarial.length < requiredAdversarial,
+      verifiedCount,
     },
   };
 }

@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import { rateLimit } from "../_lib/rate-limit";
 import { generateComplexityAwareTests } from "../_lib/complexity-tests";
 
 export async function POST(request: NextRequest) {
+  const rl = rateLimit(request, "ai");
+  if (!rl.allowed) return NextResponse.json({ error: "请求过于频繁，请稍后重试" }, { status: 429 });
+
   try {
     const { apiKey, endpoint, model, problem, count } = await request.json();
     const requested = Math.floor(Number(count));
@@ -27,6 +31,9 @@ export async function POST(request: NextRequest) {
     }
     if (/fetch failed|network|socket|connect/i.test(message)) {
       return NextResponse.json({ error: "暂时无法连接 AI 服务，请检查 API Endpoint 后重试" }, { status: 502 });
+    }
+    if (/不支持的 API/.test(message)) {
+      return NextResponse.json({ error: message }, { status: 400 });
     }
     return NextResponse.json({ error: message }, { status: /复杂度校验未通过|压力测试计划/.test(message) ? 422 : 500 });
   }
