@@ -89,6 +89,8 @@ export default function Home() {
   const [running, setRunning] = useState(false);
   const [themeMode, setThemeMode] = useState<"light" | "dark">("dark");
   const [themeReady, setThemeReady] = useState(false);
+  const [editorTheme, setEditorTheme] = useState<"light" | "dark">("dark");
+  const [editorThemeReady, setEditorThemeReady] = useState(false);
   const [compilerDiagnostic, setCompilerDiagnostic] = useState("");
   const [cursor, setCursor] = useState({ line: 1, column: 1 });
   const [notice, setNotice] = useState("");
@@ -140,6 +142,16 @@ export default function Home() {
   useEffect(() => {
     if (themeReady) localStorage.setItem("codeforge-theme", themeMode);
   }, [themeMode, themeReady]);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("codeforge-editor-theme");
+    if (saved === "light" || saved === "dark") setEditorTheme(saved);
+    setEditorThemeReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (editorThemeReady) localStorage.setItem("codeforge-editor-theme", editorTheme);
+  }, [editorTheme, editorThemeReady]);
 
   useEffect(() => {
     const saved = localStorage.getItem("codeforge-api-keys");
@@ -434,9 +446,9 @@ export default function Home() {
 
         <div className="resize-handle" />
 
-        <section className="code-panel">
-          <div className="editor-toolbar"><div className="file-tab"><span>C++</span> main.cpp <i>●</i></div><div><select aria-label="编程语言" value="cpp17" disabled><option value="cpp17">GNU C++17 · GCC</option></select><button title="重置 C++ 模板" onClick={() => { setCode(starterCode); setCompilerDiagnostic(""); toast("C++ 模板已重置"); }}>↻</button><button title="编辑器设置">⚙</button></div></div>
-          <div className="editor-area"><CppEditor value={code} themeMode={themeMode} compilerDiagnostic={compilerDiagnostic} onChange={(next) => { setCode(next); setCompilerDiagnostic(""); }} onCursorChange={(line, column) => setCursor({ line, column })} /></div>
+        <section className={`code-panel editor-theme-${editorTheme}`}>
+          <div className="editor-toolbar"><div className="file-tab"><span>C++</span> main.cpp <i>●</i></div><div><select aria-label="编程语言" value="cpp17" disabled><option value="cpp17">GNU C++17 · GCC</option></select><button title="重置 C++ 模板" onClick={() => { setCode(starterCode); setCompilerDiagnostic(""); toast("C++ 模板已重置"); }}>↻</button><button className="editor-theme-toggle" title={`切换为${editorTheme === "dark" ? "亮色" : "暗色"}编辑器`} aria-label={`切换为${editorTheme === "dark" ? "亮色" : "暗色"}编辑器`} onClick={() => setEditorTheme((mode) => mode === "dark" ? "light" : "dark")}>{editorTheme === "dark" ? "☀ 亮色" : "◐ 暗色"}</button></div></div>
+          <div className="editor-area"><CppEditor value={code} themeMode={editorTheme} compilerDiagnostic={compilerDiagnostic} onChange={(next) => { setCode(next); setCompilerDiagnostic(""); }} onCursorChange={(line, column) => setCursor({ line, column })} /></div>
           <div className="console-panel">
             <div className="console-tabs"><button className={consoleTab === "results" ? "active" : ""} onClick={() => setConsoleTab("results")}>测试结果</button><button className={consoleTab === "history" ? "active" : ""} onClick={() => setConsoleTab("history")}>提交记录</button>{results.length > 0 && <span className={score === 100 ? "score good" : "score"}>{passed}/{results.length} 通过 · {score} 分</span>}</div>
             <div className="console-content">
