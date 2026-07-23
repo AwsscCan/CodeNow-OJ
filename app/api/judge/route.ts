@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const JUDGE0_BASE = "https://ce.judge0.com";
-const MAX_TESTS = 12;
+const MAX_TESTS = 24;
 
 type TestCase = { id: number; input: string; output: string };
 type JudgeStatus = { id: number; description: string };
@@ -80,8 +80,17 @@ export async function POST(request: NextRequest) {
     if (!Array.isArray(tests) || tests.length === 0) return NextResponse.json({ error: "至少需要一个测试点" }, { status: 400 });
     if (tests.length > MAX_TESTS) return NextResponse.json({ error: `单次最多运行 ${MAX_TESTS} 个测试点` }, { status: 400 });
     if (sourceCode.length > 100_000) return NextResponse.json({ error: "C++ 源码不能超过 100 KB" }, { status: 400 });
+    if (tests.some((test) => typeof test.input !== "string" || typeof test.output !== "string" || test.input.length > 300_000 || test.output.length > 300_000)) return NextResponse.json({ error: "单个测试点不能超过 300 KB" }, { status: 400 });
+    if (tests.reduce((sum, test) => sum + test.input.length + test.output.length, 0) > 2_000_000) return NextResponse.json({ error: "本次测试数据总量不能超过 2 MB" }, { status: 400 });
     const languageId = await getCppLanguageId();
-    const results = await Promise.all(tests.map((test) => submit(sourceCode, test, languageId)));
+    const results = new Array(tests.length);
+    let cursor = 0;
+    await Promise.all(Array.from({ length: Math.min(4, tests.length) }, async () => {
+      while (cursor < tests.length) {
+        const index = cursor++;
+        results[index] = await submit(sourceCode, tests[index], languageId);
+      }
+    }));
     return NextResponse.json({ results, compiler: "GNU C++17 compatible" });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "C++ 判题服务异常" }, { status: 502 });

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { generateComplexityAwareTests } from "../_lib/complexity-tests";
 
 type UpstreamData = {
   choices?: { message?: { content?: string } }[];
@@ -38,16 +39,8 @@ export async function POST(request: NextRequest) {
 
 【任务】
 1. 忠实整理题目，不改变算法含义、约束、输入组数或输出规则。
-2. 生成恰好 18 个互不重复、可直接判题的确定性测试点，而不是只生成样例。
-3. 每个 output 必须根据对应 input 独立计算并复核；无法确定正确输出的用例不要编造。
-
-【测试点覆盖配额】
-- 官方样例：保留题面全部样例。
-- 最小规模与空/零边界：至少 3 个（仅在题目约束允许时使用零或负数）。
-- 最大值及靠近上界：至少 3 个，注意 32 位溢出与 long long。
-- 特殊结构：至少 4 个，如全相同、严格递增/递减、重复值、极端偏斜、单元素。
-- 普通中等规模：至少 4 个，数据应多样但仍能准确手算输出。
-- 易错反例：至少 3 个，针对常见错误算法、边界判断或精度问题。
+2. 只提取题面明确给出的官方样例，不要在本步骤自行补造测试点；后续系统会单独进行复杂度分析和压力数据生成。
+3. 官方样例的 output 必须忠实保留；无法从题面确认的样例不要编造。
 
 【唯一允许的 JSON 结构】
 {
@@ -66,7 +59,7 @@ export async function POST(request: NextRequest) {
 }
 
 【硬性规则】
-- samples 必须恰好 18 项，id 从 1 连续递增到 18。
+- samples 保留 1 至 6 个题面官方样例，id 从 1 连续递增。
 - input/output 必须是字符串并保留必要换行；不得添加 category、explanation 等额外字段。
 - 只返回一个 JSON 对象，不要 Markdown、代码围栏、注释或解释。`,
       },
@@ -95,10 +88,11 @@ export async function POST(request: NextRequest) {
     const end = cleaned.lastIndexOf("}");
     if (start < 0 || end <= start) throw new Error("AI 未返回有效的题目 JSON");
     const problem = JSON.parse(cleaned.slice(start, end + 1));
-    if (!Array.isArray(problem.samples) || problem.samples.length < 12) {
-      throw new Error(`AI 仅生成了 ${Array.isArray(problem.samples) ? problem.samples.length : 0} 个测试点，未达到 OJ 最低要求，请重试`);
-    }
-    return NextResponse.json({ problem });
+    if (!Array.isArray(problem.samples) || problem.samples.length < 1) throw new Error("未能从题面提取官方样例，请确认粘贴内容包含输入输出样例");
+    problem.samples = problem.samples.slice(0, 6);
+    const generated = await generateComplexityAwareTests({ apiKey: String(apiKey), endpoint: String(endpoint), model: String(model), problem, count: Math.max(6, 18 - problem.samples.length) });
+    problem.samples = [...problem.samples, ...generated.tests].slice(0, 18).map((test: { input: string; output: string }, index: number) => ({ id: index + 1, input: test.input, output: test.output }));
+    return NextResponse.json({ problem, complexityReport: generated.report });
   } catch (error) {
     const message = error instanceof Error ? error.message : "AI 题目生成失败";
     if (/timeout|timed out|abort/i.test(message) || (error instanceof Error && error.name === "TimeoutError")) {
