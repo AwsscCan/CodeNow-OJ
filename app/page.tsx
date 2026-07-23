@@ -106,6 +106,8 @@ export default function Home() {
   const [importMode, setImportMode] = useState<"paste" | "json">("paste");
   const [rawProblemText, setRawProblemText] = useState("");
   const [customProblemId, setCustomProblemId] = useState("");
+  const [renamingProblemId, setRenamingProblemId] = useState<string | null>(null);
+  const [nextProblemId, setNextProblemId] = useState("");
   const [generatingProblem, setGeneratingProblem] = useState(false);
   const [showAi, setShowAi] = useState(false);
   const [apiKeys, setApiKeys] = useState<Record<AiProvider, string>>({ deepseek: "", openai: "", custom: "" });
@@ -331,6 +333,24 @@ export default function Home() {
     setArchives((items) => items.map((item) => item.problem.id === id ? { ...item, folder } : item));
   }
 
+  function beginRenameProblem(id: string) {
+    setRenamingProblemId(id);
+    setNextProblemId(id);
+  }
+
+  function confirmRenameProblem() {
+    if (!renamingProblemId) return;
+    const nextId = nextProblemId.trim();
+    if (!/^[A-Za-z][A-Za-z0-9_-]{0,19}$/.test(nextId)) return toast("题号需以字母开头，仅含字母、数字、下划线或短横线，最长 20 位");
+    const duplicate = nextId.toUpperCase() === initialProblem.id.toUpperCase() || archives.some((item) => item.problem.id !== renamingProblemId && item.problem.id.toUpperCase() === nextId.toUpperCase());
+    if (duplicate) return toast(`题号 ${nextId} 已存在，请更换题号`);
+    setArchives((items) => items.map((item) => item.problem.id === renamingProblemId ? { ...item, problem: { ...item.problem, id: nextId } } : item));
+    setProblem((item) => item.id === renamingProblemId ? { ...item, id: nextId } : item);
+    setRenamingProblemId(null);
+    setNextProblemId("");
+    toast(`题号已修改为 ${nextId}`);
+  }
+
   function openArchivedProblem(item: ArchivedProblem) {
     setProblem(item.problem);
     setResults([]);
@@ -459,7 +479,7 @@ export default function Home() {
                 <button onClick={() => { setProblem(initialProblem); setCode(starterCode); setResults([]); setCompilerDiagnostic(""); setPageView("workspace"); }}><code>{initialProblem.id}</code><div><b>{initialProblem.title}</b><small>经典入门题 · 内置题目</small></div></button><span className="difficulty beginner">{initialProblem.difficulty}</span><span>{initialProblem.samples.length} 个</span><span>默认题库</span><i>进入做题 →</i>
               </article>}
               {displayedArchives.map((item) => <article className="catalog-row" key={item.problem.id}>
-                <button onClick={() => openArchivedProblem(item)}><code>{item.problem.id}</code><div><b>{item.problem.title}</b><small>{new Date(item.archivedAt).toLocaleDateString("zh-CN")} 归档</small></div></button><span className={`difficulty ${item.problem.difficulty === "提高" ? "advanced" : item.problem.difficulty === "普及" ? "normal" : "beginner"}`}>{item.problem.difficulty}</span><span>{item.problem.samples.length} 个</span><select aria-label={`移动 ${item.problem.title} 到文件夹`} value={item.folder} onChange={(e) => moveArchivedProblem(item.problem.id, e.target.value)}>{orderedFolders.map((folder) => <option key={folder} value={folder}>{"　".repeat(folder.split("/").length - 1)}{folderName(folder)}</option>)}</select><i onClick={() => openArchivedProblem(item)}>进入做题 →</i>
+                <button onClick={() => openArchivedProblem(item)}><code>{item.problem.id}</code><div><b>{item.problem.title}</b><small>{new Date(item.archivedAt).toLocaleDateString("zh-CN")} 归档</small></div></button><span className={`difficulty ${item.problem.difficulty === "提高" ? "advanced" : item.problem.difficulty === "普及" ? "normal" : "beginner"}`}>{item.problem.difficulty}</span><span>{item.problem.samples.length} 个</span><select aria-label={`移动 ${item.problem.title} 到文件夹`} value={item.folder} onChange={(e) => moveArchivedProblem(item.problem.id, e.target.value)}>{orderedFolders.map((folder) => <option key={folder} value={folder}>{"　".repeat(folder.split("/").length - 1)}{folderName(folder)}</option>)}</select><div className="row-actions"><button onClick={() => beginRenameProblem(item.problem.id)}>改题号</button><i onClick={() => openArchivedProblem(item)}>进入 →</i></div>
               </article>)}
               {!showBuiltInProblem && displayedArchives.length === 0 && <div className="catalog-empty"><b>{searchQuery ? "没有匹配的题目" : "此文件夹及子文件夹暂无题目"}</b><span>{searchQuery ? "请尝试其他编号或标题关键词。" : "点击“添加题目”导入 JSON，或粘贴题面让 AI 自动生成。"}</span></div>}
             </div>
@@ -537,6 +557,14 @@ export default function Home() {
           <input ref={fileRef} hidden type="file" accept="application/json,.json" onChange={(e) => importProblem(e.target.files?.[0])} />
           <div className="download-row"><a href="/problem-example.json" download>下载完整示例</a><a href="/problem.schema.json" download>下载 JSON Schema</a></div>
         </>}
+      </div></div>}
+
+      {renamingProblemId && <div className="modal-backdrop" onMouseDown={() => setRenamingProblemId(null)}><div className="modal rename-modal" onMouseDown={(e) => e.stopPropagation()}>
+        <button className="modal-close" onClick={() => setRenamingProblemId(null)}>×</button><span className="modal-kicker">PROBLEM ID</span><h2>修改题目编号</h2>
+        <p>修改后会同步更新题库存档和当前做题工作区，不影响题面、代码或测试点。</p>
+        <label>新题号<input autoFocus value={nextProblemId} onChange={(e) => setNextProblemId(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") confirmRenameProblem(); }} placeholder="如 ALG001" maxLength={20} /></label>
+        <small>以字母开头，可使用字母、数字、下划线和短横线。</small>
+        <button className="generate-button" onClick={confirmRenameProblem}>保存新题号</button>
       </div></div>}
 
       {showChat && <div className="chat-backdrop" onMouseDown={() => setShowChat(false)}><aside className="chat-drawer" onMouseDown={(e) => e.stopPropagation()}>
