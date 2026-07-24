@@ -429,26 +429,21 @@ function buildStrictPrompt(options: {
   hasReferenceSolution: boolean;
 }) {
   const {
-    target,
-    requiredPerformance,
-    requiredAdversarial,
-    problemDigest,
-    existingTestsJson,
-    generationContext,
-    algorithmSummary,
-    hasReferenceSolution,
+    target, requiredPerformance, requiredAdversarial,
+    problemDigest, existingTestsJson, generationContext,
+    algorithmSummary, hasReferenceSolution,
   } = options;
   const ctxLine = generationContext ? `\nBatch context: ${generationContext}` : "";
-  const generatorList = listGeneratorTypes().join(",");
-  const schema = hasReferenceSolution
-    ? `{"analysis":{"expectedTimeComplexity":"","expectedSpaceComplexity":"","bruteForceToReject":[],"stressScale":1,"stressInputStrategy":""},"tests":[{"input":"complete stdin text","category":"boundary","scale":1,"targets":"what this case checks","reason":"why it is needed"},{"generator":{"type":"random_array","params":{}},"category":"performance","scale":100000,"targets":"large valid case","reason":"why it is needed"}]}`
-    : `{"analysis":{"expectedTimeComplexity":"","expectedSpaceComplexity":"","bruteForceToReject":[],"stressScale":1,"stressInputStrategy":""},"tests":[{"input":"complete stdin text","output":"complete expected stdout text","category":"boundary","scale":1,"targets":"what this case checks","reason":"why it is needed"}]}`;
+  const generatorList = listGeneratorTypes().join(", ");
   const outputRule = hasReferenceSolution
     ? "A validated reference solution is available. You may omit output for raw input tests; the system will compute it. Generator specs are allowed for large cases."
     : "No validated reference solution is available. Every test MUST include both input and output. Do NOT use generator specs, because the system cannot compute their output.";
+  const schema = hasReferenceSolution
+    ? `{"analysis":{"expectedTimeComplexity":"","expectedSpaceComplexity":"","bruteForceToReject":[],"stressScale":1,"stressInputStrategy":""},"tests":[{"input":"complete stdin text","category":"boundary","scale":1,"targets":"what this case checks","reason":"why it is needed"},{"generator":{"type":"random_array","params":{}},"category":"performance","scale":100000,"targets":"large valid case","reason":"why it is needed"}]}`
+    : `{"analysis":{"expectedTimeComplexity":"","expectedSpaceComplexity":"","bruteForceToReject":[],"stressScale":1,"stressInputStrategy":""},"tests":[{"input":"complete stdin text","output":"complete expected stdout text","category":"boundary","scale":1,"targets":"what this case checks","reason":"why it is needed"}]}`;
 
   return [
-    "You are designing real online-judge tests for a C++ programming problem.",
+    "You are designing real online-judge test cases for a C++ programming problem.",
     "Return ONLY one valid JSON object. Do not use markdown. Do not add comments.",
     "",
     `Problem:\n${problemDigest}`,
@@ -475,6 +470,7 @@ export async function generateComplexityAwareTests(options: { apiKey: string; en
   const { apiKey, endpoint, model, problem } = options;
   const referenceSolution = options.referenceSolution || options.validatedRef?.solutionCode || "";
   const validatedRef = options.validatedRef;
+  const hasReference = referenceSolution.trim().length > 0;
   const target = Math.max(1, Math.min(24, Math.floor(options.count)));
   const chatUrl = validateEndpoint(endpoint);
   const isDeepSeek = /(^|\.)api\.deepseek\.com$/i.test(chatUrl.hostname);
@@ -520,8 +516,10 @@ export async function generateComplexityAwareTests(options: { apiKey: string; en
 
   let content = await callAi([
     { role: "system", content: systemPrompt },
-    { role: "user", content: hasReferenceSolution ? "Generate a complete diverse test set. Output may be omitted because the system will compute it." : "Generate a complete diverse test set. Every test must include both input and output." },
-  ], Math.max(3000, target * 250), 0.12);
+    { role: "user", content: hasReference
+      ? "Generate a diverse OJ test suite. Return JSON only."
+      : "Generate a diverse OJ test suite with exact input and exact output for every test. Return JSON only." },
+  ], Math.max(3500, target * (hasReference ? 260 : 420)), 0.12);
 
   let parsed: unknown;
   let candidates: GeneratedTest[];
@@ -543,18 +541,20 @@ export async function generateComplexityAwareTests(options: { apiKey: string; en
 
   if (errors.length) {
     const repairPrompt = [
-      `Previous validation errors: ${errors.join("; ")}`,
-      `Regenerate exactly ${target} tests. Return ONLY valid JSON.`,
-      hasReferenceSolution
-        ? "Output can be omitted; generator specs are allowed for large cases."
-        : "Every test MUST include both input and output. Do not use generator specs.",
-      `Problem:\n${problemDigest}`,
+      `Previous JSON/test validation errors: ${errors.join("; ")}`,
+      `Regenerate exactly ${target} tests as JSON only.`,
+      hasReference
+        ? "You may omit output because a validated reference solution will compute it."
+        : "Every test must include both input and output. Do not use generator specs.",
+      `Problem:
+${problemDigest}`,
       `Existing tests to avoid duplicating: ${existingJson}`,
-      genCtx ? `Context: ${genCtx}` : "",
-      `Bad previous response excerpt, do not copy it:\n${content.slice(0, 2000)}`,
+      genCtx ? `Batch context: ${genCtx}` : "",
+      `Bad previous response excerpt:
+${content.slice(0, 2000)}`,
     ].filter(Boolean).join("\n\n");
 
-    content = await callAi([{ role: "user", content: repairPrompt }], Math.max(3000, target * 250), 0.05);
+    content = await callAi([{ role: "user", content: repairPrompt }], Math.max(3200, target * (hasReference ? 300 : 480)), 0.05);
     parsed = parseJson(content);
     candidates = parseTests(content);
   }
