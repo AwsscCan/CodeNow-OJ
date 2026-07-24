@@ -65,7 +65,7 @@ function findMatchingJsonEnd(text: string, start: number, open: string, close: s
 function repairJsonCandidates(value: string) {
   const normalized = value
     .replace(/^\uFEFF/, "")
-    .replace(/[“”]/g, '"')
+    .replace(/[""]/g, '"')
     .replace(/[‘’]/g, "'")
     .replace(/,\s*([}\]])/g, "$1");
   const missingCommaFixed = normalized
@@ -357,19 +357,28 @@ function parseTests(content: string): GeneratedTest[] {
   });
 }
 
-function buildProblemText(problem: Record<string, unknown>) {
-  return `题号：${String(problem.id || "")}
-标题：${String(problem.title || "")}
-时间限制：${String(problem.time || "未知")}
-内存限制：${String(problem.memory || "未知")}
+function buildProblemDigest(problem: Record<string, unknown>) {
+  const id = String(problem.id || "");
+  const title = String(problem.title || "");
+  const timeLimit = String(problem.time || "未知");
+  const memoryLimit = String(problem.memory || "未知");
+  const description = String(problem.description || "");
+  const inputFormat = String(problem.inputFormat || "");
+  const outputFormat = String(problem.outputFormat || "");
+  // Include full constraints — don't truncate
+  return `题号：${id}
+标题：${title}
+时间限制：${timeLimit}
+内存限制：${memoryLimit}
+
 题目描述：
-${String(problem.description || "")}
+${description}
 
 输入格式：
-${String(problem.inputFormat || "")}
+${inputFormat}
 
 输出格式：
-${String(problem.outputFormat || "")}`;
+${outputFormat}`;
 }
 
 function makePlan(parsed: unknown): ComplexityPlan {
@@ -383,22 +392,75 @@ function makePlan(parsed: unknown): ComplexityPlan {
   };
 }
 
-function buildStrictPrompt(options: { target: number; requiredPerformance: number; requiredAdversarial: number; schema: string }) {
-  const { target, requiredPerformance, requiredAdversarial, schema } = options;
-  return `你是 OJ 测试数据生成器。只输出一个 JSON 对象，无任何额外文字。
+function buildStrictPrompt(options: { target: number; requiredPerformance: number; requiredAdversarial: number; problemDigest: string; existingTestsJson: string; generationContext: string }) {
+  const { target, requiredPerformance, requiredAdversarial, problemDigest, existingTestsJson, generationContext } = options;
+  const ctxLine = generationContext ? `\n【本批次上下文】\n${generationContext}` : "";
+  return `你是一个严格的 OJ 测试数据生成器。
 
-【核心要求】tests 数组必须恰好 ${target} 个元素，一个不能少。
+根据下方题面生成测试点。最终只能输出一个符合 RFC 8259 标准的 JSON 对象，不得输出 Markdown 代码块、解释、前缀、后缀或任何 JSON 之外的字符。
 
-结构（严格按此格式）：
-${schema}
+【题面】
+${problemDigest}
 
-规则：
-- input/output 不能为空、不能写”略/待计算/unknown/TODO/placeholder”，必须逐行完整
-- 字符串内换行用 \\n，禁止物理换行
-- 至少${requiredPerformance}个category=performance、${requiredAdversarial}个category=adversarial，其余用boundary/special/ordinary
-- 大规模数据可用”1 2 3 ... 99999 100000”表达式，系统自动展开
-- 严禁重复已有数据、严禁”略””同上””以此类推”
-- 只返回纯JSON`;}
+【已有测试点，禁止重复】
+${existingTestsJson}${ctxLine}
+
+【硬性数量要求】
+- tests 数组必须恰好包含 ${target} 个元素。不能多于 ${target} 个，也不能少于 ${target} 个。
+- category=”performance” 的测试点至少 ${requiredPerformance} 个。
+- category=”adversarial” 的测试点至少 ${requiredAdversarial} 个。
+- 其余测试点使用 boundary、special 或 ordinary。
+- 所有测试点必须互不重复；展开简写表达式后输入相同也视为重复。
+
+【唯一允许的输出结构】
+{
+  “analysis”: {
+    “expectedTimeComplexity”: “期望算法的时间复杂度”,
+    “expectedSpaceComplexity”: “期望算法的空间复杂度”,
+    “bruteForceToReject”: [“会被测试数据卡掉的错误算法或低效算法”],
+    “stressScale”: 100000,
+    “stressInputStrategy”: “一句话描述压力数据的构造方法”
+  },
+  “tests”: [
+    {
+      “input”: “可直接提交给程序的完整输入文本”,
+      “output”: “该输入对应的唯一正确输出文本”,
+      “category”: “boundary”,
+      “scale”: 1,
+      “targets”: “该测试点主要针对的错误”,
+      “reason”: “该测试点存在的必要性”
+    }
+  ]
+}
+
+【字段规则】
+1. 所有对象必须使用以上英文键名，不得增加、删除或重命名字段。
+2. input 和 output 必须是非空 JSON 字符串。
+3. input 和 output 内部的换行必须写成转义序列 \\n，不得在字符串内部出现未转义的物理换行。
+4. 不得出现”略””同上””以此类推””待计算””unknown””TODO””placeholder”或类似占位内容。
+5. category 只能是 boundary、special、ordinary、adversarial、performance。
+6. scale 必须是正整数，表示该测试点的主要输入规模。
+7. analysis.stressScale 必须与实际性能测试采用的最大主要规模一致。
+8. targets 和 reason 各写一句简短具体的话，不要长篇解释。
+9. bruteForceToReject 只列出 1 至 4 个最值得拦截的错误算法。
+
+【测试数据设计要求】
+- boundary：覆盖最小规模、最大边界、空区间、单元素等合法边界。
+- special：覆盖全相等、严格递增、严格递减、重复值、零值、负值、极值等题目允许的特殊结构。
+- ordinary：覆盖正常随机或混合情况。
+- adversarial：针对常见错误实现、错误贪心、错误状态转移、下标错误、溢出、排序稳定性误用、重复元素处理错误等。
+- performance：必须达到足以淘汰目标暴力算法的规模，并采用容易准确计算答案的数据结构。
+
+【大规模输入简写】
+只有当系统能够无歧义展开时，input 才可以使用类似 1 2 3 ... 99999 100000 的连续等差序列表达式。使用简写时必须写出起始项、至少第二项和结束项。只能用于 input，不能用于 output。output 必须对应表达式完整展开后的输入。除明确的连续序列外，不得使用”重复N次””随机生成””若干个”等自然语言描述。
+
+【正确性优先级】
+- 每一个 output 都必须能由题意严格推出。
+- 性能测试优先选择答案可通过公式、对称性、全相等结构、单调结构或其他确定方式准确计算的数据。
+- 如果无法确信某个 output 完全正确，必须更换该测试点，不得猜测。
+- 不得为了凑够数量而生成语义重复或无法验证的数据。
+
+【输出前静默检查】不要输出检查过程，只输出最终 JSON。自行确认：JSON 可解析、tests.length=${target}、performance≥${requiredPerformance}、adversarial≥${requiredAdversarial}、每个测试点字段完整、input/output 非空、无重复、output 与题面一致。`;}
 
 export async function generateComplexityAwareTests(options: { apiKey: string; endpoint: string; model: string; problem: Record<string, unknown>; count: number; referenceSolution?: string }) {
   const { apiKey, endpoint, model, problem } = options;
@@ -433,52 +495,80 @@ export async function generateComplexityAwareTests(options: { apiKey: string; en
     return { input: String(item.input || "").slice(0, 180), output: String(item.output || "").slice(0, 100) };
   });
 
-  const schema = `{
-  "analysis": {
-    "expectedTimeComplexity": "例如 O(n log n)",
-    "expectedSpaceComplexity": "例如 O(n)",
-    "bruteForceToReject": ["会被压力点卡掉的错误/暴力算法"],
-    "stressScale": 100000,
-    "stressInputStrategy": "压力数据构造策略"
-  },
-  "tests": [
-    {
-      "input": "完整输入文本，必须可直接运行",
-      "output": "正确输出文本",
-      "category": "boundary|special|ordinary|adversarial|performance",
-      "scale": 1,
-      "targets": "针对什么错误算法或边界遗漏",
-      "reason": "为什么这个测试点必要"
-    }
-  ]
-}`;
+  const problemDigest = buildProblemDigest(problem);
+  const genCtx = typeof problem.generationContext === "string" && problem.generationContext.trim()
+    ? problem.generationContext.trim() : "";
+  const existingJson = JSON.stringify(compactExisting(existingInputs));
 
-  const systemPrompt = buildStrictPrompt({ target, requiredPerformance, requiredAdversarial, schema });
-
-  const userPrompt = `${buildProblemText(problem)}
-
-已有测试点摘要（不要重复）：
-${JSON.stringify(compactExisting(existingInputs), null, 2)}`;
-  const generationContext = typeof problem.generationContext === "string" && problem.generationContext.trim()
-    ? `\n\n分批生成上下文（必须遵守）：\n${problem.generationContext.trim()}`
-    : "";
+  const systemPrompt = buildStrictPrompt({
+    target, requiredPerformance, requiredAdversarial,
+    problemDigest, existingTestsJson: existingJson, generationContext: genCtx,
+  });
 
   let content = await callAi([
     { role: "system", content: systemPrompt },
-    { role: "user", content: `${userPrompt}${generationContext}` },
+    { role: "user", content: "请根据题面和约束生成完整的测试集。" },
   ], Math.max(4000, target * 350), 0.08);
 
   let parsed: unknown;
   let candidates: GeneratedTest[];
+  let validationErrors = "";
+
   try {
     parsed = parseJson(content);
     candidates = parseTests(content);
     if (!candidates.length) throw new Error("empty-tests");
-  } catch {
-    const repairPrompt = `上次返回没有产生有效测试点。请重新生成${target}个。必须英文键名，只输出JSON。
-题面：${buildProblemText(problem).split("\n").slice(0, 12).join("\n")}
-已有(勿重复)：${JSON.stringify(compactExisting(existingInputs))}${generationContext}
-上次错误输出参考：${content.slice(0, AI_JSON_REPAIR_MAX_RAW_LENGTH)}`;
+
+    // Validate counts
+    if (candidates.length !== target) validationErrors += `tests.length=${candidates.length}, expected=${target}\n`;
+    const perfCount = candidates.filter((t) => t.category === "performance").length;
+    if (perfCount < requiredPerformance) validationErrors += `performance=${perfCount}, expected>=${requiredPerformance}\n`;
+    const advCount = candidates.filter((t) => t.category === "adversarial").length;
+    if (advCount < requiredAdversarial) validationErrors += `adversarial=${advCount}, expected>=${requiredAdversarial}\n`;
+
+    if (validationErrors) {
+      throw new Error("validation-failed");
+    }
+  } catch (err) {
+    const errDetail = err instanceof Error && err.message === "empty-tests"
+      ? "返回数据中没有可解析的测试点（缺少 input 或 output）" : "";
+    const repairErr = `${validationErrors}${errDetail}`.trim() || "JSON 解析失败";
+    const repairPrompt = `上一次结果未通过 OJ 测试点校验。请从头重新生成完整结果，不要修补原 JSON，不要解释错误。
+
+最终只能输出一个符合 RFC 8259 标准的 JSON 对象。
+
+【题目必要信息】
+${problemDigest}
+
+【已有测试点，禁止重复】
+${existingJson}
+
+【分批生成上下文】
+${genCtx}
+
+【本次必须生成】
+- tests 数组恰好 ${target} 个元素。
+- performance 至少 ${requiredPerformance} 个。
+- adversarial 至少 ${requiredAdversarial} 个。
+
+【上次校验错误】
+${repairErr}
+
+【上次错误输出片段，仅用于避免再次发生相同格式错误，不得照抄】
+${content.slice(0, 3000)}
+
+【输出结构】
+{"analysis":{"expectedTimeComplexity":"字符串","expectedSpaceComplexity":"字符串","bruteForceToReject":["字符串"],"stressScale":1,"stressInputStrategy":"字符串"},"tests":[{"input":"字符串","output":"字符串","category":"boundary|special|ordinary|adversarial|performance 中的一个","scale":1,"targets":"字符串","reason":"字符串"}]}
+
+【强制规则】
+- tests.length 必须严格等于 ${target}。
+- 所有键名必须为上述英文键名，不得增减或重命名。
+- input 和 output 必须完整、非空并可直接使用，换行用 \\n 转义。
+- 不得使用"略""同上""待计算""unknown""TODO"或占位文本。
+- 不得重复已有测试点，也不得在本次结果内部重复。
+- output 必须是准确答案，不能猜测。无法确信时必须更换数据。
+- 只输出最终 JSON。`;
+
     content = await callAi([{ role: "user", content: repairPrompt }], Math.max(4200, target * 300), 0.03);
     parsed = parseJson(content);
     candidates = parseTests(content);
@@ -512,8 +602,35 @@ ${JSON.stringify(compactExisting(existingInputs), null, 2)}`;
 
   if (unique.length < target) {
     const missing = target - unique.length;
-    const refillPrompt = `补足${missing}个新测试点。只输出JSON。禁止重复这些：${JSON.stringify(compactExisting([...existingInputs, ...unique]))}
-题面：${buildProblemText(problem).split("\n").slice(0, 12).join("\n")}${generationContext}`;
+    const missingPerformance = Math.max(0, requiredPerformance - unique.filter(qualifiesPerformance).length);
+    const missingAdversarial = Math.max(0, requiredAdversarial - unique.filter(qualifiesAdversarial).length);
+    const refillPrompt = `你需要为一个 OJ 题目补充新的测试点。最终只能输出一个合法 JSON 对象，结构严格为：{"tests":[{"input":"完整输入文本","output":"正确输出文本","category":"boundary|special|ordinary|adversarial|performance 中的一个","scale":1,"targets":"针对的错误或边界","reason":"测试点必要性"}]}
+
+【题目必要信息】
+${problemDigest}
+
+【已有测试点和本轮已生成测试点，全部禁止重复】
+${JSON.stringify(compactExisting([...existingInputs, ...unique.map(({input,output,category}) => ({input,output,category}))]))}
+
+【分批生成上下文】
+${genCtx}
+
+【需要补足的数量】
+- tests 数组必须恰好包含 ${missing} 个新测试点。
+- 其中还需要至少 ${missingPerformance} 个 performance。
+- 其中还需要至少 ${missingAdversarial} 个 adversarial。
+
+【规则】
+1. 只生成新的测试点，不得重复已有输入。展开简写后输入相同也视为重复。
+2. 每个对象必须包含 input、output、category、scale、targets、reason 六个字段。
+3. input 和 output 必须完整、非空并能直接用于判题。字符串内部换行使用 \\n 转义。
+4. 不得使用"略""同上""待计算""unknown""TODO""placeholder"等占位内容。
+5. category 只能使用 boundary、special、ordinary、adversarial、performance。
+6. scale 必须是正整数。output 必须严格正确。
+7. 大规模 input 只允许使用可无歧义展开的连续等差序列简写，例如 1 2 3 ... 99999 100000。
+8. 简写不能用于 output。targets 和 reason 各写一句简短具体的话。
+9. 输出前静默检查：tests.length=${missing}、配额满足、JSON 可解析、字段完整、不重复、output 与题意一致。
+10. 只输出最终 JSON 对象。`;
     try {
       const refillContent = await callAi([{ role: "user", content: refillPrompt }], Math.max(2200, missing * 360), 0.04);
       addUniqueTests(parseTests(refillContent));
