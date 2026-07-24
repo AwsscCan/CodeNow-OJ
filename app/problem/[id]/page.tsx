@@ -231,7 +231,7 @@ export default function ProblemPage() {
     setTestGenStatus("准备分批生成…");
     try {
       const targetTotal = Math.max(1, testPointCount);
-      const existing = new Set(store.problem.samples.map((t) => `${t.input} ${t.output}`));
+      const existing = new Set(store.problem.samples.map((t) => `${t.input}::fp::${t.output}`));
       const accepted: typeof store.problem.samples = [];
       let stalled = 0;
       const batchFocus = ["基础合法数据", "边界数据", "反例数据", "性能数据", "综合补洞"];
@@ -254,7 +254,7 @@ export default function ProblemPage() {
           const data = await res.json() as { tests?: Array<{ input: string; output: string; category?: string; scale?: number; targets?: string; reason?: string }>; error?: string };
           if (!res.ok || !data.tests) throw new Error(data.error || "AI 生成失败");
           const fresh = data.tests.filter((t) => {
-            const key = `${t.input} ${t.output}`;
+            const key = `${t.input}::fp::${t.output}`;
             if (existing.has(key)) return false;
             existing.add(key);
             return true;
