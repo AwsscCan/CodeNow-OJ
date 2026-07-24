@@ -33,12 +33,20 @@ describe("validateEndpoint", () => {
     expect(() => validateEndpoint("http://api.deepseek.com")).toThrow("HTTPS");
   });
 
-  it("rejects unknown hosts", () => {
-    expect(() => validateEndpoint("https://evil.com/api")).toThrow("不支持的 API 服务商");
+  it("accepts custom OpenAI-compatible HTTPS endpoints", () => {
+    const url = validateEndpoint("https://llm.example.com/openai/v1");
+    expect(url.hostname).toBe("llm.example.com");
+    expect(url.pathname).toBe("/openai/v1/chat/completions");
   });
 
-  it("rejects hostnames that merely contain allowed names", () => {
-    expect(() => validateEndpoint("https://api.deepseek.com.evil.com")).toThrow("不支持的 API 服务商");
+  it("rejects localhost endpoints", () => {
+    expect(() => validateEndpoint("https://localhost/v1")).toThrow("不安全的 API Endpoint");
+  });
+
+  it("rejects private network endpoints", () => {
+    expect(() => validateEndpoint("https://192.168.1.20/v1")).toThrow("不安全的 API Endpoint");
+    expect(() => validateEndpoint("https://10.0.0.8/v1")).toThrow("不安全的 API Endpoint");
+    expect(() => validateEndpoint("https://172.16.2.3/v1")).toThrow("不安全的 API Endpoint");
   });
 
   it("rejects invalid URL format", () => {
