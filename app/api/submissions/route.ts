@@ -16,7 +16,7 @@ export async function GET(request: Request) {
   try {
     const problemId = new URL(request.url).searchParams.get("problemId")?.trim();
     if (!problemId) return Response.json({ error: "缺少题号" }, { status: 400 });
-    const history = await getDb().select().from(submissions).where(eq(submissions.problemId, problemId)).orderBy(desc(submissions.submittedAt));
+    const history = await (await getDb()).select().from(submissions).where(eq(submissions.problemId, problemId)).orderBy(desc(submissions.submittedAt));
     return Response.json({ history });
   } catch (error) {
     return Response.json({ error: errorMessage(error) }, { status: 500 });
@@ -40,7 +40,7 @@ export async function POST(request: Request) {
     };
     if (!record.id || !record.problemId || !record.problemTitle || !record.status || !record.passed || !record.submittedAt || !record.sourceCode) return Response.json({ error: "提交记录字段不完整" }, { status: 400 });
     if (record.sourceCode.length > MAX_SUBMISSION_SOURCE_LENGTH) return Response.json({ error: "提交代码过长" }, { status: 413 });
-    const [saved] = await getDb().insert(submissions).values(record).returning();
+    const [saved] = await (await getDb()).insert(submissions).values(record).returning();
     return Response.json({ record: saved }, { status: 201 });
   } catch (error) {
     return Response.json({ error: errorMessage(error) }, { status: 500 });
@@ -55,8 +55,8 @@ export async function DELETE(request: Request) {
     const id = new URL(request.url).searchParams.get("id")?.trim();
     const payload = await request.json().catch(() => null) as { problemIds?: unknown } | null;
     const problemIds = Array.isArray(payload?.problemIds) ? payload.problemIds.map(String).map((item) => item.trim()).filter(Boolean).slice(0, MAX_BULK_DELETE_PROBLEM_IDS) : [];
-    if (id) await getDb().delete(submissions).where(eq(submissions.id, id));
-    else if (problemIds.length) await getDb().delete(submissions).where(inArray(submissions.problemId, problemIds));
+    if (id) await (await getDb()).delete(submissions).where(eq(submissions.id, id));
+    else if (problemIds.length) await (await getDb()).delete(submissions).where(inArray(submissions.problemId, problemIds));
     else return Response.json({ error: "缺少记录编号或题号" }, { status: 400 });
     return Response.json({ ok: true });
   } catch (error) {
@@ -76,7 +76,7 @@ export async function PATCH(request: Request) {
     if (!oldProblemId || !newProblemId || !problemTitle) return Response.json({ error: "题号更新字段不完整" }, { status: 400 });
     // Validate new ID format
     if (!/^[A-Za-z][A-Za-z0-9_-]{0,19}$/.test(newProblemId)) return Response.json({ error: "新题号需以字母开头，仅含字母数字下划线短横线" }, { status: 400 });
-    await getDb().update(submissions).set({ problemId: newProblemId, problemTitle }).where(eq(submissions.problemId, oldProblemId));
+    await (await getDb()).update(submissions).set({ problemId: newProblemId, problemTitle }).where(eq(submissions.problemId, oldProblemId));
     return Response.json({ ok: true });
   } catch (error) {
     return Response.json({ error: errorMessage(error) }, { status: 500 });

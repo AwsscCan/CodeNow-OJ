@@ -82,6 +82,7 @@ export const useAiStore = create<AiStore>()(
         provider: s.provider,
         endpoint: s.endpoint,
         model: s.model,
+        apiKeys: s.apiKeys,
         chatMessages: s.chatMessages.slice(-30),
       }),
     },

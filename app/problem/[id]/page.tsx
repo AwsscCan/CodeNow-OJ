@@ -493,16 +493,14 @@ export default function ProblemPage() {
         <footer><textarea value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) handleSendChat(); }} placeholder="询问思路、复杂度、代码报错……（Ctrl + Enter 发送）" /><button disabled={chatBusy || !chatInput.trim()} onClick={handleSendChat}>发送</button></footer>
       </aside></div>}
 
-      {/* Mascot */}
-      {theme.themeMode === "girl" && (
-        <DesktopMascot
+      {/* Mascot — visible in all themes */}
+      <DesktopMascot
           visible={mascotVisible}
           messageIndex={mascotMessage}
           onCycle={() => setMascotMessage((v) => (v + 1) % 13)}
           onSetVisible={setMascotVisible}
           onSetMessageIndex={setMascotMessage}
         />
-      )}
 
       <Toast message={notice} />
     </main>

@@ -200,6 +200,12 @@ export default function LibraryPage() {
           <button onClick={() => toast("讨论区正在开发中，敬请期待")}>讨论</button>
         </nav>
         <div className="header-actions">
+          <label className="theme-picker" title="切换网站主题">
+            <span aria-hidden="true">✦</span>
+            <select aria-label="网站主题" value={theme.themeMode} onChange={(e) => theme.setThemeMode(e.target.value as "light"|"dark"|"girl")}>
+              <option value="light">亮色</option><option value="dark">暗色</option><option value="girl">少女</option>
+            </select>
+          </label>
           <span className="avatar">LR</span>
           <div className="user-copy"><b>LinR</b><small>Lv.12 · 1842</small></div>
         </div>
