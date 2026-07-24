@@ -60,24 +60,37 @@ export default function ProblemPage() {
     // Problem state is set by library page or persisted in localStorage
   }, [problemId]);
 
-  // Sync test cases back to library archive when they change
+  // Sync test cases back to library IMMEDIATELY on every change + on unmount
   useEffect(() => {
-    if (store.problem.samples.length > 0) {
-      libraryStore.syncProblemSamples(store.problem.id, store.problem.samples);
-    }
-  }, [store.problem.id, store.problem.samples.length]);
+    // Sync to library store archives
+    libraryStore.syncProblemSamples(store.problem.id, store.problem.samples);
+    // Also force-save the problem-store to localStorage directly, bypassing Zustand debounce
+    try {
+      const saved = localStorage.getItem("codenow-workspace");
+      const data = saved ? JSON.parse(saved) : {};
+      data.state = { ...data.state, problem: store.problem };
+      localStorage.setItem("codenow-workspace", JSON.stringify(data));
+    } catch { /* ignore */ }
+  }, [store.problem]);
 
-  // Sync on unmount and visibility change (ensure persistence)
+  // Sync on unmount / visibility change / page leave
   useEffect(() => {
-    const flush = () => libraryStore.syncProblemSamples(store.problem.id, store.problem.samples);
-    window.addEventListener("beforeunload", flush);
-    document.addEventListener("visibilitychange", flush);
-    return () => {
-      flush();
-      window.removeEventListener("beforeunload", flush);
-      document.removeEventListener("visibilitychange", flush);
+    const saveNow = () => {
+      libraryStore.syncProblemSamples(store.problem.id, store.problem.samples);
+      try {
+        const state = JSON.parse(localStorage.getItem("codenow-workspace") || "{}");
+        state.state = { ...state.state, problem: store.problem, code: store.code };
+        localStorage.setItem("codenow-workspace", JSON.stringify(state));
+      } catch { /* ignore */ }
     };
-  }, [store.problem.id, store.problem.samples]);
+    window.addEventListener("beforeunload", saveNow);
+    document.addEventListener("visibilitychange", saveNow);
+    return () => {
+      saveNow();
+      window.removeEventListener("beforeunload", saveNow);
+      document.removeEventListener("visibilitychange", saveNow);
+    };
+  }, [store.problem, store.code]);
 
   // Fetch submission history
   useEffect(() => {
