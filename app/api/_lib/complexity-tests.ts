@@ -1,6 +1,7 @@
 import { validateEndpoint } from "./validate-endpoint";
 import { AI_TIMEOUT_MS, AI_JSON_REPAIR_MAX_RAW_LENGTH, MAX_EXPANDED_CHARS } from "./constants";
 import { judge0Submit, type ValidatedReference } from "./reference-solution";
+import { expandGenerator, validateInput, listGeneratorTypes } from "./generator-registry";
 
 type UpstreamData = { choices?: { message?: { content?: string } }[]; error?: { message?: string } };
 type Part = { type?: unknown; value?: unknown; count?: unknown; separator?: unknown; start?: unknown; end?: unknown; step?: unknown; values?: unknown };
@@ -320,38 +321,58 @@ function isValidTestData(value: string): boolean {
   return true;
 }
 
-function parseTests(content: string): GeneratedTest[] {
+function parseTests(content: string, maxInputLength = MAX_EXPANDED_CHARS): GeneratedTest[] {
   const parsed = parseJson(content);
   const list = findTestList(parsed);
   if (!Array.isArray(list)) throw new Error("AI 返回的 JSON 缺少 tests 数组");
   return list.flatMap((item) => {
     if (!item || typeof item !== "object") return [];
     const test = item as RawTest;
-    const input = readFirst(test, ["input", "stdin", "input_data", "in", "输入", "输入数据", "标准输入", "测试输入", "样例输入"]);
-    const output = readFirst(test, ["output", "stdout", "expectedOutput", "expected_output", "expected", "answer", "output_data", "out", "输出", "输出数据", "标准输出", "预期输出", "期望输出", "答案", "样例输出"]);
+    const category = String(test.category || "ordinary").toLowerCase();
+    const scale = Math.max(1, Math.floor(Number(test.scale) || 1));
+    const targets = String(test.targets || "");
+    const reason = String(test.reason || "");
+
     try {
-      let materializedInput = materialize(input, test.inputParts);
-      let materializedOutput = materialize(output, test.outputParts);
-
-      // Validate truly unfixable patterns
-      if (!isValidTestData(materializedInput) || !isValidTestData(materializedOutput)) {
-        return [];
+      // Handle generator spec (AI returns structured generator instead of raw input)
+      if (test.generator && typeof test.generator === "object") {
+        const gen = test.generator as { type?: unknown; params?: unknown };
+        const input = expandGenerator(
+          { type: String(gen.type || ""), params: (gen.params || {}) as Record<string, unknown> },
+          { maxN: 300000, maxValue: 1e9, constraints: "standard" },
+        );
+        const valErr = validateInput(input, maxInputLength);
+        if (valErr) return [];
+        // Output is empty — will be computed by reference solution later
+        return [{ input, output: "", category, scale, targets, reason }];
       }
 
-      // Try to expand ellipsis patterns into full data
+      // Handle direct input
+      const rawInput = readFirst(test, ["input", "stdin", "input_data", "in", "输入"]);
+      if (!rawInput && !test.generator) return []; // Need either input or generator
+
+      let materializedInput = materialize(rawInput, test.inputParts);
+      if (!materializedInput.trim()) return [];
+
+      // Validate unfixable patterns
+      if (!isValidTestData(materializedInput)) return [];
+
+      // Expand ellipsis
       const expandedInput = expandEllipsis(materializedInput);
-      const expandedOutput = expandEllipsis(materializedOutput);
-      if (expandedInput === null || expandedOutput === null) {
-        return []; // Cannot infer the pattern — reject
-      }
+      if (expandedInput === null) return [];
+      if (expandedInput.length > maxInputLength) return [];
 
+      const inputErr = validateInput(expandedInput, maxInputLength);
+      if (inputErr) return [];
+
+      // Output is empty — will be computed by reference solution later
       return [{
         input: expandedInput,
-        output: expandedOutput,
-        category: String(test.category || "ordinary").toLowerCase(),
-        scale: Math.max(1, Math.floor(Number(test.scale) || 1)),
-        targets: String(test.targets || ""),
-        reason: String(test.reason || ""),
+        output: "", // computed downstream
+        category,
+        scale,
+        targets,
+        reason,
       }];
     } catch { return []; }
   });
@@ -395,7 +416,8 @@ function makePlan(parsed: unknown): ComplexityPlan {
 function buildStrictPrompt(options: { target: number; requiredPerformance: number; requiredAdversarial: number; problemDigest: string; existingTestsJson: string; generationContext: string; algorithmSummary: string }) {
   const { target, requiredPerformance, requiredAdversarial, problemDigest, existingTestsJson, generationContext, algorithmSummary } = options;
   const ctxLine = generationContext ? `\n本批次：${generationContext}` : "";
-  // NEW: AI only generates test INPUTS. Output is computed by verified reference solution.
+  const generatorList = listGeneratorTypes().join(",");
+  // NEW: AI only generates test INPUTS. Can use generator specs for large data.
   return `你设计 OJ 测试输入。只输出纯 JSON。
 
 题面：${problemDigest}
@@ -403,12 +425,16 @@ function buildStrictPrompt(options: { target: number; requiredPerformance: numbe
 
 已有（勿重复）：${existingTestsJson}${ctxLine}
 
-格式：{"tests":[{"input":"完整输入","category":"boundary","scale":1,"targets":"目标","reason":"必要性"}]}
+格式：{"tests":[{"input":"完整输入文本","category":"boundary","scale":1,"targets":"目标","reason":"必要性"}]}
+
+或对大数据用生成器：{"tests":[{"generator":{"type":"${generatorList}等","params":{}},"category":"performance","scale":100000,"targets":"目标","reason":"必要性"}]}
+
+可用生成器：constant_array, increasing_array, decreasing_array, random_array, permutation, many_duplicates, path_tree, star_tree, random_tree, complete_graph, repeated_char, palindrome_string
 
 规则：
 - tests=${target}个，performance≥${requiredPerformance}，adversarial≥${requiredAdversarial}
-- 只生成 input，不要 output（系统会自动计算）
-- 大输入用差值简写如"1 2 3 ... 99999 100000"
+- 只生成 input 或 generator，不要 output（系统自动计算）
+- 小数据直接给 input 字符串，大数据（>500值）用 generator
 - 禁止"略/同上/待计算/unknown/TODO"
 - category: boundary|special|ordinary|adversarial|performance
 - 严禁重复`;}
