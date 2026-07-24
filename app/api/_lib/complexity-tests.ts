@@ -1,6 +1,6 @@
 import { validateEndpoint } from "./validate-endpoint";
-import { verifyTests, filterVerifiedTests } from "./verify-tests";
 import { AI_TIMEOUT_MS, AI_JSON_REPAIR_MAX_RAW_LENGTH, MAX_EXPANDED_CHARS } from "./constants";
+import { judge0Submit, type ValidatedReference } from "./reference-solution";
 
 type UpstreamData = { choices?: { message?: { content?: string } }[]; error?: { message?: string } };
 type Part = { type?: unknown; value?: unknown; count?: unknown; separator?: unknown; start?: unknown; end?: unknown; step?: unknown; values?: unknown };
@@ -392,34 +392,31 @@ function makePlan(parsed: unknown): ComplexityPlan {
   };
 }
 
-function buildStrictPrompt(options: { target: number; requiredPerformance: number; requiredAdversarial: number; problemDigest: string; existingTestsJson: string; generationContext: string }) {
-  const { target, requiredPerformance, requiredAdversarial, problemDigest, existingTestsJson, generationContext } = options;
-  const ctxLine = generationContext ? `\n本批次上下文：${generationContext}` : "";
-  // Tight prompt — minimal tokens, high compliance
-  return `你是一个 OJ 测试数据生成器。只输出纯 JSON，无 Markdown/解释/前后缀。
+function buildStrictPrompt(options: { target: number; requiredPerformance: number; requiredAdversarial: number; problemDigest: string; existingTestsJson: string; generationContext: string; algorithmSummary: string }) {
+  const { target, requiredPerformance, requiredAdversarial, problemDigest, existingTestsJson, generationContext, algorithmSummary } = options;
+  const ctxLine = generationContext ? `\n本批次：${generationContext}` : "";
+  // NEW: AI only generates test INPUTS. Output is computed by verified reference solution.
+  return `你设计 OJ 测试输入。只输出纯 JSON。
 
-题面：
-${problemDigest}
+题面：${problemDigest}
+参考算法：${algorithmSummary}
 
-已有测试点（禁止重复）：
-${existingTestsJson}${ctxLine}
+已有（勿重复）：${existingTestsJson}${ctxLine}
 
-输出格式（严格此结构）：
-{"analysis":{"expectedTimeComplexity":"","expectedSpaceComplexity":"","bruteForceToReject":[],"stressScale":100000,"stressInputStrategy":""},"tests":[{"input":"","output":"","category":"boundary","scale":1,"targets":"","reason":""}]}
+格式：{"tests":[{"input":"完整输入","category":"boundary","scale":1,"targets":"目标","reason":"必要性"}]}
 
-硬性规则：
-- tests 数组=${target} 个，performance≥${requiredPerformance}，adversarial≥${requiredAdversarial}
-- input/output 非空、换行用 \\\\n、禁止中文键名、禁止"略/同上/待计算/unknown/TODO"
+规则：
+- tests=${target}个，performance≥${requiredPerformance}，adversarial≥${requiredAdversarial}
+- 只生成 input，不要 output（系统会自动计算）
+- 大输入用差值简写如"1 2 3 ... 99999 100000"
+- 禁止"略/同上/待计算/unknown/TODO"
 - category: boundary|special|ordinary|adversarial|performance
-- 性能测试需达到淘汰暴力算法的规模
-- 大规模 input 可用等差简写如"1 2 3 ... 99999 100000"（仅input,不能用于output）
-- output 必须严格正确，不确定就换数据
-- 严禁重复，展开简写后相同也算重复
-- 静默确认数量正确后输出`;}
+- 严禁重复`;}
 
-export async function generateComplexityAwareTests(options: { apiKey: string; endpoint: string; model: string; problem: Record<string, unknown>; count: number; referenceSolution?: string }) {
+export async function generateComplexityAwareTests(options: { apiKey: string; endpoint: string; model: string; problem: Record<string, unknown>; count: number; referenceSolution?: string; validatedRef?: ValidatedReference }) {
   const { apiKey, endpoint, model, problem } = options;
-  const referenceSolution = options.referenceSolution || "";
+  const referenceSolution = options.referenceSolution || options.validatedRef?.solutionCode || "";
+  const validatedRef = options.validatedRef;
   const target = Math.max(1, Math.min(24, Math.floor(options.count)));
   const chatUrl = validateEndpoint(endpoint);
   const isDeepSeek = /(^|\.)api\.deepseek\.com$/i.test(chatUrl.hostname);
@@ -458,6 +455,7 @@ export async function generateComplexityAwareTests(options: { apiKey: string; en
   const systemPrompt = buildStrictPrompt({
     target, requiredPerformance, requiredAdversarial,
     problemDigest, existingTestsJson: existingJson, generationContext: genCtx,
+    algorithmSummary: validatedRef?.algorithmSummary || "标准算法",
   });
 
   let content = await callAi([
@@ -559,43 +557,49 @@ ${genCtx ? `上下文：${genCtx}` : ""}`;
   select(adversarial, requiredAdversarial);
   select(unique, target);
 
-  const finalSelected = selected.slice(0, target).map(({ input, output, category, scale, targets, reason }) => ({ input, output, category, scale, targets, reason }));
+  const finalSelected = selected.slice(0, target);
 
-  // Judge0-based verification when a reference solution is provided
-  let verifiedCount = 0;
+  // ── Compute outputs using validated reference solution ──
+  let computedCount = 0;
   if (referenceSolution.trim()) {
     try {
-      const verified = await verifyTests(finalSelected, referenceSolution);
-      const good = filterVerifiedTests(verified);
-      verifiedCount = good.length;
-      if (good.length > 0) {
-        // Replace with verified tests only; fall back to unverified if none pass
-        const performanceAfter = good.filter(qualifiesPerformance).length;
-        const adversarialAfter = good.filter(qualifiesAdversarial).length;
-        const partialAfter = good.length < target || performanceAfter < requiredPerformance || adversarialAfter < requiredAdversarial;
-        return {
-          tests: good,
-          report: {
-            expectedTimeComplexity: plan.expectedTimeComplexity,
-            expectedSpaceComplexity: plan.expectedSpaceComplexity,
-            stressScale: plan.stressScale,
-            performanceCount: performanceAfter,
-            adversarialCount: adversarialAfter,
-            requestedCount: target,
-            generatedCount: good.length,
-            partial: partialAfter,
-            verifiedCount: good.length,
-            totalVerified: verified.length,
-          },
-        };
+      let langId = 0;
+      try { langId = await getCppLangId(); } catch { /* keep 0, will fail gracefully */ }
+      if (langId > 0) {
+        const withOutputs = await Promise.all(finalSelected.map(async (t) => {
+          try {
+            const r = await judge0Submit(referenceSolution, t.input, langId);
+            return { ...t, output: r.stdout.trim(), computed: r.stdout.trim().length > 0 };
+          } catch { return { ...t, output: "", computed: false }; }
+        }));
+        const valid = withOutputs.filter((t) => t.computed);
+        computedCount = valid.length;
+        if (valid.length > 0) {
+          const perf = valid.filter(qualifiesPerformance).length;
+          const adv = valid.filter(qualifiesAdversarial).length;
+          return {
+            tests: valid.map(({ computed: _, ...t }) => t),
+            report: {
+              expectedTimeComplexity: validatedRef?.algorithmSummary || plan.expectedTimeComplexity,
+              expectedSpaceComplexity: plan.expectedSpaceComplexity,
+              stressScale: plan.stressScale,
+              performanceCount: perf,
+              adversarialCount: adv,
+              requestedCount: target,
+              generatedCount: valid.length,
+              partial: valid.length < target,
+              computedCount: valid.length,
+              referenceValidated: true,
+            },
+          };
+        }
       }
-    } catch {
-      // Verification failed (e.g. Judge0 down) — return tests unverified, this is OK
-    }
+    } catch { /* Fall through */ }
   }
 
+  // Fallback: return AI-generated tests as-is (with whatever output AI provided)
   return {
-    tests: finalSelected,
+    tests: finalSelected.map(({ input, output, category, scale, targets, reason }) => ({ input, output, category, scale, targets, reason })),
     report: {
       expectedTimeComplexity: plan.expectedTimeComplexity,
       expectedSpaceComplexity: plan.expectedSpaceComplexity,
@@ -604,8 +608,21 @@ ${genCtx ? `上下文：${genCtx}` : ""}`;
       adversarialCount: selected.filter(qualifiesAdversarial).length,
       requestedCount: target,
       generatedCount: finalSelected.length,
-      partial: finalSelected.length < target || performance.length < requiredPerformance || adversarial.length < requiredAdversarial,
-      verifiedCount,
+      partial: finalSelected.length < target,
+      computedCount,
+      referenceValidated: false,
     },
   };
+}
+
+// Helper: get C++ language ID from Judge0
+async function getCppLangId(): Promise<number> {
+  const res = await fetch("https://ce.judge0.com/languages", { headers: { Accept: "application/json" } });
+  if (!res.ok) throw new Error("无法获取编译器列表");
+  const langs = await res.json() as { id: number; name: string }[];
+  const cpp = langs.find((l: { name: string }) => l.name.includes("C++ (GCC 14"))
+    || langs.find((l: { name: string }) => l.name.includes("C++ (GCC 9"))
+    || langs.find((l: { name: string }) => l.name.includes("C++"));
+  if (!cpp) throw new Error("没有可用 C++ 编译器");
+  return cpp.id;
 }
