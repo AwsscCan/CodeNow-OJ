@@ -21,6 +21,8 @@ export default function LibraryPage() {
   const [draggedFolder, setDraggedFolder] = useState<string | null>(null);
   const [dragOverFolder, setDragOverFolder] = useState<string | null>(null);
   const [showImport, setShowImport] = useState(false);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [nextProblemId, setNextProblemId] = useState("");
 
   // Import modal state
   const [importMode, setImportMode] = useState<"paste" | "json">("paste");
@@ -110,6 +112,22 @@ export default function LibraryPage() {
     store.removeFolder(folder);
     if (folderContains(store.selectedFolder, folder)) store.setSelectedFolder(folderParent(folder) || "默认题库");
     toast(`已永久删除`);
+  }
+
+  async function confirmRename() {
+    if (!renamingId) return;
+    const nextId = nextProblemId.trim();
+    if (!/^[A-Za-z][A-Za-z0-9_-]{0,19}$/.test(nextId)) return toast("题号需以字母开头，仅含字母数字下划线短横线，最长 20 位");
+    try {
+      const res = await fetch("/api/submissions", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ oldProblemId: renamingId, newProblemId: nextId, problemTitle: store.archives.find((a) => a.problem.id === renamingId)?.problem.title || "" }) });
+      if (!res.ok) { const data = await res.json() as { error?: string }; throw new Error(data.error || "同步失败"); }
+      store.renameProblem(renamingId, nextId);
+      setRenamingId(null);
+      setNextProblemId("");
+      toast(`题号已修改为 ${nextId}`);
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "重命名失败");
+    }
   }
 
   function reorderFolder(target: string, placeAfter: boolean) {
@@ -272,7 +290,7 @@ export default function LibraryPage() {
               ))}
               {selectedArchives.map((item) => (
                 <article className="catalog-row" key={item.problem.id}>
-                  <div className="catalog-problem-link"><span className="catalog-id-edit editable"><code>{item.problem.id}</code></span><button className="catalog-title-open" onClick={() => openArchived(item)}><span><b>{item.problem.title}</b><small>{new Date(item.archivedAt).toLocaleDateString("zh-CN")} 归档</small></span></button></div>
+                  <div className="catalog-problem-link"><button className="catalog-id-edit editable" onClick={() => { setRenamingId(item.problem.id); setNextProblemId(item.problem.id); }}><code>{item.problem.id}</code></button><button className="catalog-title-open" onClick={() => openArchived(item)}><span><b>{item.problem.title}</b><small>{new Date(item.archivedAt).toLocaleDateString("zh-CN")} 归档</small></span></button></div>
                   <span className={`difficulty ${item.problem.difficulty === "提高" ? "advanced" : item.problem.difficulty === "普及" ? "normal" : "beginner"}`}>{item.problem.difficulty}</span>
                   <span>{item.problem.samples.length} 个</span>
                   <span>{folderName(item.folder)}</span>
@@ -303,6 +321,16 @@ export default function LibraryPage() {
           <input ref={fileRef} hidden type="file" accept="application/json,.json" onChange={(e) => importProblem(e.target.files?.[0])} />
           <div className="download-row"><a href="/problem-example.json" download>下载完整示例</a></div>
         </>}
+      </div></div>}
+
+      {/* Rename Modal */}
+      {renamingId && <div className="modal-backdrop" onMouseDown={() => setRenamingId(null)}><div className="modal rename-modal" onMouseDown={(e) => e.stopPropagation()}>
+        <button className="modal-close" onClick={() => setRenamingId(null)}>×</button>
+        <span className="modal-kicker">PROBLEM ID</span><h2>修改题目编号</h2>
+        <p>修改后会同步更新题库存档和提交记录。</p>
+        <label>新题号<input autoFocus value={nextProblemId} onChange={(e) => setNextProblemId(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") confirmRename(); }} placeholder="如 ALG001" maxLength={20} /></label>
+        <small>以字母开头，可使用字母、数字、下划线和短横线。</small>
+        <button className="generate-button" onClick={confirmRename}>保存新题号</button>
       </div></div>}
 
       <Toast message={notice} />
