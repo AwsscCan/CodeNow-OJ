@@ -236,7 +236,7 @@ export default function ProblemPage() {
       let stalled = 0;
       const batchFocus = ["基础合法数据", "边界数据", "反例数据", "性能数据", "综合补洞"];
       const maxAttempts = Math.max(Math.ceil(targetTotal / 3) * 3, 8);
-      const batchSize = 3;
+      const batchSize = 6;
 
       for (let attempt = 0; accepted.length < targetTotal && attempt < maxAttempts && stalled < 5; attempt++) {
         const count = Math.min(batchSize, targetTotal - accepted.length);
