@@ -9,7 +9,6 @@ import { useAiStore } from "../../stores/ai-store";
 import { useThemeStore } from "../../stores/theme-store";
 import { useToast } from "../../hooks/use-toast";
 import { useJudge } from "../../hooks/use-judge";
-import { DesktopMascot } from "../../components/mascot";
 import { Toast } from "../../components/toast";
 import { formatCppCode } from "../../lib/format-cpp";
 import type { Result, SubmissionRecord } from "../../stores/problem-store";
@@ -47,7 +46,6 @@ export default function ProblemPage() {
   const [testGenStatus, setTestGenStatus] = useState("");
   const [testPointCount, setTestPointCount] = useState(18);
   const [workspaceResizing, setWorkspaceResizing] = useState(false);
-  const [mascotVisible, setMascotVisible] = useState(true);
   const [mascotMessage, setMascotMessage] = useState(0);
   const [showMascotAi, setShowMascotAi] = useState(false);
 
@@ -492,15 +490,6 @@ export default function ProblemPage() {
         </div>
         <footer><textarea value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) handleSendChat(); }} placeholder="询问思路、复杂度、代码报错……（Ctrl + Enter 发送）" /><button disabled={chatBusy || !chatInput.trim()} onClick={handleSendChat}>发送</button></footer>
       </aside></div>}
-
-      {/* Mascot — visible in all themes */}
-      <DesktopMascot
-          visible={mascotVisible}
-          messageIndex={mascotMessage}
-          onCycle={() => setMascotMessage((v) => (v + 1) % 13)}
-          onSetVisible={setMascotVisible}
-          onSetMessageIndex={setMascotMessage}
-        />
 
       <Toast message={notice} />
     </main>

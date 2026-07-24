@@ -385,23 +385,20 @@ function makePlan(parsed: unknown): ComplexityPlan {
 
 function buildStrictPrompt(options: { target: number; requiredPerformance: number; requiredAdversarial: number; schema: string }) {
   const { target, requiredPerformance, requiredAdversarial, schema } = options;
-  // Optimized prompt: concise, token-efficient, with strict JSON output constraints
-  return `你是 OJ 测试数据生成器。只输出一个 JSON 对象，无 Markdown/代码块/解释。
+  return `你是 OJ 测试数据生成器。只输出一个 JSON 对象，无任何额外文字。
 
-结构要求：顶层的 analysis 和 tests。tests 数组长度=${target}。键名必须英文(input/output/category/scale/targets/reason)。
+【核心要求】tests 数组必须恰好 ${target} 个元素，一个不能少。
 
-输出格式：
+结构（严格按此格式）：
 ${schema}
 
-硬性规则：
-- input/output 必须是 UTF-8 字符串，不能为空、不能写”略/待计算/unknown”
-- 字符串内换行用 \\n，禁止字符串内物理换行
-- category: 至少${requiredPerformance}个performance、${requiredAdversarial}个adversarial，其余boundary/special/ordinary
-- input/output 必须是完整的可执行字符串
-- 大规模数据（>50行或>200个值）可用"..."表达等差/等间隔序列（如"1 2 3 ... 99999 100000"），系统会自动展开。但禁止"略""同上""以此类推"等非数值省略
-- 严禁重复已有测试点
-- 只输出纯 JSON，无前后缀`;
-}
+规则：
+- input/output 不能为空、不能写”略/待计算/unknown/TODO/placeholder”，必须逐行完整
+- 字符串内换行用 \\n，禁止物理换行
+- 至少${requiredPerformance}个category=performance、${requiredAdversarial}个category=adversarial，其余用boundary/special/ordinary
+- 大规模数据可用”1 2 3 ... 99999 100000”表达式，系统自动展开
+- 严禁重复已有数据、严禁”略””同上””以此类推”
+- 只返回纯JSON`;}
 
 export async function generateComplexityAwareTests(options: { apiKey: string; endpoint: string; model: string; problem: Record<string, unknown>; count: number; referenceSolution?: string }) {
   const { apiKey, endpoint, model, problem } = options;
@@ -469,7 +466,7 @@ ${JSON.stringify(compactExisting(existingInputs), null, 2)}`;
   let content = await callAi([
     { role: "system", content: systemPrompt },
     { role: "user", content: `${userPrompt}${generationContext}` },
-  ], Math.max(3000, target * 280), 0.08);
+  ], Math.max(4000, target * 350), 0.08);
 
   let parsed: unknown;
   let candidates: GeneratedTest[];
