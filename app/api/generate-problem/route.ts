@@ -106,6 +106,17 @@ async function structureProblem(chatUrl: URL, apiKey: string, model: string, raw
   return data.choices?.[0]?.message?.content || "";
 }
 
+// Extract structured problem info without truncation
+function extractProblemSpecification(rawText: string): string {
+  // Return full text with key section markers — let AI parse it
+  // If already structured, return as-is; otherwise wrap with hints
+  if (rawText.includes("输入格式") || rawText.includes("输出格式")) return rawText;
+  return `题目原文：
+${rawText}
+
+请从上述文本中准确提取：标题、描述、输入格式、输出格式、数据范围、样例。`;
+}
+
 function buildDigest(problem: Record<string, unknown>): string {
   return [
     `题号：${String(problem.id || "")}`,

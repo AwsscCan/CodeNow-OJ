@@ -491,31 +491,28 @@ export async function generateComplexityAwareTests(options: { apiKey: string; en
 
   let parsed: unknown;
   let candidates: GeneratedTest[];
-  let validationErrors = "";
+  const errors: string[] = [];
 
   try {
     parsed = parseJson(content);
     candidates = parseTests(content);
-    if (!candidates.length) throw new Error("empty-tests");
+  } catch { candidates = []; errors.push("JSON 解析失败"); }
 
-    // Validate counts
-    if (candidates.length !== target) validationErrors += `tests.length=${candidates.length}, expected=${target}\n`;
+  if (!candidates.length) errors.push("没有可解析的测试点");
+  else {
+    if (candidates.length !== target) errors.push(`数量=${candidates.length}，需要=${target}`);
     const perfCount = candidates.filter((t) => t.category === "performance").length;
-    if (perfCount < requiredPerformance) validationErrors += `performance=${perfCount}, expected>=${requiredPerformance}\n`;
+    if (perfCount < requiredPerformance) errors.push(`performance=${perfCount}，需要≥${requiredPerformance}`);
     const advCount = candidates.filter((t) => t.category === "adversarial").length;
-    if (advCount < requiredAdversarial) validationErrors += `adversarial=${advCount}, expected>=${requiredAdversarial}\n`;
+    if (advCount < requiredAdversarial) errors.push(`adversarial=${advCount}，需要≥${requiredAdversarial}`);
+  }
 
-    if (validationErrors) {
-      throw new Error("validation-failed");
-    }
-  } catch (err) {
-    const errDetail = err instanceof Error && err.message === "empty-tests"
-      ? "返回数据中没有可解析的测试点（缺少 input 或 output）" : "";
-    const repairErr = `${validationErrors}${errDetail}`.trim() || "JSON 解析失败";
-    const repairPrompt = `上次校验失败：${repairErr}。请重新生成${target}个测试点，只输出JSON。
+  if (errors.length) {
+    const repairPrompt = `上次校验错误：${errors.join("；")}
+重新生成${target}个测试输入（只输出JSON）。
 题面：${problemDigest}
 已有(勿重复)：${existingJson}${genCtx ? `\n上下文：${genCtx}` : ""}
-上次错误片段(勿照抄)：${content.slice(0, 2000)}`;
+错误片段(勿照抄)：${content.slice(0, 2000)}`;
 
     content = await callAi([{ role: "user", content: repairPrompt }], Math.max(3000, target * 250), 0.05);
     parsed = parseJson(content);
