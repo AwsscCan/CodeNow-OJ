@@ -228,7 +228,7 @@ export default function ProblemPage() {
     const key = aiStore.apiKeys[aiStore.provider];
     if (!key.trim()) return toast("请先配置 API Key");
     setGeneratingTests(true);
-    setTestGenStatus("准备分批生成…");
+    setTestGenStatus("正在生成参考程序并验证…");
     try {
       const targetTotal = Math.max(1, testPointCount);
       const existing = new Set(store.problem.samples.map((t) => `${t.input}::fp::${t.output}`));
@@ -251,8 +251,11 @@ export default function ProblemPage() {
               count,
             }),
           });
-          const data = await res.json() as { tests?: Array<{ input: string; output: string; category?: string; scale?: number; targets?: string; reason?: string }>; error?: string };
+          const data = await res.json() as { tests?: Array<{ input: string; output: string; category?: string; scale?: number; targets?: string; reason?: string }>; error?: string; complexityReport?: { referenceValidated?: boolean; computedCount?: number } };
           if (!res.ok || !data.tests) throw new Error(data.error || "AI 生成失败");
+          if (data.complexityReport?.referenceValidated) {
+            setTestGenStatus(`参考程序已验证，正在计算输出…`);
+          }
           const fresh = data.tests.filter((t) => {
             const key = `${t.input}::fp::${t.output}`;
             if (existing.has(key)) return false;

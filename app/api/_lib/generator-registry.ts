@@ -197,6 +197,23 @@ register({
 // ── Graph Generators ──
 
 register({
+  type: "cycle_graph",
+  description: "Simple cycle graph",
+  validateParams(p, ctx) {
+    const n = Number((p as any)?.n);
+    if (!Number.isFinite(n) || n < 3 || n > ctx.maxN) return `n must be 3..${ctx.maxN}`;
+    return null;
+  },
+  generate(p, ctx) {
+    const n = clamp(Number(p.n), 3, ctx.maxN);
+    let out = `${n} ${n}\n`;
+    for (let i = 1; i < n; i++) out += `${i} ${i + 1}\n`;
+    out += `${n} 1\n`;
+    return out;
+  },
+});
+
+register({
   type: "complete_graph",
   description: "Complete undirected graph",
   validateParams(p, ctx) {
@@ -210,6 +227,49 @@ register({
     const n = clamp(Number(p.n), 2, ctx.maxN);
     let out = `${n} ${n * (n - 1) / 2}\n`;
     for (let i = 1; i <= n; i++) for (let j = i + 1; j <= n; j++) out += `${i} ${j}\n`;
+    return out;
+  },
+});
+
+register({
+  type: "broom_tree",
+  description: "Broom tree: path + star at end",
+  validateParams(p, ctx) {
+    const n = Number((p as any)?.n);
+    if (!Number.isFinite(n) || n < 3 || n > ctx.maxN) return `n must be 3..${ctx.maxN}`;
+    return null;
+  },
+  generate(p, ctx) {
+    const n = clamp(Number(p.n), 3, ctx.maxN);
+    const pathLen = Math.max(2, Math.floor(n / 2));
+    let out = `${n}\n`;
+    for (let i = 1; i < pathLen; i++) out += `${i} ${i + 1}\n`;
+    for (let i = pathLen + 1; i <= n; i++) out += `${pathLen} ${i}\n`;
+    return out;
+  },
+});
+
+// ── Grid/Matrix Generators ──
+
+register({
+  type: "checkerboard_grid",
+  description: "Checkerboard grid with alternating values",
+  validateParams(p, ctx) {
+    const r = Number((p as any)?.rows); const c = Number((p as any)?.cols);
+    if (!Number.isFinite(r) || r < 1 || r > 3000) return "rows must be 1..3000";
+    if (!Number.isFinite(c) || c < 1 || c > 3000) return "cols must be 1..3000";
+    if (r * c * 10 > MAX_EXPANDED_CHARS) return "grid too large";
+    return null;
+  },
+  generate(p, ctx) {
+    const rows = clamp(Number(p.rows), 1, 3000);
+    const cols = clamp(Number(p.cols), 1, 3000);
+    const a = Number(p.valA) || 0; const b = Number(p.valB) || 1;
+    let out = `${rows} ${cols}\n`;
+    for (let i = 0; i < rows; i++) {
+      for (let j = 0; j < cols; j++) out += ((i + j) % 2 === 0 ? a : b) + (j < cols - 1 ? " " : "");
+      out += "\n";
+    }
     return out;
   },
 });
@@ -275,8 +335,32 @@ export function validateInput(input: string, maxLength: number): string | null {
   if (!input.trim()) return "输入不能为空";
   if (input.length > maxLength) return `输入超过 ${maxLength / 1000}KB 限制`;
   if (input.includes("\0")) return "输入包含 NUL 字符";
-  // Check for common placeholder patterns
   if (/[（(]?\s*略\s*[)）]?/.test(input)) return "输入包含占位符";
   if (/[.…]{3,}/.test(input) && !/^\d+( \d+)* [.…]{3,} \d+( \d+)*$/.test(input.trim().split("\n")[0] || "")) return "输入包含未展开的省略号";
+
+  // Token count sanity check
+  const tokens = input.trim().split(/\s+/);
+  if (tokens.length > 1000000) return "输入 token 数量超过上限";
+
+  // Basic n-consistency: if first token is a number N, check that the rest of the data
+  // has a reasonable relationship (not too few or absurdly many elements)
+  const firstNum = Number(tokens[0]);
+  if (Number.isFinite(firstNum) && firstNum >= 1) {
+    const remaining = tokens.length - 1;
+    // If N is a count (like array size), remaining should be at least N for 1D arrays
+    // or at least 2N for edges. This is a soft check — we only warn about extreme mismatches.
+    if (remaining > 0 && remaining < firstNum && firstNum - remaining > 100) {
+      return `输入元素数量(${remaining})与首个数(${firstNum})不匹配`;
+    }
+  }
+
+  // Value range check: reject obviously out-of-bounds values
+  for (const tok of tokens.slice(0, 1000)) { // Check first 1000 tokens for speed
+    const v = Number(tok);
+    if (Number.isFinite(v) && !Number.isSafeInteger(v) && tok.length > 15) {
+      return `输入值超出安全整数范围: ${tok.slice(0, 20)}`;
+    }
+  }
+
   return null;
 }
