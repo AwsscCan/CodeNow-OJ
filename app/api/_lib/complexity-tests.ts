@@ -343,7 +343,8 @@ function parseTests(content: string, maxInputLength = MAX_EXPANDED_CHARS): Gener
         );
         const valErr = validateInput(input, maxInputLength);
         if (valErr) return [];
-        // Output is empty — will be computed by reference solution later
+        // Generator specs intentionally omit output; a validated reference solution
+        // can compute it later. When no reference exists the prompt avoids generators.
         return [{ input, output: "", category, scale, targets, reason }];
       }
 
@@ -365,10 +366,16 @@ function parseTests(content: string, maxInputLength = MAX_EXPANDED_CHARS): Gener
       const inputErr = validateInput(expandedInput, maxInputLength);
       if (inputErr) return [];
 
-      // Output is empty — will be computed by reference solution later
+      const rawOutput = readFirst(test, [
+        "output", "stdout", "expected", "expectedOutput", "expected_output",
+        "answer", "output_data", "out", "输出", "答案",
+      ]);
+      const hasOutput = rawOutput !== undefined || test.outputParts !== undefined;
+      const materializedOutput = hasOutput ? materialize(rawOutput, test.outputParts) : "";
+
       return [{
         input: expandedInput,
-        output: "", // computed downstream
+        output: materializedOutput,
         category,
         scale,
         targets,
@@ -381,63 +388,88 @@ function parseTests(content: string, maxInputLength = MAX_EXPANDED_CHARS): Gener
 function buildProblemDigest(problem: Record<string, unknown>) {
   const id = String(problem.id || "");
   const title = String(problem.title || "");
-  const timeLimit = String(problem.time || "未知");
-  const memoryLimit = String(problem.memory || "未知");
+  const timeLimit = String(problem.time || "unknown");
+  const memoryLimit = String(problem.memory || "unknown");
   const description = String(problem.description || "");
   const inputFormat = String(problem.inputFormat || "");
   const outputFormat = String(problem.outputFormat || "");
-  // Include full constraints — don't truncate
-  return `题号：${id}
-标题：${title}
-时间限制：${timeLimit}
-内存限制：${memoryLimit}
-
-题目描述：
-${description}
-
-输入格式：
-${inputFormat}
-
-输出格式：
-${outputFormat}`;
+  return [
+    `Problem ID: ${id}`,
+    `Title: ${title}`,
+    `Time limit: ${timeLimit}`,
+    `Memory limit: ${memoryLimit}`,
+    "",
+    `Statement:\n${description}`,
+    "",
+    `Input format:\n${inputFormat}`,
+    "",
+    `Output format:\n${outputFormat}`,
+  ].join("\n");
 }
 
 function makePlan(parsed: unknown): ComplexityPlan {
   const planRaw = (parsed && typeof parsed === "object" ? (parsed as { analysis?: Partial<ComplexityPlan> }).analysis : {}) || {};
   return {
-    expectedTimeComplexity: String(planRaw.expectedTimeComplexity || "未明确"),
-    expectedSpaceComplexity: String(planRaw.expectedSpaceComplexity || "未明确"),
+    expectedTimeComplexity: String(planRaw.expectedTimeComplexity || "unknown"),
+    expectedSpaceComplexity: String(planRaw.expectedSpaceComplexity || "unknown"),
     bruteForceToReject: Array.isArray(planRaw.bruteForceToReject) ? planRaw.bruteForceToReject.map(String).filter(Boolean).slice(0, 6) : [],
     stressScale: Math.max(1, Math.floor(Number(planRaw.stressScale) || 1)),
-    stressInputStrategy: String(planRaw.stressInputStrategy || "在题面约束内取较大规模"),
+    stressInputStrategy: String(planRaw.stressInputStrategy || "use large valid cases within the constraints"),
   };
 }
 
-function buildStrictPrompt(options: { target: number; requiredPerformance: number; requiredAdversarial: number; problemDigest: string; existingTestsJson: string; generationContext: string; algorithmSummary: string }) {
-  const { target, requiredPerformance, requiredAdversarial, problemDigest, existingTestsJson, generationContext, algorithmSummary } = options;
-  const ctxLine = generationContext ? `\n本批次：${generationContext}` : "";
+function buildStrictPrompt(options: {
+  target: number;
+  requiredPerformance: number;
+  requiredAdversarial: number;
+  problemDigest: string;
+  existingTestsJson: string;
+  generationContext: string;
+  algorithmSummary: string;
+  hasReferenceSolution: boolean;
+}) {
+  const {
+    target,
+    requiredPerformance,
+    requiredAdversarial,
+    problemDigest,
+    existingTestsJson,
+    generationContext,
+    algorithmSummary,
+    hasReferenceSolution,
+  } = options;
+  const ctxLine = generationContext ? `\nBatch context: ${generationContext}` : "";
   const generatorList = listGeneratorTypes().join(",");
-  // NEW: AI only generates test INPUTS. Can use generator specs for large data.
-  return `你设计 OJ 测试输入。只输出纯 JSON。
+  const schema = hasReferenceSolution
+    ? `{"analysis":{"expectedTimeComplexity":"","expectedSpaceComplexity":"","bruteForceToReject":[],"stressScale":1,"stressInputStrategy":""},"tests":[{"input":"complete stdin text","category":"boundary","scale":1,"targets":"what this case checks","reason":"why it is needed"},{"generator":{"type":"random_array","params":{}},"category":"performance","scale":100000,"targets":"large valid case","reason":"why it is needed"}]}`
+    : `{"analysis":{"expectedTimeComplexity":"","expectedSpaceComplexity":"","bruteForceToReject":[],"stressScale":1,"stressInputStrategy":""},"tests":[{"input":"complete stdin text","output":"complete expected stdout text","category":"boundary","scale":1,"targets":"what this case checks","reason":"why it is needed"}]}`;
+  const outputRule = hasReferenceSolution
+    ? "A validated reference solution is available. You may omit output for raw input tests; the system will compute it. Generator specs are allowed for large cases."
+    : "No validated reference solution is available. Every test MUST include both input and output. Do NOT use generator specs, because the system cannot compute their output.";
 
-题面：${problemDigest}
-参考算法：${algorithmSummary}
-
-已有（勿重复）：${existingTestsJson}${ctxLine}
-
-格式：{"tests":[{"input":"完整输入文本","category":"boundary","scale":1,"targets":"目标","reason":"必要性"}]}
-
-或对大数据用生成器：{"tests":[{"generator":{"type":"${generatorList}等","params":{}},"category":"performance","scale":100000,"targets":"目标","reason":"必要性"}]}
-
-可用生成器：constant_array, increasing_array, decreasing_array, random_array, permutation, many_duplicates, path_tree, star_tree, random_tree, complete_graph, repeated_char, palindrome_string
-
-规则：
-- tests=${target}个，performance≥${requiredPerformance}，adversarial≥${requiredAdversarial}
-- 只生成 input 或 generator，不要 output（系统自动计算）
-- 小数据直接给 input 字符串，大数据（>500值）用 generator
-- 禁止"略/同上/待计算/unknown/TODO"
-- category: boundary|special|ordinary|adversarial|performance
-- 严禁重复`;}
+  return [
+    "You are designing real online-judge tests for a C++ programming problem.",
+    "Return ONLY one valid JSON object. Do not use markdown. Do not add comments.",
+    "",
+    `Problem:\n${problemDigest}`,
+    "",
+    `Reference/expected algorithm summary: ${algorithmSummary}`,
+    `Existing samples/tests to avoid duplicating: ${existingTestsJson}${ctxLine}`,
+    "",
+    `Required JSON schema:\n${schema}`,
+    "",
+    "Rules:",
+    `- Generate exactly ${target} tests.`,
+    `- Include at least ${requiredPerformance} performance tests and at least ${requiredAdversarial} adversarial tests when those numbers are positive.`,
+    "- Use categories only from: boundary, special, ordinary, adversarial, performance.",
+    "- Each input must be a complete stdin text matching the statement exactly.",
+    "- Each output, when required, must be the exact expected stdout text.",
+    "- Cover edge cases, minimum values, maximum values, duplicate values, sorted/reversed order, special graph/tree/string structures when relevant, and cases that reject naive brute force under the stated time limit.",
+    "- Avoid duplicate inputs. Avoid placeholders such as same as above, TODO, unknown, omitted, ellipsis, or explanations inside input/output.",
+    `- ${outputRule}`,
+    hasReferenceSolution ? `- Available generator types: ${generatorList}` : "- Do not use generator in this mode.",
+  ].join("\n");
+}
 
 export async function generateComplexityAwareTests(options: { apiKey: string; endpoint: string; model: string; problem: Record<string, unknown>; count: number; referenceSolution?: string; validatedRef?: ValidatedReference }) {
   const { apiKey, endpoint, model, problem } = options;
@@ -474,6 +506,7 @@ export async function generateComplexityAwareTests(options: { apiKey: string; en
   });
 
   const problemDigest = buildProblemDigest(problem);
+  const hasReferenceSolution = referenceSolution.trim().length > 0;
   const genCtx = typeof problem.generationContext === "string" && problem.generationContext.trim()
     ? problem.generationContext.trim() : "";
   const existingJson = JSON.stringify(compactExisting(existingInputs));
@@ -481,12 +514,13 @@ export async function generateComplexityAwareTests(options: { apiKey: string; en
   const systemPrompt = buildStrictPrompt({
     target, requiredPerformance, requiredAdversarial,
     problemDigest, existingTestsJson: existingJson, generationContext: genCtx,
-    algorithmSummary: validatedRef?.algorithmSummary || "标准算法",
+    algorithmSummary: validatedRef?.algorithmSummary || "standard accepted algorithm",
+    hasReferenceSolution,
   });
 
   let content = await callAi([
     { role: "system", content: systemPrompt },
-    { role: "user", content: "请根据题面和约束生成完整的测试集。" },
+    { role: "user", content: hasReferenceSolution ? "Generate a complete diverse test set. Output may be omitted because the system will compute it." : "Generate a complete diverse test set. Every test must include both input and output." },
   ], Math.max(3000, target * 250), 0.12);
 
   let parsed: unknown;
@@ -508,11 +542,17 @@ export async function generateComplexityAwareTests(options: { apiKey: string; en
   }
 
   if (errors.length) {
-    const repairPrompt = `上次校验错误：${errors.join("；")}
-重新生成${target}个测试输入（只输出JSON）。
-题面：${problemDigest}
-已有(勿重复)：${existingJson}${genCtx ? `\n上下文：${genCtx}` : ""}
-错误片段(勿照抄)：${content.slice(0, 2000)}`;
+    const repairPrompt = [
+      `Previous validation errors: ${errors.join("; ")}`,
+      `Regenerate exactly ${target} tests. Return ONLY valid JSON.`,
+      hasReferenceSolution
+        ? "Output can be omitted; generator specs are allowed for large cases."
+        : "Every test MUST include both input and output. Do not use generator specs.",
+      `Problem:\n${problemDigest}`,
+      `Existing tests to avoid duplicating: ${existingJson}`,
+      genCtx ? `Context: ${genCtx}` : "",
+      `Bad previous response excerpt, do not copy it:\n${content.slice(0, 2000)}`,
+    ].filter(Boolean).join("\n\n");
 
     content = await callAi([{ role: "user", content: repairPrompt }], Math.max(3000, target * 250), 0.05);
     parsed = parseJson(content);
@@ -549,10 +589,16 @@ export async function generateComplexityAwareTests(options: { apiKey: string; en
     const missing = target - unique.length;
     const missingPerformance = Math.max(0, requiredPerformance - unique.filter(qualifiesPerformance).length);
     const missingAdversarial = Math.max(0, requiredAdversarial - unique.filter(qualifiesAdversarial).length);
-    const refillPrompt = `补充${missing}个新测试点(仅输出{"tests":[...]})。还需performance≥${missingPerformance},adversarial≥${missingAdversarial}。
-题面：${problemDigest}
-禁止重复：${JSON.stringify(compactExisting([...existingInputs, ...unique.map(({input,output,category}) => ({input,output,category}))]))}
-${genCtx ? `上下文：${genCtx}` : ""}`;
+    const refillPrompt = [
+      `Add exactly ${missing} new tests. Return ONLY {"tests":[...]}.`,
+      `Still need at least ${missingPerformance} performance tests and ${missingAdversarial} adversarial tests.`,
+      hasReferenceSolution
+        ? "Output may be omitted; generator specs are allowed for large cases."
+        : "Every new test MUST include both input and output. Do not use generator specs.",
+      `Problem:\n${problemDigest}`,
+      `Do not duplicate these previous tests: ${JSON.stringify(compactExisting([...existingInputs, ...unique.map(({ input, output, category }) => ({ input, output, category }))]))}`,
+      genCtx ? `Context: ${genCtx}` : "",
+    ].filter(Boolean).join("\n\n");
     try {
       const refillContent = await callAi([{ role: "user", content: refillPrompt }], Math.max(2200, missing * 360), 0.04);
       addUniqueTests(parseTests(refillContent));
@@ -620,18 +666,28 @@ ${genCtx ? `上下文：${genCtx}` : ""}`;
     } catch { /* Fall through */ }
   }
 
-  // Fallback: return AI-generated tests as-is (with whatever output AI provided)
+  const aiOutputSelected = finalSelected.filter((test) => test.output.trim().length > 0);
+  if (!hasReferenceSolution && !aiOutputSelected.length) {
+    throw new Error("AI 没有生成可用测试点：缺少 expected output。请确认题面包含完整输入/输出格式，或换用更强模型后重试。");
+  }
+  if (hasReferenceSolution && !aiOutputSelected.length && finalSelected.length) {
+    throw new Error("参考程序暂时无法计算输出，且 AI 未提供 expected output。请稍后重试或减少测试点数量。");
+  }
+
+  const fallbackSelected = aiOutputSelected.length ? aiOutputSelected : finalSelected;
+
+  // Fallback: return AI-generated tests as-is when no reference output is available.
   return {
-    tests: finalSelected.map(({ input, output, category, scale, targets, reason }) => ({ input, output, category, scale, targets, reason })),
+    tests: fallbackSelected.map(({ input, output, category, scale, targets, reason }) => ({ input, output, category, scale, targets, reason })),
     report: {
       expectedTimeComplexity: plan.expectedTimeComplexity,
       expectedSpaceComplexity: plan.expectedSpaceComplexity,
       stressScale: plan.stressScale,
-      performanceCount: selected.filter(qualifiesPerformance).length,
-      adversarialCount: selected.filter(qualifiesAdversarial).length,
+      performanceCount: fallbackSelected.filter(qualifiesPerformance).length,
+      adversarialCount: fallbackSelected.filter(qualifiesAdversarial).length,
       requestedCount: target,
-      generatedCount: finalSelected.length,
-      partial: finalSelected.length < target,
+      generatedCount: fallbackSelected.length,
+      partial: fallbackSelected.length < target,
       computedCount,
       referenceValidated: false,
     },

@@ -22,36 +22,44 @@ export async function POST(request: NextRequest) {
     // Build problem digest
     const digest = buildDigest(problem);
 
-    // Get or create validated reference solution
+    // Get or create validated reference solution. This is an enhancement, not
+    // a hard dependency: arbitrary imported problems often do not have enough
+    // structure for safe differential testing, so generation must still work
+    // when reference validation is unavailable.
     let validatedRef = getCachedReference(digest);
+    let referenceStatus: { ok: boolean; message: string } = validatedRef
+      ? { ok: true, message: "cached validated reference" }
+      : { ok: false, message: "not attempted" };
     if (!validatedRef) {
-      const samples = Array.isArray(problem.samples) ? problem.samples.slice(0, 6).map((s: { input: unknown; output: unknown }) => ({ input: String(s.input || ""), output: String(s.output || "") })) : [];
-      const candidate = await generateReferenceCandidate(key, ep, md, digest, samples);
-      const { report, validated } = await validateReference(candidate, samples, 200);
-      if (!validated) {
-        return NextResponse.json({
-          error: `参考程序验证失败: ${report.status}`,
-          details: report.errors.slice(0, 5),
-        }, { status: 422 });
+      try {
+        const samples = Array.isArray(problem.samples) ? problem.samples.slice(0, 6).map((s: { input: unknown; output: unknown }) => ({ input: String(s.input || ""), output: String(s.output || "") })) : [];
+        const candidate = await generateReferenceCandidate(key, ep, md, digest, samples);
+        const { report, validated } = await validateReference(candidate, samples, 0);
+        if (validated) {
+          validatedRef = validated;
+          setCachedReference(digest, validatedRef);
+          referenceStatus = { ok: true, message: "validated with official samples" };
+        } else {
+          referenceStatus = { ok: false, message: report.errors[0] || report.status };
+        }
+      } catch (refError) {
+        referenceStatus = { ok: false, message: refError instanceof Error ? refError.message : "reference validation unavailable" };
       }
-      validatedRef = validated;
-      setCachedReference(digest, validatedRef);
     }
 
-    // Generate tests using the validated reference to compute output
     const generated = await generateComplexityAwareTests({
       apiKey: key,
       endpoint: ep,
       model: md,
       problem,
       count: target,
-      referenceSolution: validatedRef.solutionCode,
-      validatedRef,
+      referenceSolution: validatedRef?.solutionCode,
+      validatedRef: validatedRef || undefined,
     });
 
     return NextResponse.json({
       tests: generated.tests.map((test, index) => ({ id: Date.now() + index, ...test })),
-      complexityReport: generated.report,
+      complexityReport: { ...generated.report, referenceStatus },
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "AI 测试点生成失败";

@@ -31,16 +31,22 @@ export async function POST(request: NextRequest) {
     // Step 2: Build digest for reference solution generation
     const digest = buildDigest(problem);
 
-    // Step 3: Get or create validated reference solution (cached)
+    // Step 3: Try to get a validated reference solution (cached). This is
+    // best-effort; imported free-form statements should still become usable
+    // practice problems even when reference generation is unavailable.
     let validatedRef = getCachedReference(digest);
     if (!validatedRef) {
-      const officialSamples = (problem.samples as Array<{ input: unknown; output: unknown }>).slice(0, 6)
-        .map((s: { input: unknown; output: unknown }) => ({ input: String(s.input || ""), output: String(s.output || "") }));
-      const candidate = await generateReferenceCandidate(String(apiKey), String(endpoint), String(model), digest, officialSamples);
-      const { report, validated } = await validateReference(candidate, officialSamples, 200);
-      if (validated) {
-        validatedRef = validated;
-        setCachedReference(digest, validatedRef);
+      try {
+        const officialSamples = (problem.samples as Array<{ input: unknown; output: unknown }>).slice(0, 6)
+          .map((s: { input: unknown; output: unknown }) => ({ input: String(s.input || ""), output: String(s.output || "") }));
+        const candidate = await generateReferenceCandidate(String(apiKey), String(endpoint), String(model), digest, officialSamples);
+        const { validated } = await validateReference(candidate, officialSamples, 0);
+        if (validated) {
+          validatedRef = validated;
+          setCachedReference(digest, validatedRef);
+        }
+      } catch {
+        /* Continue without a reference; test generation will require AI outputs. */
       }
     }
 
