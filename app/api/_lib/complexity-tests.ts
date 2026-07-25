@@ -388,22 +388,22 @@ function parseLooseTextTests(content: string, maxInputLength: number): Generated
   if (!cleaned) return [];
 
   const blocks = cleaned
-    .split(/(?:^|\n)\s*(?:#{1,4}\s*)?(?:test\s*case|case|sample|???|??|??)\s*\d*\s*[:?-]?\s*\n/gi)
+    .split(/(?:^|\n)\s*(?:#{1,4}\s*)?(?:test\s*case|case|sample)\s*\d*\s*[:-]?\s*\n/gi)
     .map((block) => block.trim())
     .filter(Boolean);
   const sourceBlocks = blocks.length > 1 ? blocks : [cleaned];
 
   const tests: GeneratedTest[] = [];
   for (const block of sourceBlocks) {
-    const inputMatch = block.match(/(?:input|stdin|??|????)\s*[:?]\s*([\s\S]*?)(?=\n\s*(?:output|stdout|expected|answer|??|????|??)\s*[:?]|$)/i);
-    const outputMatch = block.match(/(?:output|stdout|expected\s*output|expected|answer|??|????|??)\s*[:?]\s*([\s\S]*?)(?=\n\s*(?:category|type|reason|target|??|??|??|??)\s*[:?]|$)/i);
+    const inputMatch = block.match(/(?:input|stdin)\s*:\s*([\s\S]*?)(?=\n\s*(?:output|stdout|expected|answer)\s*:|$)/i);
+    const outputMatch = block.match(/(?:output|stdout|expected\s*output|expected|answer)\s*:\s*([\s\S]*?)(?=\n\s*(?:category|type|reason|target)\s*:|$)/i);
     if (!inputMatch) continue;
     const input = normalizeText(inputMatch[1].trim());
     if (!input.trim() || input.length > maxInputLength || validateInput(input, maxInputLength)) continue;
     tests.push({
       input,
       output: outputMatch ? normalizeText(outputMatch[1].trim()) : "",
-      category: /performance|large|??|??|??/i.test(block) ? "performance" : /adversarial|hack|??|?/i.test(block) ? "adversarial" : "ordinary",
+      category: /performance|large|stress|max/i.test(block) ? "performance" : /adversarial|hack|corner/i.test(block) ? "adversarial" : "ordinary",
       scale: 1,
       targets: "AI generated loose text case",
       reason: "Recovered from non-standard AI response",
