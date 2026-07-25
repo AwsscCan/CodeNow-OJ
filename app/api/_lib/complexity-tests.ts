@@ -119,7 +119,7 @@ function stringifyField(value: unknown): string {
   if (Array.isArray(value)) return value.map((item) => Array.isArray(item) ? item.map(String).join(" ") : String(item)).join("\n");
   if (typeof value === "object") {
     const object = value as Record<string, unknown>;
-    for (const key of ["text", "content", "value", "data", "raw", "文本", "内容", "值", "数据"]) {
+    for (const key of ["text", "content", "value", "data", "raw", "\u6587\u672c", "\u5185\u5bb9", "\u503c", "\u6570\u636e"]) {
       const nested = stringifyField(object[key]);
       if (nested.trim()) return nested;
     }
@@ -150,15 +150,15 @@ function findTestList(parsed: unknown): unknown[] | null {
   if (Array.isArray(parsed)) return parsed;
   if (!parsed || typeof parsed !== "object") return null;
   const object = parsed as Record<string, unknown>;
-  for (const key of ["tests", "testCases", "testcases", "cases", "samples", "data", "测试点", "测试数据", "用例", "样例"]) {
+  for (const key of ["tests", "testCases", "testcases", "cases", "samples", "data", "\u6d4b\u8bd5\u70b9", "\u6d4b\u8bd5\u6570\u636e", "\u7528\u4f8b", "\u6837\u4f8b"]) {
     if (Array.isArray(object[key])) return object[key] as unknown[];
   }
   const objectValues = Object.values(object);
   if (objectValues.length && objectValues.every((value) => value && typeof value === "object" && !Array.isArray(value))) {
     const likelyTests = objectValues.filter((value) => {
       const item = value as Record<string, unknown>;
-      return ["input", "stdin", "输入", "输入数据"].some((key) => stringifyField(item[key]).trim()) &&
-        ["output", "stdout", "expectedOutput", "expected_output", "expected", "answer", "输出", "标准输出", "预期输出", "答案"].some((key) => stringifyField(item[key]).trim());
+      return ["input", "stdin", "\u8f93\u5165", "\u8f93\u5165\u6570\u636e"].some((key) => stringifyField(item[key]).trim()) &&
+        ["output", "stdout", "expectedOutput", "expected_output", "expected", "answer", "\u8f93\u51fa", "\u6807\u51c6\u8f93\u51fa", "\u9884\u671f\u8f93\u51fa", "\u7b54\u6848"].some((key) => stringifyField(item[key]).trim());
     });
     if (likelyTests.length) return likelyTests;
   }
@@ -336,10 +336,10 @@ function pickField(object: Record<string, unknown>, keys: string[]) {
 }
 
 function testFromObject(item: Record<string, unknown>, maxInputLength: number): GeneratedTest | null {
-  const category = String(pickField(item, ["category", "type", "tag", "label", "kind", "??", "??", "??"]) || "ordinary").toLowerCase();
-  const scale = Math.max(1, Math.floor(Number(pickField(item, ["scale", "size", "n", "??"])) || 1));
-  const targets = String(pickField(item, ["targets", "target", "checks", "purpose", "??", "????"]) || "AI generated case");
-  const reason = String(pickField(item, ["reason", "why", "description", "note", "??", "??"]) || "Generated from problem constraints");
+  const category = String(pickField(item, ["category", "type", "tag", "label", "kind", "\u7c7b\u522b", "\u7c7b\u578b", "\u6807\u7b7e"]) || "ordinary").toLowerCase();
+  const scale = Math.max(1, Math.floor(Number(pickField(item, ["scale", "size", "n", "\u89c4\u6a21"])) || 1));
+  const targets = String(pickField(item, ["targets", "target", "checks", "purpose", "\u76ee\u6807", "\u6d4b\u8bd5\u76ee\u6807"]) || "AI generated case");
+  const reason = String(pickField(item, ["reason", "why", "description", "note", "\u8bf4\u660e", "\u539f\u56e0"]) || "Generated from problem constraints");
 
   try {
     if (item.generator && typeof item.generator === "object") {
@@ -352,7 +352,7 @@ function testFromObject(item: Record<string, unknown>, maxInputLength: number): 
       return { input, output: "", category, scale, targets, reason };
     }
 
-    const rawInput = pickField(item, ["input", "stdin", "input_data", "inputData", "in", "caseInput", "??", "????"]);
+    const rawInput = pickField(item, ["input", "stdin", "input_data", "inputData", "in", "caseInput", "\u8f93\u5165", "\u8f93\u5165\u6570\u636e"]);
     if (rawInput === undefined) return null;
     const materializedInput = materialize(rawInput, item.inputParts);
     if (!materializedInput.trim() || !isValidTestData(materializedInput)) return null;
@@ -361,7 +361,7 @@ function testFromObject(item: Record<string, unknown>, maxInputLength: number): 
 
     const rawOutput = pickField(item, [
       "output", "stdout", "expected", "expectedOutput", "expected_output", "answer",
-      "output_data", "outputData", "out", "caseOutput", "??", "????", "??", "????",
+      "output_data", "outputData", "out", "caseOutput", "\u8f93\u51fa", "\u8f93\u51fa\u6570\u636e", "\u7b54\u6848", "\u6807\u51c6\u8f93\u51fa",
     ]);
     let output = "";
     if (rawOutput !== undefined || item.outputParts !== undefined) {
@@ -388,22 +388,22 @@ function parseLooseTextTests(content: string, maxInputLength: number): Generated
   if (!cleaned) return [];
 
   const blocks = cleaned
-    .split(/(?:^|\n)\s*(?:#{1,4}\s*)?(?:test\s*case|case|sample)\s*\d*\s*[:-]?\s*\n/gi)
+    .split(/(?:^|\n)\s*(?:#{1,4}\s*)?(?:test\s*case|case|sample|\u6d4b\u8bd5\u70b9|\u7528\u4f8b|\u6837\u4f8b)\s*\d*\s*[:-]?\s*\n/gi)
     .map((block) => block.trim())
     .filter(Boolean);
   const sourceBlocks = blocks.length > 1 ? blocks : [cleaned];
 
   const tests: GeneratedTest[] = [];
   for (const block of sourceBlocks) {
-    const inputMatch = block.match(/(?:input|stdin)\s*:\s*([\s\S]*?)(?=\n\s*(?:output|stdout|expected|answer)\s*:|$)/i);
-    const outputMatch = block.match(/(?:output|stdout|expected\s*output|expected|answer)\s*:\s*([\s\S]*?)(?=\n\s*(?:category|type|reason|target)\s*:|$)/i);
+    const inputMatch = block.match(/(?:input|stdin|\u8f93\u5165|\u8f93\u5165\u6570\u636e)\s*[:：]\s*([\s\S]*?)(?=\n\s*(?:output|stdout|expected|answer|\u8f93\u51fa|\u8f93\u51fa\u6570\u636e|\u7b54\u6848)\s*[:：]|$)/i);
+    const outputMatch = block.match(/(?:output|stdout|expected\s*output|expected|answer|\u8f93\u51fa|\u8f93\u51fa\u6570\u636e|\u7b54\u6848)\s*[:：]\s*([\s\S]*?)(?=\n\s*(?:category|type|reason|target|\u7c7b\u522b|\u7c7b\u578b|\u539f\u56e0|\u76ee\u6807)\s*[:：]|$)/i);
     if (!inputMatch) continue;
     const input = normalizeText(inputMatch[1].trim());
     if (!input.trim() || input.length > maxInputLength || validateInput(input, maxInputLength)) continue;
     tests.push({
       input,
       output: outputMatch ? normalizeText(outputMatch[1].trim()) : "",
-      category: /performance|large|stress|max/i.test(block) ? "performance" : /adversarial|hack|corner/i.test(block) ? "adversarial" : "ordinary",
+      category: /performance|large|stress|max|\u6027\u80fd|\u538b\u529b|\u6700\u5927/i.test(block) ? "performance" : /adversarial|hack|corner|\u53cd\u4f8b|\u6781\u7aef/i.test(block) ? "adversarial" : "ordinary",
       scale: 1,
       targets: "AI generated loose text case",
       reason: "Recovered from non-standard AI response",

@@ -237,6 +237,7 @@ export default function ProblemPage() {
       const batchFocus = ["基础合法数据", "边界数据", "反例数据", "性能数据", "综合补洞"];
       const maxAttempts = Math.max(Math.ceil(targetTotal / 3) * 3, 8);
       const batchSize = 6;
+      let lastBatchError = "";
 
       for (let attempt = 0; accepted.length < targetTotal && attempt < maxAttempts && stalled < 5; attempt++) {
         const count = Math.min(batchSize, targetTotal - accepted.length);
@@ -269,9 +270,12 @@ export default function ProblemPage() {
           } else {
             stalled++;
           }
-        } catch { stalled++; }
+        } catch (error) {
+          lastBatchError = error instanceof Error ? error.message : "AI 测试点生成失败";
+          stalled++;
+        }
       }
-      if (!accepted.length) throw new Error("AI 没有生成可用测试点");
+      if (!accepted.length) throw new Error(lastBatchError || "AI 没有生成可用测试点");
       toast(`新增 ${accepted.length} 个测试点${accepted.length < targetTotal ? "；模型返回不足，可再次点击继续补足" : ""}`);
     } catch (err) {
       toast(err instanceof Error ? err.message : "AI 测试点生成失败");
