@@ -7,10 +7,10 @@ export const MAX_TOTAL_TEST_LENGTH = 2_000_000;
 export const CPU_TIME_LIMIT_SECONDS = 3;
 export const WALL_TIME_LIMIT_SECONDS = 6;
 export const MEMORY_LIMIT_KB = 262_144;
-export const JUDGE_POLL_INTERVAL_MS = 550;
-export const JUDGE_FIRST_POLL_MS = 300;
-export const JUDGE_MAX_POLLS = 14;
-export const JUDGE_CONCURRENCY = 4;
+export const JUDGE_POLL_INTERVAL_MS = 260;
+export const JUDGE_FIRST_POLL_MS = 90;
+export const JUDGE_MAX_POLLS = 24;
+export const JUDGE_CONCURRENCY = 8;
 
 // ── AI / LLM ──
 export const ALLOWED_AI_HOSTS = [

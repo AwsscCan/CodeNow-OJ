@@ -18,7 +18,6 @@ export function useJudge() {
     const { sourceCode, tests, problemId, problemTitle, submit, onMascotReact } = options;
     setRunning(true);
 
-    // Pre-create the record so we can save regardless of outcome
     const record: SubmissionRecord = {
       id: crypto.randomUUID(),
       problemId,
@@ -39,8 +38,8 @@ export function useJudge() {
       if (!response.ok || !data.results) {
         record.status = "判题失败";
         record.passed = "0/0";
-        await saveRecord(record);
-        throw new Error(data.error || "C++ 判题服务暂不可用");
+        await saveRecord(record).catch(() => {});
+        throw new Error(data.error || "C++ 判题服务暂时不可用");
       }
 
       const results = data.results;
@@ -51,18 +50,15 @@ export function useJudge() {
 
       if (submit) onMascotReact(results);
 
-      // Always save to history — success or failure
+      let savedRecord = record;
       try {
-        await saveRecord(record);
+        savedRecord = await saveRecord(record);
       } catch (saveError) {
-        throw new Error(
-          `${ok === results.length ? "答案正确" : `通过 ${ok}/${results.length}`}，但${saveError instanceof Error ? saveError.message : "保存提交记录失败"}`,
-        );
+        console.warn("保存提交记录失败，但判题结果已保留在当前页面。", saveError);
       }
 
-      return { results, diagnostic, submission: record };
+      return { results, diagnostic, submission: savedRecord };
     } catch (error) {
-      // Try to save even when the judge request itself fails
       if (record.status === "判题中") {
         record.status = "判题失败";
         record.passed = "0/0";

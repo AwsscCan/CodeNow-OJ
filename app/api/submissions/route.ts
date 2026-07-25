@@ -1,12 +1,21 @@
-import { desc, eq, inArray } from "drizzle-orm";
-import { getDb } from "../../../db";
-import { submissions } from "../../../db/schema";
+import { createSubmission, deleteSubmission, deleteSubmissionsByProblemIds, listSubmissions, renameSubmissionProblem, type SubmissionRecord } from "../../../db";
 import { rateLimit } from "../_lib/rate-limit";
-import { MAX_SUBMISSION_SOURCE_LENGTH, MAX_BULK_DELETE_PROBLEM_IDS } from "../_lib/constants";
+import { MAX_BULK_DELETE_PROBLEM_IDS, MAX_SUBMISSION_SOURCE_LENGTH } from "../_lib/constants";
 
 function errorMessage(error: unknown) {
-  const message = error instanceof Error ? error.message : "提交记录服务暂不可用";
-  return message.includes("no such table") ? "提交记录数据库正在初始化，请稍后重试" : message;
+  return error instanceof Error ? error.message : "提交记录服务暂时不可用";
+}
+
+function normalizeRecord(data: Partial<SubmissionRecord>): SubmissionRecord {
+  return {
+    id: String(data.id || "").trim(),
+    problemId: String(data.problemId || "").trim(),
+    problemTitle: String(data.problemTitle || "").trim(),
+    status: String(data.status || "").trim(),
+    passed: String(data.passed || "").trim(),
+    sourceCode: typeof data.sourceCode === "string" ? data.sourceCode : "",
+    submittedAt: String(data.submittedAt || "").trim(),
+  };
 }
 
 export async function GET(request: Request) {
@@ -16,8 +25,7 @@ export async function GET(request: Request) {
   try {
     const problemId = new URL(request.url).searchParams.get("problemId")?.trim();
     if (!problemId) return Response.json({ error: "缺少题号" }, { status: 400 });
-    const history = await (await getDb()).select().from(submissions).where(eq(submissions.problemId, problemId)).orderBy(desc(submissions.submittedAt));
-    return Response.json({ history });
+    return Response.json({ history: await listSubmissions(problemId) });
   } catch (error) {
     return Response.json({ error: errorMessage(error) }, { status: 500 });
   }
@@ -28,20 +36,12 @@ export async function POST(request: Request) {
   if (!rl.allowed) return Response.json({ error: "请求过于频繁，请稍后重试" }, { status: 429 });
 
   try {
-    const data = await request.json() as Partial<typeof submissions.$inferInsert>;
-    const record = {
-      id: String(data.id || "").trim(),
-      problemId: String(data.problemId || "").trim(),
-      problemTitle: String(data.problemTitle || "").trim(),
-      status: String(data.status || "").trim(),
-      passed: String(data.passed || "").trim(),
-      sourceCode: typeof data.sourceCode === "string" ? data.sourceCode : "",
-      submittedAt: String(data.submittedAt || "").trim(),
-    };
-    if (!record.id || !record.problemId || !record.problemTitle || !record.status || !record.passed || !record.submittedAt || !record.sourceCode) return Response.json({ error: "提交记录字段不完整" }, { status: 400 });
+    const record = normalizeRecord(await request.json() as Partial<SubmissionRecord>);
+    if (!record.id || !record.problemId || !record.problemTitle || !record.status || !record.passed || !record.submittedAt || !record.sourceCode) {
+      return Response.json({ error: "提交记录字段不完整" }, { status: 400 });
+    }
     if (record.sourceCode.length > MAX_SUBMISSION_SOURCE_LENGTH) return Response.json({ error: "提交代码过长" }, { status: 413 });
-    const [saved] = await (await getDb()).insert(submissions).values(record).returning();
-    return Response.json({ record: saved }, { status: 201 });
+    return Response.json({ record: await createSubmission(record) }, { status: 201 });
   } catch (error) {
     return Response.json({ error: errorMessage(error) }, { status: 500 });
   }
@@ -54,10 +54,14 @@ export async function DELETE(request: Request) {
   try {
     const id = new URL(request.url).searchParams.get("id")?.trim();
     const payload = await request.json().catch(() => null) as { problemIds?: unknown } | null;
-    const problemIds = Array.isArray(payload?.problemIds) ? payload.problemIds.map(String).map((item) => item.trim()).filter(Boolean).slice(0, MAX_BULK_DELETE_PROBLEM_IDS) : [];
-    if (id) await (await getDb()).delete(submissions).where(eq(submissions.id, id));
-    else if (problemIds.length) await (await getDb()).delete(submissions).where(inArray(submissions.problemId, problemIds));
+    const problemIds = Array.isArray(payload?.problemIds)
+      ? payload.problemIds.map(String).map((item) => item.trim()).filter(Boolean).slice(0, MAX_BULK_DELETE_PROBLEM_IDS)
+      : [];
+
+    if (id) await deleteSubmission(id);
+    else if (problemIds.length) await deleteSubmissionsByProblemIds(problemIds);
     else return Response.json({ error: "缺少记录编号或题号" }, { status: 400 });
+
     return Response.json({ ok: true });
   } catch (error) {
     return Response.json({ error: errorMessage(error) }, { status: 500 });
@@ -74,9 +78,8 @@ export async function PATCH(request: Request) {
     const newProblemId = data.newProblemId?.trim();
     const problemTitle = data.problemTitle?.trim();
     if (!oldProblemId || !newProblemId || !problemTitle) return Response.json({ error: "题号更新字段不完整" }, { status: 400 });
-    // Validate new ID format
     if (!/^[A-Za-z][A-Za-z0-9_-]{0,19}$/.test(newProblemId)) return Response.json({ error: "新题号需以字母开头，仅含字母数字下划线短横线" }, { status: 400 });
-    await (await getDb()).update(submissions).set({ problemId: newProblemId, problemTitle }).where(eq(submissions.problemId, oldProblemId));
+    await renameSubmissionProblem(oldProblemId, newProblemId, problemTitle);
     return Response.json({ ok: true });
   } catch (error) {
     return Response.json({ error: errorMessage(error) }, { status: 500 });

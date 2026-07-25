@@ -1,34 +1,51 @@
-import * as schema from "./schema";
+export type SubmissionRecord = {
+  id: string;
+  problemId: string;
+  problemTitle: string;
+  status: string;
+  passed: string;
+  sourceCode: string;
+  submittedAt: string;
+};
 
-// In-memory SQLite fallback for local development (Node.js).
-// In production, the @cloudflare/vite-plugin resolves the D1 binding
-// from import("cloudflare:workers") — this code path never runs there.
+const rows: SubmissionRecord[] = [];
 
-let _devDb: ReturnType<typeof import("drizzle-orm/better-sqlite3").drizzle> | null = null;
-
-async function getDevDb() {
-  if (_devDb) return _devDb;
-
-  const { drizzle } = await import("drizzle-orm/better-sqlite3");
-  const Database = (await import("better-sqlite3")).default as new (path: string) => import("better-sqlite3").Database;
-  const sqlite = new Database(":memory:");
-  sqlite.pragma("journal_mode = WAL");
-  sqlite.exec(`
-    CREATE TABLE IF NOT EXISTS submissions (
-      id TEXT PRIMARY KEY,
-      problem_id TEXT NOT NULL,
-      problem_title TEXT NOT NULL,
-      status TEXT NOT NULL,
-      passed TEXT NOT NULL,
-      source_code TEXT NOT NULL,
-      submitted_at TEXT NOT NULL
-    )
-  `);
-
-  _devDb = drizzle(sqlite, { schema });
-  return _devDb;
+function clone(record: SubmissionRecord): SubmissionRecord {
+  return { ...record };
 }
 
-export function getDb() {
-  return getDevDb();
+function sortNewestFirst(records: SubmissionRecord[]) {
+  return [...records].sort((a, b) => b.submittedAt.localeCompare(a.submittedAt));
+}
+
+export async function listSubmissions(problemId: string): Promise<SubmissionRecord[]> {
+  return sortNewestFirst(rows.filter((row) => row.problemId === problemId)).map(clone);
+}
+
+export async function createSubmission(record: SubmissionRecord): Promise<SubmissionRecord> {
+  const existingIndex = rows.findIndex((row) => row.id === record.id);
+  if (existingIndex >= 0) rows.splice(existingIndex, 1);
+  rows.push(clone(record));
+  return clone(record);
+}
+
+export async function deleteSubmission(id: string): Promise<void> {
+  const index = rows.findIndex((row) => row.id === id);
+  if (index >= 0) rows.splice(index, 1);
+}
+
+export async function deleteSubmissionsByProblemIds(problemIds: string[]): Promise<void> {
+  const ids = new Set(problemIds);
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    if (ids.has(rows[index].problemId)) rows.splice(index, 1);
+  }
+}
+
+export async function renameSubmissionProblem(oldProblemId: string, newProblemId: string, problemTitle: string): Promise<void> {
+  for (const row of rows) {
+    if (row.problemId === oldProblemId) {
+      row.problemId = newProblemId;
+      row.problemTitle = problemTitle;
+    }
+  }
 }
