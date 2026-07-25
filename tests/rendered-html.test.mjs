@@ -56,6 +56,17 @@ test("production HTML hydrates from reachable client assets on Windows", async (
     assert.equal(asset.status, 200, `hydration asset must be reachable; server logs:\n${logs}`);
     assert.match(asset.headers.get("content-type") || "", /javascript/);
     assert.ok((await asset.text()).length > 1_000, "hydration asset must not be an empty fallback");
+
+    for (const [path, label] of [
+      ["/login", "登录 CodeNow"],
+      ["/register", "创建账户"],
+      ["/forgot-password", "忘记密码"],
+      ["/reset-password?token=test", "重新设置密码"],
+    ]) {
+      const authResponse = await fetch(`http://127.0.0.1:${port}${path}`);
+      assert.equal(authResponse.status, 200, `${path} must render; server logs:\n${logs}`);
+      assert.match(await authResponse.text(), new RegExp(label));
+    }
   } finally {
     child.kill();
     await Promise.race([
