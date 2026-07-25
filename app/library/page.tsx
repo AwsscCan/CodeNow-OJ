@@ -115,20 +115,14 @@ export default function LibraryPage() {
     toast(`已永久删除`);
   }
 
-  async function confirmRename() {
+  function confirmRename() {
     if (!renamingId) return;
     const nextId = nextProblemId.trim();
     if (!/^[A-Za-z][A-Za-z0-9_-]{0,19}$/.test(nextId)) return toast("题号需以字母开头，仅含字母数字下划线短横线，最长 20 位");
-    try {
-      const res = await fetch("/api/submissions", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ oldProblemId: renamingId, newProblemId: nextId, problemTitle: store.archives.find((a) => a.problem.id === renamingId)?.problem.title || "" }) });
-      if (!res.ok) { const data = await res.json() as { error?: string }; throw new Error(data.error || "同步失败"); }
-      store.renameProblem(renamingId, nextId);
-      setRenamingId(null);
-      setNextProblemId("");
-      toast(`题号已修改为 ${nextId}`);
-    } catch (err) {
-      toast(err instanceof Error ? err.message : "重命名失败");
-    }
+    store.renameProblem(renamingId, nextId);
+    setRenamingId(null);
+    setNextProblemId("");
+    toast(`题号已修改为 ${nextId}`);
   }
 
   function reorderFolder(target: string, placeAfter: boolean) {

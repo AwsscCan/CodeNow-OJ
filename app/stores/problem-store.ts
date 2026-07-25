@@ -18,7 +18,7 @@ type Problem = {
   extractionStatus?: "complete" | "needs_review";
 };
 type Result = { id: number; status: "AC" | "WA" | "RE" | "CE" | "TLE"; actual: string; expected: string; duration: number };
-type SubmissionRecord = { id: string; problemId: string; problemTitle: string; status: string; passed: string; sourceCode: string; submittedAt: string };
+type SubmissionRecord = { id: string; problemId: string; problemTitle: string; status: string; passed: string; sourceCode: string; submittedAt: string; localOnly?: boolean };
 
 export type { Problem, Result, SubmissionRecord, TestCase };
 

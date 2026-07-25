@@ -100,8 +100,9 @@ export default function ProblemPage() {
     store.setSelectedSubmission(null);
     fetch(`/api/submissions?problemId=${encodeURIComponent(problemId)}`, { signal: controller.signal })
       .then(async (res) => {
-        const data = await res.json() as { history?: SubmissionRecord[]; error?: string };
-        if (!res.ok) throw new Error(data.error || "无法读取提交记录");
+        const data = await res.json() as { history?: SubmissionRecord[]; error?: { message?: string } };
+        if (res.status === 401) return;
+        if (!res.ok) throw new Error(data.error?.message || "无法读取提交记录");
         store.setHistory(Array.isArray(data.history) ? data.history : []);
       })
       .catch((err) => { if (err instanceof Error && err.name !== "AbortError") toast(err.message); })
@@ -281,10 +282,16 @@ export default function ProblemPage() {
   async function deleteSubmission(event: React.MouseEvent, record: SubmissionRecord) {
     event.stopPropagation();
     if (!window.confirm(`确定删除 ${new Date(record.submittedAt).toLocaleString("zh-CN")} 的记录吗？`)) return;
+    if (record.localOnly) {
+      store.setHistory(store.history.filter((item) => item.id !== record.id));
+      if (store.selectedSubmission?.id === record.id) store.setSelectedSubmission(null);
+      toast("已删除本机记录");
+      return;
+    }
     try {
       const res = await fetch(`/api/submissions?id=${encodeURIComponent(record.id)}`, { method: "DELETE" });
-      const data = await res.json() as { ok?: boolean; error?: string };
-      if (!res.ok || !data.ok) throw new Error(data.error || "删除失败");
+      const data = await res.json() as { ok?: boolean; error?: { message?: string } };
+      if (!res.ok || !data.ok) throw new Error(data.error?.message || "删除失败");
       store.setHistory(store.history.filter((h) => h.id !== record.id));
       if (store.selectedSubmission?.id === record.id) store.setSelectedSubmission(null);
       toast("已删除");
@@ -447,7 +454,7 @@ export default function ProblemPage() {
                   <div className="history-row" key={item.id}>
                     <button className="history-open" onClick={() => store.setSelectedSubmission(item)}>
                       <span>{new Date(item.submittedAt).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
-                      <b className={item.status === "答案正确" ? "ok" : "bad"}>{item.status}</b><span>{item.passed}</span><code>GNU C++17</code>
+                      <b className={item.status === "答案正确" ? "ok" : "bad"}>{item.status}</b><span>{item.passed}</span><code>{item.localOnly ? "仅本机" : "GNU C++17"}</code>
                     </button>
                     <button className="history-delete" onClick={(event) => deleteSubmission(event, item)}>删</button>
                   </div>

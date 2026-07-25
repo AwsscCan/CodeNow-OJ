@@ -1,3 +1,8 @@
+import { and, desc, eq } from "drizzle-orm";
+import type { Database } from "./client";
+import { createLocalDb } from "./client";
+import { submissions } from "./schema";
+
 export type SubmissionRecord = {
   id: string;
   problemId: string;
@@ -8,44 +13,62 @@ export type SubmissionRecord = {
   submittedAt: string;
 };
 
-const rows: SubmissionRecord[] = [];
+export type NewSubmission = Omit<SubmissionRecord, "id" | "submittedAt">;
 
-function clone(record: SubmissionRecord): SubmissionRecord {
-  return { ...record };
+type RepositoryDb = ReturnType<typeof createLocalDb>;
+
+function toRecord(row: typeof submissions.$inferSelect): SubmissionRecord {
+  return {
+    id: row.id,
+    problemId: row.problemId,
+    problemTitle: row.problemTitle,
+    status: row.status,
+    passed: row.passed,
+    sourceCode: row.sourceCode,
+    submittedAt: row.submittedAt.toISOString(),
+  };
 }
 
-function sortNewestFirst(records: SubmissionRecord[]) {
-  return [...records].sort((a, b) => b.submittedAt.localeCompare(a.submittedAt));
+export function createSubmissionRepository(db: Database) {
+  const database = db as RepositoryDb;
+
+  return {
+    async listSubmissions(userId: string, problemId?: string): Promise<SubmissionRecord[]> {
+      const filter = problemId
+        ? and(eq(submissions.userId, userId), eq(submissions.problemId, problemId))
+        : eq(submissions.userId, userId);
+      const rows = await database.select().from(submissions)
+        .where(filter)
+        .orderBy(desc(submissions.submittedAt))
+        .limit(50);
+      return rows.map(toRecord);
+    },
+
+    async createSubmission(userId: string, input: NewSubmission): Promise<SubmissionRecord> {
+      const [row] = await database.insert(submissions).values({
+        id: crypto.randomUUID(),
+        userId,
+        ...input,
+        submittedAt: new Date(),
+      }).returning();
+      return toRecord(row);
+    },
+
+    async getSubmission(userId: string, id: string): Promise<SubmissionRecord | null> {
+      const [row] = await database.select().from(submissions)
+        .where(and(eq(submissions.userId, userId), eq(submissions.id, id)))
+        .limit(1);
+      return row ? toRecord(row) : null;
+    },
+
+    async deleteSubmission(userId: string, id: string): Promise<boolean> {
+      const existing = await this.getSubmission(userId, id);
+      if (!existing) return false;
+      await database.delete(submissions)
+        .where(and(eq(submissions.userId, userId), eq(submissions.id, id)));
+      return true;
+    },
+  };
 }
 
-export async function listSubmissions(problemId: string): Promise<SubmissionRecord[]> {
-  return sortNewestFirst(rows.filter((row) => row.problemId === problemId)).map(clone);
-}
-
-export async function createSubmission(record: SubmissionRecord): Promise<SubmissionRecord> {
-  const existingIndex = rows.findIndex((row) => row.id === record.id);
-  if (existingIndex >= 0) rows.splice(existingIndex, 1);
-  rows.push(clone(record));
-  return clone(record);
-}
-
-export async function deleteSubmission(id: string): Promise<void> {
-  const index = rows.findIndex((row) => row.id === id);
-  if (index >= 0) rows.splice(index, 1);
-}
-
-export async function deleteSubmissionsByProblemIds(problemIds: string[]): Promise<void> {
-  const ids = new Set(problemIds);
-  for (let index = rows.length - 1; index >= 0; index -= 1) {
-    if (ids.has(rows[index].problemId)) rows.splice(index, 1);
-  }
-}
-
-export async function renameSubmissionProblem(oldProblemId: string, newProblemId: string, problemTitle: string): Promise<void> {
-  for (const row of rows) {
-    if (row.problemId === oldProblemId) {
-      row.problemId = newProblemId;
-      row.problemTitle = problemTitle;
-    }
-  }
-}
+export type SubmissionRepository = ReturnType<typeof createSubmissionRepository>;

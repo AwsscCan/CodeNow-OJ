@@ -4,6 +4,7 @@ import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import {
   createD1Db,
   createLocalDb,
+  type Database,
   type D1Binding,
 } from "../../db/client";
 import * as schema from "../../db/schema";
@@ -91,7 +92,9 @@ type CloudflareRuntime = {
   waitUntil?: (promise: Promise<unknown>) => void;
 };
 
-let localAuth: Auth | null = null;
+export type RuntimeServices = { auth: Auth; db: Database };
+
+let localServices: RuntimeServices | null = null;
 
 async function loadCloudflareRuntime(): Promise<CloudflareRuntime | null> {
   try {
@@ -124,23 +127,28 @@ function authEnvironment(request: Request, bindings: RuntimeBindings): AuthEnvir
   };
 }
 
-export async function getRuntimeAuth(request: Request): Promise<Auth> {
+export async function getRuntimeServices(request: Request): Promise<RuntimeServices> {
   const runtime = await loadCloudflareRuntime();
   const bindings = runtime?.env ?? {};
   const env = authEnvironment(request, bindings);
 
   if (bindings.DB) {
-    return createAuth({
-      db: createD1Db(bindings.DB),
+    const db = createD1Db(bindings.DB);
+    return { db, auth: createAuth({
+      db,
       env,
       waitUntil: runtime?.waitUntil,
-    });
+    }) };
   }
 
-  if (!localAuth) {
+  if (!localServices) {
     const db = createLocalDb(":memory:");
     migrate(db, { migrationsFolder: "drizzle" });
-    localAuth = createAuth({ db, env });
+    localServices = { db, auth: createAuth({ db, env }) };
   }
-  return localAuth;
+  return localServices;
+}
+
+export async function getRuntimeAuth(request: Request): Promise<Auth> {
+  return (await getRuntimeServices(request)).auth;
 }

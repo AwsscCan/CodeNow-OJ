@@ -1,5 +1,10 @@
-import { describe, expect, it } from "vitest";
-import { DELETE, GET, PATCH, POST } from "../../app/api/submissions/route";
+import BetterSqlite3 from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
+import { migrate } from "drizzle-orm/better-sqlite3/migrator";
+import { beforeEach, describe, expect, it } from "vitest";
+import { createSubmissionHandlers } from "../../app/api/submissions/route";
+import { createSubmissionRepository } from "../../db";
+import * as schema from "../../db/schema";
 
 function jsonRequest(url: string, method: string, body?: unknown) {
   return new Request(url, {
@@ -9,47 +14,52 @@ function jsonRequest(url: string, method: string, body?: unknown) {
   });
 }
 
-describe("submissions API", () => {
-  it("creates, lists, renames, and deletes submission records without drizzle insert chains", async () => {
-    const id = `sub-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    const problemId = `P${Math.floor(Math.random() * 1_000_000)}`;
-    const newProblemId = `${problemId}X`;
+describe("submissions API ownership", () => {
+  let sqlite: BetterSqlite3.Database;
+  let repository: ReturnType<typeof createSubmissionRepository>;
 
-    const createResponse = await POST(jsonRequest("http://localhost/api/submissions", "POST", {
-      id,
-      problemId,
+  beforeEach(() => {
+    sqlite = new BetterSqlite3(":memory:");
+    const db = drizzle(sqlite, { schema });
+    migrate(db, { migrationsFolder: "drizzle" });
+    const now = new Date();
+    db.insert(schema.users).values([
+      { id: "user-a", name: "A", email: "a@example.com", emailVerified: true, createdAt: now, updatedAt: now },
+      { id: "user-b", name: "B", email: "b@example.com", emailVerified: true, createdAt: now, updatedAt: now },
+    ]).run();
+    repository = createSubmissionRepository(db);
+  });
+
+  it("rejects anonymous reads and writes", async () => {
+    const handlers = createSubmissionHandlers(async () => null);
+    expect((await handlers.GET(jsonRequest("http://localhost/api/submissions?problemId=P1", "GET"))).status).toBe(401);
+    expect((await handlers.POST(jsonRequest("http://localhost/api/submissions", "POST", {}))).status).toBe(401);
+  });
+
+  it("creates server-owned records and isolates them from another user", async () => {
+    const handlersA = createSubmissionHandlers(async () => ({ userId: "user-a", repository }));
+    const handlersB = createSubmissionHandlers(async () => ({ userId: "user-b", repository }));
+    const clientId = "client-controlled-id";
+    const createResponse = await handlersA.POST(jsonRequest("http://localhost/api/submissions", "POST", {
+      id: clientId,
+      userId: "user-b",
+      problemId: "P1001",
       problemTitle: "A+B",
-      status: "AC",
-      passed: "1/1",
-      sourceCode: "#include <iostream>\nint main(){int a,b;std::cin>>a>>b;std::cout<<a+b;}",
-      submittedAt: new Date().toISOString(),
+      status: "答案正确",
+      passed: "3/3",
+      sourceCode: "int main(){}",
+      submittedAt: "2000-01-01T00:00:00.000Z",
     }));
     expect(createResponse.status).toBe(201);
-    const created = await createResponse.json() as { record?: { id?: string; problemId?: string } };
-    expect(created.record?.id).toBe(id);
-    expect(created.record?.problemId).toBe(problemId);
+    const created = await createResponse.json() as { record: { id: string; submittedAt: string } };
+    expect(created.record.id).not.toBe(clientId);
+    expect(created.record.submittedAt).not.toBe("2000-01-01T00:00:00.000Z");
 
-    const listResponse = await GET(jsonRequest(`http://localhost/api/submissions?problemId=${problemId}`, "GET"));
-    expect(listResponse.status).toBe(200);
-    const listed = await listResponse.json() as { history?: Array<{ id: string }> };
-    expect(listed.history?.some((item) => item.id === id)).toBe(true);
-
-    const renameResponse = await PATCH(jsonRequest("http://localhost/api/submissions", "PATCH", {
-      oldProblemId: problemId,
-      newProblemId,
-      problemTitle: "A+B renamed",
-    }));
-    expect(renameResponse.status).toBe(200);
-
-    const renamedResponse = await GET(jsonRequest(`http://localhost/api/submissions?problemId=${newProblemId}`, "GET"));
-    const renamed = await renamedResponse.json() as { history?: Array<{ id: string; problemId: string }> };
-    expect(renamed.history?.some((item) => item.id === id && item.problemId === newProblemId)).toBe(true);
-
-    const deleteResponse = await DELETE(jsonRequest(`http://localhost/api/submissions?id=${id}`, "DELETE"));
-    expect(deleteResponse.status).toBe(200);
-
-    const afterDeleteResponse = await GET(jsonRequest(`http://localhost/api/submissions?problemId=${newProblemId}`, "GET"));
-    const afterDelete = await afterDeleteResponse.json() as { history?: Array<{ id: string }> };
-    expect(afterDelete.history?.some((item) => item.id === id)).toBe(false);
+    const own = await handlersA.GET(jsonRequest("http://localhost/api/submissions?problemId=P1001", "GET"));
+    expect((await own.json() as { history: unknown[] }).history).toHaveLength(1);
+    const other = await handlersB.GET(jsonRequest("http://localhost/api/submissions?problemId=P1001", "GET"));
+    expect((await other.json() as { history: unknown[] }).history).toHaveLength(0);
+    expect((await handlersB.DELETE(jsonRequest(`http://localhost/api/submissions?id=${created.record.id}`, "DELETE"))).status).toBe(404);
+    expect((await handlersA.DELETE(jsonRequest(`http://localhost/api/submissions?id=${created.record.id}`, "DELETE"))).status).toBe(200);
   });
 });

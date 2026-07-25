@@ -73,13 +73,21 @@ export function useJudge() {
   return { running, runTests };
 }
 
-async function saveRecord(record: SubmissionRecord): Promise<SubmissionRecord> {
+export async function saveRecord(record: SubmissionRecord): Promise<SubmissionRecord> {
+  const payload = {
+    problemId: record.problemId,
+    problemTitle: record.problemTitle,
+    status: record.status,
+    passed: record.passed,
+    sourceCode: record.sourceCode,
+  };
   const res = await fetch("/api/submissions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(record),
+    body: JSON.stringify(payload),
   });
-  const data = await res.json() as { record?: SubmissionRecord; error?: string };
-  if (!res.ok || !data.record) throw new Error(data.error || "保存提交记录失败");
+  const data = await res.json() as { record?: SubmissionRecord; error?: { message?: string } };
+  if (res.status === 401) return { ...record, localOnly: true };
+  if (!res.ok || !data.record) throw new Error(data.error?.message || "保存提交记录失败");
   return data.record;
 }
