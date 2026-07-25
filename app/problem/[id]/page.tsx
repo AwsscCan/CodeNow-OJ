@@ -151,7 +151,7 @@ export default function ProblemPage() {
   // Judge
   async function handleRun(submit = false) {
     try {
-      const { results, diagnostic, submission } = await runTests({
+      const result = await runTests({
         sourceCode: store.code,
         tests: store.problem.samples,
         problemId: store.problem.id,
@@ -164,12 +164,20 @@ export default function ProblemPage() {
           else setMascotMessage(6);
         },
       });
-      store.setResults(results);
-      store.setCompilerDiagnostic(diagnostic);
-      if (submission) {
-        store.setHistory([submission, ...store.history]);
-        const ok = results.filter((r) => r.status === "AC").length;
-        toast(ok === results.length ? "提交成功：答案正确" : `提交完成：通过 ${ok}/${results.length}`);
+
+      if (!result) return;
+
+      store.setResults(result.results);
+      store.setCompilerDiagnostic(result.diagnostic);
+
+      // Always add to local history (both run and submit)
+      if (result.submission) {
+        store.setHistory([result.submission, ...store.history]);
+      }
+
+      const ok = result.results.filter((r) => r.status === "AC").length;
+      if (submit) {
+        toast(ok === result.results.length ? "提交成功：答案正确" : `提交完成：通过 ${ok}/${result.results.length}`);
       }
     } catch (err) {
       toast(err instanceof Error ? err.message : "判题服务暂不可用");
