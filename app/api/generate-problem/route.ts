@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { rateLimit } from "../_lib/rate-limit";
-import { generateComplexityAwareTests } from "../_lib/complexity-tests";
+import { generateComplexityAwareTests } from "../_lib/test-generation-pipeline";
 import { getCachedReference } from "../_lib/reference-solution";
 import { validateEndpoint } from "../_lib/validate-endpoint";
 import { AI_MAX_RAW_PROBLEM_LENGTH, AI_TIMEOUT_MS } from "../_lib/constants";

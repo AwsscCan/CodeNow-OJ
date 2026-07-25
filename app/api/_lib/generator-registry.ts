@@ -342,17 +342,9 @@ export function validateInput(input: string, maxLength: number): string | null {
   const tokens = input.trim().split(/\s+/);
   if (tokens.length > 1000000) return "输入 token 数量超过上限";
 
-  // Basic n-consistency: if first token is a number N, check that the rest of the data
-  // has a reasonable relationship (not too few or absurdly many elements)
-  const firstNum = Number(tokens[0]);
-  if (Number.isFinite(firstNum) && firstNum >= 1) {
-    const remaining = tokens.length - 1;
-    // If N is a count (like array size), remaining should be at least N for 1D arrays
-    // or at least 2N for edges. This is a soft check — we only warn about extreme mismatches.
-    if (remaining > 0 && remaining < firstNum && firstNum - remaining > 100) {
-      return `输入元素数量(${remaining})与首个数(${firstNum})不匹配`;
-    }
-  }
+  // Do not guess that the first token is an array length. It can legally be a
+  // value, modulus, coordinate, or one of several fields. Shape validation is
+  // only reliable when a problem-specific validator/reference is available.
 
   // Value range check: reject obviously out-of-bounds values
   for (const tok of tokens.slice(0, 1000)) { // Check first 1000 tokens for speed

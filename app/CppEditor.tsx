@@ -2,7 +2,7 @@
 
 import Editor, { loader, type Monaco, type OnMount } from "@monaco-editor/react";
 import { memo, useEffect, useRef } from "react";
-import type { editor as MonacoEditor, languages as MonacoLanguages } from "monaco-editor";
+import type { editor as MonacoEditor, languages as MonacoLanguages, Position, Range } from "monaco-editor";
 import { formatCppCode } from "./lib/format-cpp";
 
 loader.config({ paths: { vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.56.0/min/vs" } });
@@ -238,7 +238,7 @@ function configureCpp(monaco: Monaco) {
 
   monaco.languages.registerCompletionItemProvider("cpp", {
     triggerCharacters: ["#", ":", ".", "<"],
-    provideCompletionItems(model, position) {
+    provideCompletionItems(model: MonacoEditor.ITextModel, position: Position) {
       const word = model.getWordUntilPosition(position);
       const range = {
         startLineNumber: position.lineNumber,
@@ -272,7 +272,7 @@ function configureCpp(monaco: Monaco) {
 
   monaco.languages.registerCompletionItemProvider("cpp", {
     triggerCharacters: ["#", "<", ":", ".", ">"],
-    provideCompletionItems(model, position) {
+    provideCompletionItems(model: MonacoEditor.ITextModel, position: Position) {
       const word = model.getWordUntilPosition(position);
       const range = {
         startLineNumber: position.lineNumber,
@@ -334,7 +334,7 @@ function configureCpp(monaco: Monaco) {
   });
 
   monaco.languages.registerInlineCompletionsProvider("cpp", {
-    provideInlineCompletions(model, position) {
+    provideInlineCompletions(model: MonacoEditor.ITextModel, position: Position) {
       const prefix = model.getLineContent(position.lineNumber).slice(0, position.column - 1);
       const match = prefix.match(/\b(for|ios)$/);
       if (!match) return { items: [] };
@@ -348,7 +348,7 @@ function configureCpp(monaco: Monaco) {
   });
 
   monaco.languages.registerInlineCompletionsProvider("cpp", {
-    provideInlineCompletions(model, position) {
+    provideInlineCompletions(model: MonacoEditor.ITextModel, position: Position) {
       const beforeCursor = model.getLineContent(position.lineNumber).slice(0, position.column - 1);
       const trimmed = beforeCursor.trimStart();
       const leading = beforeCursor.length - trimmed.length;
@@ -382,7 +382,7 @@ function configureCpp(monaco: Monaco) {
 
   monaco.languages.registerInlayHintsProvider("cpp", {
     displayName: "CodeNow C++ parameter hints",
-    provideInlayHints(model, range) {
+    provideInlayHints(model: MonacoEditor.ITextModel, range: Range) {
       const hints: MonacoLanguages.InlayHint[] = [];
       const names: Record<string, [string, string]> = { sort: ["first:", "last:"], lower_bound: ["first:", "last:"] };
       for (let lineNumber = range.startLineNumber; lineNumber <= range.endLineNumber; lineNumber += 1) {
@@ -411,7 +411,7 @@ function configureCpp(monaco: Monaco) {
     "long": "`long long` — 至少 64 位的有符号整数类型。",
   };
   monaco.languages.registerHoverProvider("cpp", {
-    provideHover(model, position) {
+    provideHover(model: MonacoEditor.ITextModel, position: Position) {
       const word = model.getWordAtPosition(position);
       if (!word || !hoverDocs[word.word]) return null;
       return { range: new monaco.Range(position.lineNumber, word.startColumn, position.lineNumber, word.endColumn), contents: [{ value: hoverDocs[word.word] }] };
@@ -421,7 +421,7 @@ function configureCpp(monaco: Monaco) {
   // Real-time C++ auto-formatting provider
   monaco.languages.registerDocumentFormattingEditProvider("cpp", {
     displayName: "CodeNow C++ Formatter",
-    async provideDocumentFormattingEdits(model) {
+    async provideDocumentFormattingEdits(model: MonacoEditor.ITextModel) {
       const text = model.getValue();
       const formattedText = formatCppCode(text);
       if (formattedText === text) return [];
@@ -435,7 +435,7 @@ function configureCpp(monaco: Monaco) {
   // Format on typing `}` and `;`
   monaco.languages.registerOnTypeFormattingEditProvider("cpp", {
     autoFormatTriggerCharacters: ["}", ";", "\n"],
-    async provideOnTypeFormattingEdits(model, position, _ch, _options) {
+    async provideOnTypeFormattingEdits(model: MonacoEditor.ITextModel, _position: Position, _ch: string, _options: MonacoLanguages.FormattingOptions) {
       // Let the full formatter handle it
       const text = model.getValue();
       return [{

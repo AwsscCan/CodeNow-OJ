@@ -236,55 +236,39 @@ export default function ProblemPage() {
     const key = aiStore.apiKeys[aiStore.provider];
     if (!key.trim()) return toast("请先配置 API Key");
     setGeneratingTests(true);
-    setTestGenStatus("正在生成参考程序并验证…");
+    setTestGenStatus("正在分析题型并分批补齐覆盖…");
     try {
       const targetTotal = Math.max(1, testPointCount);
-      const existing = new Set(store.problem.samples.map((t) => `${t.input}::fp::${t.output}`));
-      const accepted: typeof store.problem.samples = [];
-      let stalled = 0;
-      const batchFocus = ["基础合法数据", "边界数据", "反例数据", "性能数据", "综合补洞"];
-      const maxAttempts = Math.max(Math.ceil(targetTotal / 3) * 3, 8);
-      const batchSize = 6;
-      let lastBatchError = "";
-
-      for (let attempt = 0; accepted.length < targetTotal && attempt < maxAttempts && stalled < 5; attempt++) {
-        const count = Math.min(batchSize, targetTotal - accepted.length);
-        setTestGenStatus(`正在补足测试点 ${accepted.length}/${targetTotal}（第 ${attempt + 1} 次尝试）…`);
-        try {
-          const res = await fetch("/api/generate-tests", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              apiKey: key, endpoint: aiStore.endpoint, model: aiStore.model,
-              problem: { ...store.problem, generationContext: `第 ${attempt + 1} 次生成。已成功 ${accepted.length}/${targetTotal} 个。本批目标：${batchFocus[attempt % batchFocus.length]}。前面批次已在 samples 中。` },
-              count,
-            }),
-          });
-          const data = await res.json() as { tests?: Array<{ input: string; output: string; category?: string; scale?: number; targets?: string; reason?: string }>; error?: string; complexityReport?: { referenceValidated?: boolean; computedCount?: number } };
-          if (!res.ok || !data.tests) throw new Error(data.error || "AI 生成失败");
-          if (data.complexityReport?.referenceValidated) {
-            setTestGenStatus(`参考程序已验证，正在计算输出…`);
-          }
-          const fresh = data.tests.filter((t) => {
-            const key = `${t.input}::fp::${t.output}`;
-            if (existing.has(key)) return false;
-            existing.add(key);
-            return true;
-          }).slice(0, count);
-          if (fresh.length) {
-            accepted.push(...fresh.map((t, i) => ({ id: Date.now() + i, ...t })));
-            store.setProblem({ ...store.problem, samples: [...store.problem.samples, ...fresh.map((t, i) => ({ id: Date.now() + i, ...t }))] });
-            stalled = 0;
-          } else {
-            stalled++;
-          }
-        } catch (error) {
-          lastBatchError = error instanceof Error ? error.message : "AI 测试点生成失败";
-          stalled++;
-        }
-      }
-      if (!accepted.length) throw new Error(lastBatchError || "AI 没有生成可用测试点");
-      toast(`新增 ${accepted.length} 个测试点${accepted.length < targetTotal ? "；模型返回不足，可再次点击继续补足" : ""}`);
+      const res = await fetch("/api/generate-tests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          apiKey: key,
+          endpoint: aiStore.endpoint,
+          model: aiStore.model,
+          problem: store.problem,
+          count: targetTotal,
+        }),
+      });
+      const data = await res.json() as {
+        tests?: Array<{ input: string; output: string; category?: string; scale?: number; targets?: string; reason?: string }>;
+        error?: string;
+        complexityReport?: { generatedCount?: number; requestedCount?: number; batches?: number; qualityOk?: boolean; referenceValidated?: boolean; elapsedMs?: number };
+      };
+      if (!res.ok || !data.tests?.length) throw new Error(data.error || "AI 没有生成可用测试点");
+      const existingInputs = new Set(store.problem.samples.map((test) => test.input.trim()));
+      const fresh = data.tests.filter((test) => {
+        const fingerprint = test.input.trim();
+        if (!fingerprint || existingInputs.has(fingerprint)) return false;
+        existingInputs.add(fingerprint);
+        return true;
+      });
+      if (!fresh.length) throw new Error("AI 返回的测试点均已存在，请修改生成目标后重试");
+      const now = Date.now();
+      store.setProblem({ ...store.problem, samples: [...store.problem.samples, ...fresh.map((test, index) => ({ id: now + index, ...test }))] });
+      const report = data.complexityReport;
+      const seconds = report?.elapsedMs ? `，耗时 ${(report.elapsedMs / 1000).toFixed(1)} 秒` : "";
+      toast(`新增 ${fresh.length}/${targetTotal} 个测试点（${report?.batches || 1} 批${seconds}）${report?.qualityOk === false ? "；覆盖仍有缺口，可再次生成补充" : ""}`);
     } catch (err) {
       toast(err instanceof Error ? err.message : "AI 测试点生成失败");
     } finally {
@@ -414,6 +398,10 @@ export default function ProblemPage() {
                     <span>{store.results.find((r) => r.id === test.id)?.status || "待测试"}</span>
                     <button className="test-delete-btn" title="删除此测试点" onClick={() => store.removeTest(test.id)}>✕</button>
                   </header>
+                  <div className="test-quality-meta">
+                    <label>测试目标<input value={test.targets || ""} placeholder="例如：卡掉 O(n²) 暴力" onChange={(e) => store.updateTest(test.id, "targets", e.target.value)} /></label>
+                    <label>设计理由<input value={test.reason || ""} placeholder="说明该数据覆盖的边界或反例" onChange={(e) => store.updateTest(test.id, "reason", e.target.value)} /></label>
+                  </div>
                   <label>输入<textarea value={test.input} onChange={(e) => store.updateTest(test.id, "input", e.target.value)} /></label>
                   <label>期望输出<textarea value={test.output} onChange={(e) => store.updateTest(test.id, "output", e.target.value)} /></label>
                 </div>

@@ -79,7 +79,7 @@ type ProblemStore = {
   setNotice: (msg: string) => void;
   addTest: () => void;
   removeTest: (id: number) => void;
-  updateTest: (id: number, field: "input" | "output", value: string) => void;
+  updateTest: (id: number, field: "input" | "output" | "targets" | "reason", value: string) => void;
   updateTestCategory: (id: number, category: string) => void;
   resetCode: () => void;
 };

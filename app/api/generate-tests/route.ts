@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { rateLimit } from "../_lib/rate-limit";
-import { generateComplexityAwareTests } from "../_lib/complexity-tests";
+import { generateComplexityAwareTests } from "../_lib/test-generation-pipeline";
 import { getCachedReference } from "../_lib/reference-solution";
 
 export async function POST(request: NextRequest) {

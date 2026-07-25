@@ -10,7 +10,7 @@ type RawTest = {
   input_data?: unknown; output_data?: unknown; in?: unknown; out?: unknown; inputParts?: unknown; outputParts?: unknown;
   category?: unknown; scale?: unknown; targets?: unknown; reason?: unknown;
 } & Record<string, unknown>;
-type GeneratedTest = { input: string; output: string; category: string; scale: number; targets: string; reason: string };
+export type GeneratedTest = { input: string; output: string; category: string; scale: number; targets: string; reason: string };
 type ComplexityPlan = { expectedTimeComplexity: string; expectedSpaceComplexity: string; bruteForceToReject: string[]; stressScale: number; stressInputStrategy: string };
 
 function parseJson(content: string): unknown {
@@ -353,7 +353,7 @@ function testFromObject(item: Record<string, unknown>, maxInputLength: number): 
     }
 
     const rawInput = pickField(item, ["input", "stdin", "input_data", "inputData", "in", "caseInput", "\u8f93\u5165", "\u8f93\u5165\u6570\u636e"]);
-    if (rawInput === undefined) return null;
+    if (rawInput === undefined && item.inputParts === undefined) return null;
     const materializedInput = materialize(rawInput, item.inputParts);
     if (!materializedInput.trim() || !isValidTestData(materializedInput)) return null;
     const expandedInput = expandEllipsis(materializedInput);
@@ -417,6 +417,12 @@ function parseTests(content: string, maxInputLength = MAX_EXPANDED_CHARS): Gener
   const structured = (() => { try { return parseStructuredTests(content, maxInputLength); } catch { return []; } })();
   if (structured.length) return structured;
   return parseLooseTextTests(content, maxInputLength);
+}
+
+// Shared by the production pipeline and regression tests so model-response
+// repair behavior cannot silently diverge between them.
+export function parseGeneratedTests(content: string, maxInputLength = MAX_EXPANDED_CHARS): GeneratedTest[] {
+  return parseTests(content, maxInputLength);
 }
 
 function buildProblemDigest(problem: Record<string, unknown>) {
