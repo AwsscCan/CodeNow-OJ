@@ -321,68 +321,102 @@ function isValidTestData(value: string): boolean {
   return true;
 }
 
-function parseTests(content: string, maxInputLength = MAX_EXPANDED_CHARS): GeneratedTest[] {
+function pickField(object: Record<string, unknown>, keys: string[]) {
+  const lowerMap = new Map(Object.keys(object).map((key) => [key.toLowerCase(), key]));
+  for (const key of keys) {
+    const exact = object[key];
+    if (exact !== undefined && exact !== null && stringifyField(exact).trim() !== "") return exact;
+    const found = lowerMap.get(key.toLowerCase());
+    if (found) {
+      const value = object[found];
+      if (value !== undefined && value !== null && stringifyField(value).trim() !== "") return value;
+    }
+  }
+  return undefined;
+}
+
+function testFromObject(item: Record<string, unknown>, maxInputLength: number): GeneratedTest | null {
+  const category = String(pickField(item, ["category", "type", "tag", "label", "kind", "??", "??", "??"]) || "ordinary").toLowerCase();
+  const scale = Math.max(1, Math.floor(Number(pickField(item, ["scale", "size", "n", "??"])) || 1));
+  const targets = String(pickField(item, ["targets", "target", "checks", "purpose", "??", "????"]) || "AI generated case");
+  const reason = String(pickField(item, ["reason", "why", "description", "note", "??", "??"]) || "Generated from problem constraints");
+
+  try {
+    if (item.generator && typeof item.generator === "object") {
+      const gen = item.generator as { type?: unknown; params?: unknown };
+      const input = expandGenerator(
+        { type: String(gen.type || ""), params: (gen.params || {}) as Record<string, unknown> },
+        { maxN: 300000, maxValue: 1e9, constraints: "standard" },
+      );
+      if (validateInput(input, maxInputLength)) return null;
+      return { input, output: "", category, scale, targets, reason };
+    }
+
+    const rawInput = pickField(item, ["input", "stdin", "input_data", "inputData", "in", "caseInput", "??", "????"]);
+    if (rawInput === undefined) return null;
+    const materializedInput = materialize(rawInput, item.inputParts);
+    if (!materializedInput.trim() || !isValidTestData(materializedInput)) return null;
+    const expandedInput = expandEllipsis(materializedInput);
+    if (expandedInput === null || expandedInput.length > maxInputLength || validateInput(expandedInput, maxInputLength)) return null;
+
+    const rawOutput = pickField(item, [
+      "output", "stdout", "expected", "expectedOutput", "expected_output", "answer",
+      "output_data", "outputData", "out", "caseOutput", "??", "????", "??", "????",
+    ]);
+    let output = "";
+    if (rawOutput !== undefined || item.outputParts !== undefined) {
+      try { output = materialize(rawOutput, item.outputParts); } catch { output = ""; }
+    }
+
+    return { input: expandedInput, output, category, scale, targets, reason };
+  } catch { return null; }
+}
+
+function parseStructuredTests(content: string, maxInputLength: number): GeneratedTest[] {
   const parsed = parseJson(content);
   const list = findTestList(parsed);
-  if (!Array.isArray(list)) throw new Error("AI 返回的 JSON 缺少 tests 数组");
+  if (!Array.isArray(list)) return [];
   return list.flatMap((item) => {
     if (!item || typeof item !== "object") return [];
-    const test = item as RawTest;
-    const category = String(test.category || "ordinary").toLowerCase();
-    const scale = Math.max(1, Math.floor(Number(test.scale) || 1));
-    const targets = String(test.targets || "");
-    const reason = String(test.reason || "");
-
-    try {
-      // Handle generator spec (AI returns structured generator instead of raw input)
-      if (test.generator && typeof test.generator === "object") {
-        const gen = test.generator as { type?: unknown; params?: unknown };
-        const input = expandGenerator(
-          { type: String(gen.type || ""), params: (gen.params || {}) as Record<string, unknown> },
-          { maxN: 300000, maxValue: 1e9, constraints: "standard" },
-        );
-        const valErr = validateInput(input, maxInputLength);
-        if (valErr) return [];
-        // Generator specs intentionally omit output; a validated reference solution
-        // can compute it later. When no reference exists the prompt avoids generators.
-        return [{ input, output: "", category, scale, targets, reason }];
-      }
-
-      // Handle direct input
-      const rawInput = readFirst(test, ["input", "stdin", "input_data", "in", "输入"]);
-      if (!rawInput && !test.generator) return []; // Need either input or generator
-
-      let materializedInput = materialize(rawInput, test.inputParts);
-      if (!materializedInput.trim()) return [];
-
-      // Validate unfixable patterns
-      if (!isValidTestData(materializedInput)) return [];
-
-      // Expand ellipsis
-      const expandedInput = expandEllipsis(materializedInput);
-      if (expandedInput === null) return [];
-      if (expandedInput.length > maxInputLength) return [];
-
-      const inputErr = validateInput(expandedInput, maxInputLength);
-      if (inputErr) return [];
-
-      const rawOutput = readFirst(test, [
-        "output", "stdout", "expected", "expectedOutput", "expected_output",
-        "answer", "output_data", "out", "输出", "答案",
-      ]);
-      const hasOutput = rawOutput !== undefined || test.outputParts !== undefined;
-      const materializedOutput = hasOutput ? materialize(rawOutput, test.outputParts) : "";
-
-      return [{
-        input: expandedInput,
-        output: materializedOutput,
-        category,
-        scale,
-        targets,
-        reason,
-      }];
-    } catch { return []; }
+    const test = testFromObject(item as Record<string, unknown>, maxInputLength);
+    return test ? [test] : [];
   });
+}
+
+function parseLooseTextTests(content: string, maxInputLength: number): GeneratedTest[] {
+  const cleaned = content.replace(/```(?:json|text|txt)?/gi, "```").replace(/```/g, "").trim();
+  if (!cleaned) return [];
+
+  const blocks = cleaned
+    .split(/(?:^|\n)\s*(?:#{1,4}\s*)?(?:test\s*case|case|sample|???|??|??)\s*\d*\s*[:?-]?\s*\n/gi)
+    .map((block) => block.trim())
+    .filter(Boolean);
+  const sourceBlocks = blocks.length > 1 ? blocks : [cleaned];
+
+  const tests: GeneratedTest[] = [];
+  for (const block of sourceBlocks) {
+    const inputMatch = block.match(/(?:input|stdin|??|????)\s*[:?]\s*([\s\S]*?)(?=\n\s*(?:output|stdout|expected|answer|??|????|??)\s*[:?]|$)/i);
+    const outputMatch = block.match(/(?:output|stdout|expected\s*output|expected|answer|??|????|??)\s*[:?]\s*([\s\S]*?)(?=\n\s*(?:category|type|reason|target|??|??|??|??)\s*[:?]|$)/i);
+    if (!inputMatch) continue;
+    const input = normalizeText(inputMatch[1].trim());
+    if (!input.trim() || input.length > maxInputLength || validateInput(input, maxInputLength)) continue;
+    tests.push({
+      input,
+      output: outputMatch ? normalizeText(outputMatch[1].trim()) : "",
+      category: /performance|large|??|??|??/i.test(block) ? "performance" : /adversarial|hack|??|?/i.test(block) ? "adversarial" : "ordinary",
+      scale: 1,
+      targets: "AI generated loose text case",
+      reason: "Recovered from non-standard AI response",
+    });
+  }
+
+  return tests;
+}
+
+function parseTests(content: string, maxInputLength = MAX_EXPANDED_CHARS): GeneratedTest[] {
+  const structured = (() => { try { return parseStructuredTests(content, maxInputLength); } catch { return []; } })();
+  if (structured.length) return structured;
+  return parseLooseTextTests(content, maxInputLength);
 }
 
 function buildProblemDigest(problem: Record<string, unknown>) {
@@ -519,10 +553,11 @@ export async function generateComplexityAwareTests(options: { apiKey: string; en
   async function safeGenerate(prompt: string, countHint: number, temperature: number) {
     const content = await callAi([
       { role: "system", content: prompt },
-      { role: "user", content: "Generate tests now. Return JSON only. Every test must include input, output, category, scale, targets, and reason." },
+      { role: "user", content: "Generate tests now. Prefer JSON, but make sure every case has clear Input and Output sections." },
     ], Math.max(4200, countHint * 560), temperature);
-    const parsed = parseJson(content);
-    return { parsed, tests: parseTests(content), raw: content };
+    const tests = parseTests(content);
+    const parsed = (() => { try { return parseJson(content); } catch { return { analysis: {} }; } })();
+    return { parsed, tests, raw: content };
   }
 
   let parsed: unknown = { analysis: {} };
@@ -553,8 +588,9 @@ export async function generateComplexityAwareTests(options: { apiKey: string; en
     ].filter(Boolean).join("\n\n");
     try {
       const content = await callAi([{ role: "user", content: repairPrompt }], Math.max(4200, target * 620), 0.03);
-      parsed = parseJson(content);
-      candidates = [...candidates, ...parseTests(content)];
+      const repaired = parseTests(content);
+      parsed = (() => { try { return parseJson(content); } catch { return parsed; } })();
+      candidates = [...candidates, ...repaired];
     } catch (error) {
       warnings.push(`repair generation failed: ${error instanceof Error ? error.message : String(error)}`);
     }
