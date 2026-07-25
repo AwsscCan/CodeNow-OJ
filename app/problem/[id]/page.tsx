@@ -404,6 +404,7 @@ export default function ProblemPage() {
                       {typeof test.scale === "number" && test.scale > 1 && <small>规模 {test.scale}</small>}
                     </b>
                     <span>{store.results.find((r) => r.id === test.id)?.status || "待测试"}</span>
+                    <button className="test-delete-btn" title="删除此测试点" onClick={() => store.removeTest(test.id)}>✕</button>
                   </header>
                   <label>输入<textarea value={test.input} onChange={(e) => store.updateTest(test.id, "input", e.target.value)} /></label>
                   <label>期望输出<textarea value={test.output} onChange={(e) => store.updateTest(test.id, "output", e.target.value)} /></label>

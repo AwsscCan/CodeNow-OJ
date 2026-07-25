@@ -78,6 +78,7 @@ type ProblemStore = {
   setCursor: (line: number, column: number) => void;
   setNotice: (msg: string) => void;
   addTest: () => void;
+  removeTest: (id: number) => void;
   updateTest: (id: number, field: "input" | "output", value: string) => void;
   updateTestCategory: (id: number, category: string) => void;
   resetCode: () => void;
@@ -114,6 +115,9 @@ export const useProblemStore = create<ProblemStore>()(
 
       addTest: () => set((s) => ({
         problem: { ...s.problem, samples: [...s.problem.samples, { id: Date.now(), input: "", output: "" }] },
+      })),
+      removeTest: (id) => set((s) => ({
+        problem: { ...s.problem, samples: s.problem.samples.filter((t) => t.id !== id) },
       })),
       updateTest: (id, field, value) => set((s) => ({
         problem: {
