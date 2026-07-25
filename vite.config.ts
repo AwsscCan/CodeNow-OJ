@@ -42,6 +42,9 @@ export default defineConfig(async ({ command }) => {
     : null;
 
   return {
+    ssr: {
+      external: ["better-sqlite3"],
+    },
     server: isCodexSeatbeltSandbox
       ? { watch: { useFsEvents: false, usePolling: true } }
       : undefined,

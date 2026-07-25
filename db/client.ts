@@ -3,7 +3,7 @@ import { drizzle as drizzleBetterSqlite3 } from "drizzle-orm/better-sqlite3";
 import { drizzle as drizzleD1 } from "drizzle-orm/d1";
 import * as schema from "./schema";
 
-type D1Binding = Parameters<typeof drizzleD1>[0];
+export type D1Binding = Parameters<typeof drizzleD1>[0];
 
 export function createD1Db(binding: D1Binding) {
   return drizzleD1(binding, { schema });
