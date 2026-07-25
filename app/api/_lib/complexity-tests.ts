@@ -456,6 +456,7 @@ function buildStrictPrompt(options: {
   target: number;
   requiredPerformance: number;
   requiredAdversarial: number;
+  categoryQuota: Record<string, number>;
   problemDigest: string;
   existingTestsJson: string;
   generationContext: string;
@@ -465,7 +466,7 @@ function buildStrictPrompt(options: {
   const {
     target, requiredPerformance, requiredAdversarial,
     problemDigest, existingTestsJson, generationContext,
-    algorithmSummary, hasReferenceSolution,
+    algorithmSummary, hasReferenceSolution, categoryQuota,
   } = options;
   const ctxLine = generationContext ? `\nBatch context: ${generationContext}` : "";
   const generatorList = listGeneratorTypes().join(", ");
@@ -489,6 +490,7 @@ function buildStrictPrompt(options: {
     "",
     "Rules:",
     `- Generate exactly ${target} tests.`,
+    `- Category quota: ${JSON.stringify(categoryQuota)}. Meet or exceed every non-zero category count.`,
     `- Include at least ${requiredPerformance} performance tests and at least ${requiredAdversarial} adversarial tests when those numbers are positive.`,
     "- Use categories only from: boundary, special, ordinary, adversarial, performance.",
     "- Each input must be a complete stdin text matching the statement exactly.",
@@ -529,6 +531,13 @@ export async function generateComplexityAwareTests(options: { apiKey: string; en
 
   const requiredPerformance = target >= 6 ? Math.max(1, Math.ceil(target / 8)) : 0;
   const requiredAdversarial = target >= 6 ? Math.max(1, Math.ceil(target / 8)) : 0;
+  const categoryQuota: Record<string, number> = {
+    boundary: target >= 4 ? 1 : 0,
+    special: target >= 6 ? 1 : 0,
+    ordinary: Math.max(1, Math.floor(target / 3)),
+    adversarial: requiredAdversarial,
+    performance: requiredPerformance,
+  };
   const existingInputs = Array.isArray(problem.samples) ? problem.samples : [];
   const compactExisting = (items: unknown[]) => items.slice(-24).map((raw) => {
     const item = raw as { input?: unknown; output?: unknown; category?: unknown };
@@ -543,6 +552,7 @@ export async function generateComplexityAwareTests(options: { apiKey: string; en
     target,
     requiredPerformance,
     requiredAdversarial,
+    categoryQuota,
     problemDigest,
     existingTestsJson: existingJson,
     generationContext: genCtx,
@@ -596,6 +606,54 @@ export async function generateComplexityAwareTests(options: { apiKey: string; en
     }
   }
 
+  function normalizedCategory(value: string) {
+    const c = String(value || "").toLowerCase();
+    if (c.includes("performance") || c.includes("stress") || c.includes("large")) return "performance";
+    if (c.includes("adversarial") || c.includes("hack") || c.includes("corner")) return "adversarial";
+    if (c.includes("boundary") || c.includes("edge")) return "boundary";
+    if (c.includes("special")) return "special";
+    return "ordinary";
+  }
+
+  async function generateSupplement(reason: string, missingQuota: Record<string, number>) {
+    const missingTotal = Object.values(missingQuota).reduce((sum, value) => sum + Math.max(0, value), 0);
+    if (missingTotal <= 0) return;
+    const supplementPrompt = [
+      "Generate supplemental online-judge tests to fix quality gaps.",
+      "Return ONLY JSON: {\"tests\":[...]}",
+      "Every test must include exact input and exact output.",
+      `Missing quota: ${JSON.stringify(missingQuota)}.`,
+      `Reason: ${reason}`,
+      "For boundary: use minimum/maximum legal values.",
+      "For special: use duplicates, empty-like cases when legal, all equal, sorted/reversed, strings with repeated chars, disconnected/degenerate structures when relevant.",
+      "For adversarial: target common wrong/brute-force/greedy assumptions.",
+      "For performance: use large valid cases close to constraints that brute force should not pass.",
+      `Problem:\n${problemDigest}`,
+      `Avoid duplicating existing/candidate tests:\n${JSON.stringify(compactExisting([...existingInputs, ...candidates.map(({ input, output, category }) => ({ input, output, category }))]))}`,
+    ].join("\n\n");
+    try {
+      const content = await callAi([{ role: "user", content: supplementPrompt }], Math.max(3000, missingTotal * 620), 0.04);
+      const supplement = parseTests(content).map((test) => ({ ...test, category: normalizedCategory(test.category) }));
+      candidates = [...candidates, ...supplement];
+    } catch (error) {
+      warnings.push(`supplement generation failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  const candidateCounts = () => candidates.reduce<Record<string, number>>((acc, test) => {
+    const category = normalizedCategory(test.category);
+    acc[category] = (acc[category] || 0) + 1;
+    return acc;
+  }, {});
+  const countsBeforeSupplement = candidateCounts();
+  const missingBeforeSupplement = Object.fromEntries(Object.entries(categoryQuota).map(([category, quota]) => [category, Math.max(0, quota - (countsBeforeSupplement[category] || 0))]));
+  if (Object.values(missingBeforeSupplement).some((value) => value > 0) || candidates.length < target) {
+    await generateSupplement(candidates.length < target ? "not enough total tests" : "category quota not met", {
+      ...missingBeforeSupplement,
+      ordinary: Math.max(missingBeforeSupplement.ordinary || 0, target - candidates.length),
+    });
+  }
+
   const plan = makePlan(parsed);
   const minimumStressScale = Math.max(2, Math.floor(plan.stressScale * 0.7));
 
@@ -617,7 +675,7 @@ export async function generateComplexityAwareTests(options: { apiKey: string; en
     unique.push({
       input: test.input,
       output: test.output,
-      category: ["boundary", "special", "ordinary", "adversarial", "performance"].includes(test.category) ? test.category : "ordinary",
+      category: normalizedCategory(test.category),
       scale: Math.max(1, Math.floor(Number(test.scale) || 1)),
       targets: test.targets || "AI generated case",
       reason: test.reason || "Generated from problem constraints",
@@ -638,8 +696,11 @@ export async function generateComplexityAwareTests(options: { apiKey: string; en
       if (!seen.has(key)) { seen.add(key); selected.push(test); limit -= 1; }
     }
   }
-  select(unique.filter(qualifiesPerformance), requiredPerformance);
-  select(unique.filter(qualifiesAdversarial), requiredAdversarial);
+  select(unique.filter((test) => test.category === "boundary"), categoryQuota.boundary);
+  select(unique.filter((test) => test.category === "special"), categoryQuota.special);
+  select(unique.filter(qualifiesPerformance), categoryQuota.performance);
+  select(unique.filter(qualifiesAdversarial), categoryQuota.adversarial);
+  select(unique.filter((test) => test.category === "ordinary"), categoryQuota.ordinary);
   select(unique, target);
 
   let computedCount = 0;
@@ -694,6 +755,14 @@ export async function generateComplexityAwareTests(options: { apiKey: string; en
     targets: test.output.trim() ? test.targets : `${test.targets || "AI generated case"} (expected output needs manual check)`,
     reason: test.output.trim() ? test.reason : `${test.reason || "Generated from problem constraints"}; output left blank for manual editing`,
   }));
+  const finalCategoryCounts = finalTests.reduce<Record<string, number>>((acc, test) => {
+    acc[test.category] = (acc[test.category] || 0) + 1;
+    return acc;
+  }, {});
+  const unmetQuota = Object.fromEntries(Object.entries(categoryQuota).map(([category, quota]) => [category, Math.max(0, quota - (finalCategoryCounts[category] || 0))]));
+  const qualityOk = finalTests.length >= target
+    && draftOutputCount === 0
+    && Object.values(unmetQuota).every((value) => value === 0);
 
   return {
     tests: finalTests,
@@ -705,10 +774,14 @@ export async function generateComplexityAwareTests(options: { apiKey: string; en
       adversarialCount: finalTests.filter(qualifiesAdversarial).length,
       requestedCount: target,
       generatedCount: finalTests.length,
-      partial: finalTests.length < target || draftOutputCount > 0,
+      partial: !qualityOk,
       computedCount,
       referenceValidated: hasReference && computedCount > 0,
       draftOutputCount,
+      categoryQuota,
+      categoryCounts: finalCategoryCounts,
+      unmetQuota,
+      qualityOk,
       warnings: warnings.slice(0, 5),
     },
   };
