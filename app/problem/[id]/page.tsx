@@ -388,7 +388,7 @@ export default function ProblemPage() {
                 <div><h2>测试点管理</h2><p>{generatingTests && testGenStatus ? testGenStatus : "AI 会分批生成测试点，先拿到小批可用数据再逐步补足边界、反例与性能点。"}</p></div>
                 <div className="test-actions">
                   <select value={testPointCount} onChange={(e) => setTestPointCount(Number(e.target.value))}>
-                    <option value={12}>12 个</option><option value={18}>18 个</option><option value={24}>24 个</option>
+                    <option value={12}>12 个</option><option value={18}>18 个</option><option value={24}>24 个</option><option value={36}>36 个</option><option value={50}>50 个</option>
                   </select>
                   <button className="ai-tests-button" disabled={generatingTests} onClick={handleGenerateTests}>{generatingTests ? "正在分批生成…" : "✦ AI 分批生成测试点"}</button>
                   <button onClick={() => store.addTest()}>＋ 手动添加</button>

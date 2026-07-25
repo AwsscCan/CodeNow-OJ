@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
       endpoint: String(endpoint),
       model: String(model),
       problem,
-      count: Math.max(6, 18 - (problem.samples as unknown[]).length),
+      count: Math.max(12, 30 - (problem.samples as unknown[]).length),
       referenceSolution: validatedRef?.solutionCode,
       validatedRef: validatedRef || undefined,
     });
@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
     problem.samples = [
       ...(problem.samples as Array<{ input: string; output: string }>),
       ...generated.tests,
-    ].slice(0, 18).map((test: { input: string; output: string }, index: number) => ({
+    ].slice(0, 30).map((test: { input: string; output: string }, index: number) => ({
       id: index + 1,
       input: test.input,
       output: test.output,

@@ -395,8 +395,8 @@ function parseLooseTextTests(content: string, maxInputLength: number): Generated
 
   const tests: GeneratedTest[] = [];
   for (const block of sourceBlocks) {
-    const inputMatch = block.match(/(?:input|stdin|\u8f93\u5165|\u8f93\u5165\u6570\u636e)\s*[:：]\s*([\s\S]*?)(?=\n\s*(?:output|stdout|expected|answer|\u8f93\u51fa|\u8f93\u51fa\u6570\u636e|\u7b54\u6848)\s*[:：]|$)/i);
-    const outputMatch = block.match(/(?:output|stdout|expected\s*output|expected|answer|\u8f93\u51fa|\u8f93\u51fa\u6570\u636e|\u7b54\u6848)\s*[:：]\s*([\s\S]*?)(?=\n\s*(?:category|type|reason|target|\u7c7b\u522b|\u7c7b\u578b|\u539f\u56e0|\u76ee\u6807)\s*[:：]|$)/i);
+    const inputMatch = block.match(/(?:input|stdin|\u8f93\u5165|\u8f93\u5165\u6570\u636e)\s*[:?]\s*([\s\S]*?)(?=\n\s*(?:output|stdout|expected|answer|\u8f93\u51fa|\u8f93\u51fa\u6570\u636e|\u7b54\u6848)\s*[:?]|$)/i);
+    const outputMatch = block.match(/(?:output|stdout|expected\s*output|expected|answer|\u8f93\u51fa|\u8f93\u51fa\u6570\u636e|\u7b54\u6848)\s*[:?]\s*([\s\S]*?)(?=\n\s*(?:category|type|reason|target|\u7c7b\u522b|\u7c7b\u578b|\u539f\u56e0|\u76ee\u6807)\s*[:?]|$)/i);
     if (!inputMatch) continue;
     const input = normalizeText(inputMatch[1].trim());
     if (!input.trim() || input.length > maxInputLength || validateInput(input, maxInputLength)) continue;
@@ -450,6 +450,175 @@ function makePlan(parsed: unknown): ComplexityPlan {
     stressScale: Math.max(1, Math.floor(Number(planRaw.stressScale) || 1)),
     stressInputStrategy: String(planRaw.stressInputStrategy || "use large valid cases within the constraints"),
   };
+}
+
+function problemText(problem: Record<string, unknown>) {
+  return [
+    problem.title,
+    problem.description,
+    problem.inputFormat,
+    problem.outputFormat,
+  ].map((part) => String(part || "")).join("\n");
+}
+
+function extractUpperBound(text: string, variable: string, fallback: number) {
+  const escaped = variable.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const patterns = [
+    new RegExp(`${escaped}\\s*(?:<=|≤|< =)\\s*(\\d{1,9})`, "i"),
+    new RegExp(`1\\s*(?:<=|≤)\\s*${escaped}\\s*(?:<=|≤)\\s*(\\d{1,9})`, "i"),
+    new RegExp(`${escaped}\\s*(?:最大|不超过|最多|上限)\\s*(\\d{1,9})`),
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match) {
+      const value = Number(match[1]);
+      if (Number.isFinite(value) && value > 0) return Math.min(value, 200_000);
+    }
+  }
+  return fallback;
+}
+
+function inferInputShape(problem: Record<string, unknown>) {
+  const text = problemText(problem).toLowerCase();
+  if (/tree|树/.test(text)) return "tree";
+  if (/graph|edge|edges|vertex|vertices|节点|顶点|边/.test(text)) return "graph";
+  if (/matrix|grid|矩阵|网格|地图/.test(text)) return "matrix";
+  if (/string|字符串|字符/.test(text)) return "string";
+  if (/array|sequence|permutation|数组|序列|排列|数列|整数序列/.test(text)) return "array";
+  return "numbers";
+}
+
+function seeded(seed: number) {
+  let value = seed >>> 0;
+  return () => {
+    value = (value * 1664525 + 1013904223) >>> 0;
+    return value / 0x100000000;
+  };
+}
+
+function clampN(n: number, category: string) {
+  const cap = category === "performance" ? 5000 : category === "adversarial" ? 300 : 30;
+  return Math.max(1, Math.min(n, cap));
+}
+
+function line(values: Array<string | number>) {
+  return `${values.join(" ")}\n`;
+}
+
+function makeArrayInput(n: number, category: string, seed: number) {
+  const rand = seeded(seed);
+  const values = Array.from({ length: n }, (_, index) => {
+    if (category === "boundary") return index % 2 === 0 ? 0 : 1;
+    if (category === "special") return seed % 2 ? 7 : index + 1;
+    if (category === "adversarial") return index % 2 === 0 ? 1_000_000_000 : -1_000_000_000;
+    if (category === "performance") return Math.floor(rand() * 2_000_000_001) - 1_000_000_000;
+    return Math.floor(rand() * 101) - 50;
+  });
+  return `${n}\n${values.join(" ")}\n`;
+}
+
+function makeStringInput(n: number, category: string, seed: number) {
+  const alphabet = "abcdefghijklmnopqrstuvwxyz";
+  const rand = seeded(seed);
+  let s = "";
+  if (category === "boundary") s = "a".repeat(n);
+  else if (category === "special") s = Array.from({ length: n }, (_, i) => (i % 2 ? "b" : "a")).join("");
+  else if (category === "adversarial") {
+    const half = Math.floor(n / 2);
+    s = "a".repeat(half) + "b" + "a".repeat(Math.max(0, n - half - 1));
+  } else {
+    s = Array.from({ length: n }, () => alphabet[Math.floor(rand() * alphabet.length)]).join("");
+  }
+  return `${s}\n`;
+}
+
+function makeGraphInput(n: number, category: string, seed: number, tree = false) {
+  const rand = seeded(seed);
+  const edges: Array<[number, number]> = [];
+  if (tree || category === "special") {
+    for (let i = 2; i <= n; i += 1) edges.push(category === "adversarial" ? [i - 1, i] : [1, i]);
+  } else {
+    const maxEdges = Math.min(n * (n - 1) / 2, category === "performance" ? n * 3 : n + 8);
+    for (let i = 2; i <= n; i += 1) edges.push([i - 1, i]);
+    while (edges.length < maxEdges) {
+      const u = 1 + Math.floor(rand() * n);
+      const v = 1 + Math.floor(rand() * n);
+      if (u !== v) edges.push([Math.min(u, v), Math.max(u, v)]);
+    }
+  }
+  const unique = Array.from(new Map(edges.map((edge) => [`${edge[0]} ${edge[1]}`, edge])).values()).slice(0, tree ? n - 1 : undefined);
+  return `${n} ${unique.length}\n${unique.map(([u, v]) => `${u} ${v}`).join("\n")}\n`;
+}
+
+function makeMatrixInput(n: number, category: string, seed: number) {
+  const rand = seeded(seed);
+  const rows = Array.from({ length: n }, (_, r) => Array.from({ length: n }, (_, c) => {
+    if (category === "boundary") return 0;
+    if (category === "special") return r === c ? 1 : 0;
+    if (category === "adversarial") return (r + c) % 2;
+    return Math.floor(rand() * 10);
+  }).join(" "));
+  return `${n} ${n}\n${rows.join("\n")}\n`;
+}
+
+function makeNumbersInput(n: number, category: string, seed: number) {
+  if (category === "boundary") return "1\n";
+  if (category === "special") return line([n, n, n]);
+  if (category === "adversarial") return line([1_000_000_000, 999_999_937, 2]);
+  if (category === "performance") return `${n}\n`;
+  return line([seed % 97 + 1, seed % 31 + 2]);
+}
+
+function deterministicInput(problem: Record<string, unknown>, category: string, ordinal: number) {
+  const text = problemText(problem);
+  const shape = inferInputShape(problem);
+  const maxN = extractUpperBound(text, "n", category === "performance" ? 1000 : 20);
+  const n = clampN(
+    category === "boundary" ? (ordinal % 2 ? 1 : Math.min(2, maxN))
+      : category === "performance" ? maxN
+        : category === "adversarial" ? Math.min(maxN, 200)
+          : Math.min(maxN, 12 + ordinal),
+    category,
+  );
+  const seed = 1009 + ordinal * 9173 + category.length * 31;
+  if (shape === "array") return makeArrayInput(n, category, seed);
+  if (shape === "string") return makeStringInput(n, category, seed);
+  if (shape === "tree") return makeGraphInput(Math.max(2, n), category, seed, true);
+  if (shape === "graph") return makeGraphInput(Math.max(2, n), category, seed, false);
+  if (shape === "matrix") return makeMatrixInput(Math.max(1, Math.min(n, category === "performance" ? 80 : 12)), category, seed);
+  return makeNumbersInput(n, category, seed);
+}
+
+function makeDeterministicTests(problem: Record<string, unknown>, target: number, categoryQuota: Record<string, number>, existingInputs: unknown[]): GeneratedTest[] {
+  const existing = new Set((existingInputs as { input?: unknown }[]).map((test) => String(test.input || "").trim()).filter(Boolean));
+  const categories = ["boundary", "special", "adversarial", "performance", "ordinary"];
+  const desired: string[] = [];
+  for (const category of categories) {
+    for (let i = 0; i < (categoryQuota[category] || 0); i += 1) desired.push(category);
+  }
+  while (desired.length < target) desired.push(categories[desired.length % categories.length]);
+
+  const tests: GeneratedTest[] = [];
+  let ordinal = 1;
+  for (const category of desired) {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const input = deterministicInput(problem, category, ordinal++);
+      const key = input.trim();
+      if (!key || existing.has(key) || validateInput(input, MAX_EXPANDED_CHARS)) continue;
+      existing.add(key);
+      tests.push({
+        input,
+        output: "",
+        category,
+        scale: key.length,
+        targets: `${category} deterministic generator`,
+        reason: "Generated by CodeNow deterministic fallback to satisfy test-count and quality quotas",
+      });
+      break;
+    }
+    if (tests.length >= target) break;
+  }
+  return tests;
 }
 
 function buildStrictPrompt(options: {
@@ -507,7 +676,7 @@ export async function generateComplexityAwareTests(options: { apiKey: string; en
   const referenceSolution = options.referenceSolution || options.validatedRef?.solutionCode || "";
   const validatedRef = options.validatedRef;
   const hasReference = referenceSolution.trim().length > 0;
-  const target = Math.max(1, Math.min(24, Math.floor(options.count || 6)));
+  const target = Math.max(1, Math.min(50, Math.floor(options.count || 6)));
   const chatUrl = validateEndpoint(endpoint);
   const isDeepSeek = /(^|\.)api\.deepseek\.com$/i.test(chatUrl.hostname);
 
@@ -654,6 +823,12 @@ export async function generateComplexityAwareTests(options: { apiKey: string; en
     });
   }
 
+  const deterministic = makeDeterministicTests(problem, Math.max(target * 2, target + 8), categoryQuota, [
+    ...existingInputs,
+    ...candidates.map(({ input }) => ({ input })),
+  ]);
+  candidates = [...candidates, ...deterministic];
+
   const plan = makePlan(parsed);
   const minimumStressScale = Math.max(2, Math.floor(plan.stressScale * 0.7));
 
@@ -724,27 +899,31 @@ export async function generateComplexityAwareTests(options: { apiKey: string; en
 
   const missingOutputIndexes = selected.map((test, index) => test.output.trim() ? -1 : index).filter((index) => index >= 0);
   if (missingOutputIndexes.length) {
-    const fillPrompt = [
-      "Fill expected outputs for these online-judge inputs.",
-      "Return ONLY JSON: {\"outputs\":[\"output for case 1\",\"output for case 2\"]}",
-      "The number and order of outputs must match the inputs exactly. Preserve line breaks. Do not explain.",
-      `Problem:\n${problemDigest}`,
-      `Inputs:\n${JSON.stringify(missingOutputIndexes.map((index) => ({ index: index + 1, input: selected[index].input })))}`,
-    ].join("\n\n");
-    try {
-      const fillContent = await callAi([{ role: "user", content: fillPrompt }], Math.max(2200, missingOutputIndexes.length * 420), 0.02);
-      const filled = parseJson(fillContent) as { outputs?: unknown[]; tests?: Array<{ output?: unknown; stdout?: unknown; expected?: unknown }> };
-      const outputs = Array.isArray(filled.outputs)
-        ? filled.outputs.map((value) => normalizeText(stringifyField(value)))
-        : Array.isArray(filled.tests)
-          ? filled.tests.map((value) => normalizeText(stringifyField(value.output ?? value.stdout ?? value.expected)))
-          : [];
-      missingOutputIndexes.forEach((testIndex, outIndex) => {
-        const output = outputs[outIndex] || "";
-        if (output.trim()) selected[testIndex] = { ...selected[testIndex], output };
-      });
-    } catch (error) {
-      warnings.push(`output fill failed: ${error instanceof Error ? error.message : String(error)}`);
+    for (let offset = 0; offset < missingOutputIndexes.length; offset += 4) {
+      const chunk = missingOutputIndexes.slice(offset, offset + 4);
+      const fillPrompt = [
+        "Fill expected outputs for these online-judge inputs.",
+        "Return ONLY JSON: {\"outputs\":[\"output for case 1\",\"output for case 2\"]}",
+        "The number and order of outputs must match the inputs exactly. Preserve line breaks. Do not explain.",
+        "If the statement is ambiguous, still provide the most likely expected output.",
+        `Problem:\n${problemDigest}`,
+        `Inputs:\n${JSON.stringify(chunk.map((index) => ({ index: index + 1, input: selected[index].input })))}`,
+      ].join("\n\n");
+      try {
+        const fillContent = await callAi([{ role: "user", content: fillPrompt }], Math.max(1800, chunk.length * 520), 0.01);
+        const filled = parseJson(fillContent) as { outputs?: unknown[]; tests?: Array<{ output?: unknown; stdout?: unknown; expected?: unknown }> };
+        const outputs = Array.isArray(filled.outputs)
+          ? filled.outputs.map((value) => normalizeText(stringifyField(value)))
+          : Array.isArray(filled.tests)
+            ? filled.tests.map((value) => normalizeText(stringifyField(value.output ?? value.stdout ?? value.expected)))
+            : [];
+        chunk.forEach((testIndex, outIndex) => {
+          const output = outputs[outIndex] || "";
+          if (output.trim()) selected[testIndex] = { ...selected[testIndex], output };
+        });
+      } catch (error) {
+        warnings.push(`output fill batch failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
   }
 

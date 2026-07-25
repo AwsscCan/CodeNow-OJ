@@ -1,6 +1,6 @@
 // ── Judge0 ──
 export const JUDGE0_BASE = "https://ce.judge0.com" as const;
-export const MAX_TESTS_PER_RUN = 24;
+export const MAX_TESTS_PER_RUN = 50;
 export const MAX_SOURCE_LENGTH = 100_000;
 export const MAX_SINGLE_TEST_LENGTH = 300_000;
 export const MAX_TOTAL_TEST_LENGTH = 2_000_000;
@@ -41,7 +41,7 @@ export const MAX_SUBMISSION_SOURCE_LENGTH = 200_000;
 export const MAX_BULK_DELETE_PROBLEM_IDS = 500;
 
 // ── Problem Storage ──
-export const MAX_PROBLEM_SAMPLES = 24;
+export const MAX_PROBLEM_SAMPLES = 50;
 export const MAX_PROBLEM_SOURCE_LENGTH = 60_000;
 export const MAX_FOLDER_NAME_LENGTH = 80;
 export const MAX_FOLDER_DEPTH = 5;

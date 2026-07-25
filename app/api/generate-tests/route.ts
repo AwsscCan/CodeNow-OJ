@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
   try {
     const { apiKey, endpoint, model, problem, count } = await request.json();
     const requested = Math.floor(Number(count));
-    const target = Number.isFinite(requested) ? Math.max(1, Math.min(24, requested)) : 6;
+    const target = Number.isFinite(requested) ? Math.max(1, Math.min(50, requested)) : 12;
     if (!apiKey || !endpoint || !model || !problem) {
       return NextResponse.json({ error: "AI configuration and problem data are required." }, { status: 400 });
     }

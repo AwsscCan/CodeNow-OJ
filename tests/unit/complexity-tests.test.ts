@@ -83,9 +83,9 @@ describe("Complexity tests - constants", () => {
     expect(MAX_EXPANDED_CHARS).toBe(300_000);
   });
 
-  it("MAX_TESTS_PER_RUN is 24", async () => {
+  it("MAX_TESTS_PER_RUN is 50", async () => {
     const { MAX_TESTS_PER_RUN } = await import("../../app/api/_lib/constants");
-    expect(MAX_TESTS_PER_RUN).toBe(24);
+    expect(MAX_TESTS_PER_RUN).toBe(50);
   });
 
   it("ALLOWED_AI_HOSTS includes expected providers", async () => {
