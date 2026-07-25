@@ -21,10 +21,15 @@ async function getDevDb() {
 }
 
 export function getDb() {
-  // Try Cloudflare Workers binding. Uses a non-analyzable import path
-  // (concatenated string) so Vite's dependency scanner skips it in dev mode.
-  const cfMod = "cloudflare:" + "workers";
-  return import(cfMod)
+  // Local Vite dev runs in Node.js, where the Workers virtual module does not
+  // exist. Return the in-memory SQLite fallback directly so dependency
+  // pre-bundling never tries to resolve `cloudflare:workers`.
+  if (import.meta.env.DEV) return getDevDb();
+
+  // Production runs inside Cloudflare Workers. Keep the import opaque so Vite's
+  // dependency scanner does not try to pre-bundle the virtual module locally.
+  const runtimeImport = new Function("specifier", "return import(specifier)") as (specifier: string) => Promise<{ env?: { DB?: D1Database } }>;
+  return runtimeImport("cloudflare:workers")
     .then(({ env }) => {
       if (env?.DB) return import("drizzle-orm/d1").then(({ drizzle }) => drizzle(env.DB as D1Database, { schema }));
       return getDevDb();

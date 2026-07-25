@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { rateLimit } from "../_lib/rate-limit";
 import { generateComplexityAwareTests } from "../_lib/complexity-tests";
-import { generateReferenceCandidate, validateReference, getCachedReference, setCachedReference } from "../_lib/reference-solution";
+import { getCachedReference } from "../_lib/reference-solution";
 import { validateEndpoint } from "../_lib/validate-endpoint";
 import { AI_MAX_RAW_PROBLEM_LENGTH, AI_TIMEOUT_MS } from "../_lib/constants";
 
@@ -19,39 +19,18 @@ export async function POST(request: NextRequest) {
 
     const chatUrl = validateEndpoint(String(endpoint));
     const isDeepSeek = /(^|\.)api\.deepseek\.com$/i.test(chatUrl.hostname);
-
     const structContent = await structureProblem(chatUrl, String(apiKey), String(model), rawProblem, isDeepSeek);
     const cleaned = structContent.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
     const start = cleaned.indexOf("{"), end = cleaned.lastIndexOf("}");
     if (start < 0 || end <= start) throw new Error("AI did not return valid problem JSON.");
     const problem = JSON.parse(cleaned.slice(start, end + 1));
-    if (!Array.isArray(problem.samples) || problem.samples.length < 1) throw new Error("Could not extract official samples from the statement.");
+    if (!Array.isArray(problem.samples)) problem.samples = [];
 
     const digest = buildDigest(problem);
-    const officialSamples = (problem.samples as Array<{ input: unknown; output: unknown }>).slice(0, 6)
-      .map((s: { input: unknown; output: unknown }) => ({ input: String(s.input || ""), output: String(s.output || "") }));
-
-    let validatedRef = getCachedReference(digest);
-    let referenceStatus: { ok: boolean; message: string } = validatedRef
+    const validatedRef = getCachedReference(digest);
+    const referenceStatus = validatedRef
       ? { ok: true, message: "Using cached validated reference solution." }
-      : { ok: false, message: "No validated reference solution yet; AI outputs will be used directly." };
-
-    if (!validatedRef) {
-      try {
-        const candidate = await generateReferenceCandidate(String(apiKey), String(endpoint), String(model), digest, officialSamples);
-        const { report, validated } = await validateReference(candidate, officialSamples, 0);
-        if (validated) {
-          validatedRef = validated;
-          setCachedReference(digest, validatedRef);
-          referenceStatus = { ok: true, message: "Validated reference solution is available and used to compute outputs." };
-        } else {
-          referenceStatus = { ok: false, message: `Reference validation failed; fell back to AI outputs: ${report.errors[0] || report.status}` };
-        }
-      } catch (refError) {
-        const message = refError instanceof Error ? refError.message : "reference generation failed";
-        referenceStatus = { ok: false, message: `Reference solution unavailable; fell back to AI outputs: ${message}` };
-      }
-    }
+      : { ok: false, message: "Fast generation mode: AI generates input and output directly." };
 
     problem.samples = (problem.samples as unknown[]).slice(0, 6);
     const generated = await generateComplexityAwareTests({
@@ -68,24 +47,25 @@ export async function POST(request: NextRequest) {
       ...(problem.samples as Array<{ input: string; output: string }>),
       ...generated.tests,
     ].slice(0, 18).map((test: { input: string; output: string }, index: number) => ({
-      id: index + 1, input: test.input, output: test.output,
+      id: index + 1,
+      input: test.input,
+      output: test.output,
+      category: (test as { category?: string }).category,
+      scale: (test as { scale?: number }).scale,
+      targets: (test as { targets?: string }).targets,
+      reason: (test as { reason?: string }).reason,
     }));
 
-    return NextResponse.json({
-      problem,
-      complexityReport: { ...generated.report, referenceStatus },
-    });
+    return NextResponse.json({ problem, complexityReport: { ...generated.report, referenceStatus } });
   } catch (error) {
     const message = error instanceof Error ? error.message : "AI problem generation failed.";
     if (/timeout|timed out|abort/i.test(message) || (error instanceof Error && error.name === "TimeoutError")) {
-      return NextResponse.json({ error: "AI response timed out. Try a smaller batch, DeepSeek V4 Flash, or retry later." }, { status: 504 });
+      return NextResponse.json({ error: "AI response timed out. Try smaller batches, DeepSeek V4 Flash, or retry later." }, { status: 504 });
     }
     if (/fetch failed|network|socket|connect/i.test(message)) {
       return NextResponse.json({ error: "Cannot connect to the AI service. Please check API Endpoint and Key." }, { status: 502 });
     }
-    if (message.includes("API Endpoint")) {
-      return NextResponse.json({ error: message }, { status: 400 });
-    }
+    if (message.includes("API Endpoint")) return NextResponse.json({ error: message }, { status: 400 });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
@@ -102,7 +82,8 @@ async function structureProblem(chatUrl: URL, apiKey: string, model: string, raw
       content: [
         "Parse an online-judge programming problem. Return ONLY one valid JSON object.",
         `Schema: {"version":1,"id":"","title":"","difficulty":"beginner","time":"1000 ms","memory":"128 MB","description":"","inputFormat":"","outputFormat":"","samples":[{"id":1,"input":"","output":""}]}`,
-        "Extract official samples faithfully. Do not invent samples. Preserve input/output line breaks exactly.",
+        "Extract official samples if present. If samples are missing, return an empty samples array; do not invent official samples.",
+        "Preserve input/output line breaks exactly.",
       ].join("\n"),
     }, { role: "user", content: rawProblem }],
   };

@@ -471,7 +471,7 @@ export async function generateComplexityAwareTests(options: { apiKey: string; en
   const referenceSolution = options.referenceSolution || options.validatedRef?.solutionCode || "";
   const validatedRef = options.validatedRef;
   const hasReference = referenceSolution.trim().length > 0;
-  const target = Math.max(1, Math.min(24, Math.floor(options.count)));
+  const target = Math.max(1, Math.min(24, Math.floor(options.count || 6)));
   const chatUrl = validateEndpoint(endpoint);
   const isDeepSeek = /(^|\.)api\.deepseek\.com$/i.test(chatUrl.hostname);
 
@@ -488,75 +488,76 @@ export async function generateComplexityAwareTests(options: { apiKey: string; en
     if (!response.ok && (response.status === 400 || response.status === 422)) response = await send(false);
     const text = await response.text();
     let data: UpstreamData;
-    try { data = JSON.parse(text) as UpstreamData; } catch { throw new Error(`AI 服务返回异常（HTTP ${response.status}）`); }
-    if (!response.ok) throw new Error(data.error?.message || `上游 AI 服务请求失败（HTTP ${response.status}）`);
+    try { data = JSON.parse(text) as UpstreamData; } catch { throw new Error(`AI service returned invalid JSON envelope (HTTP ${response.status}).`); }
+    if (!response.ok) throw new Error(data.error?.message || `Upstream AI request failed (HTTP ${response.status}).`);
     return data.choices?.[0]?.message?.content || "";
   }
 
   const requiredPerformance = target >= 6 ? Math.max(1, Math.ceil(target / 8)) : 0;
   const requiredAdversarial = target >= 6 ? Math.max(1, Math.ceil(target / 8)) : 0;
   const existingInputs = Array.isArray(problem.samples) ? problem.samples : [];
-  const compactExisting = (items: unknown[]) => items.slice(-18).map((raw) => {
-    const item = raw as { input?: unknown; output?: unknown };
-    return { input: String(item.input || "").slice(0, 180), output: String(item.output || "").slice(0, 100) };
+  const compactExisting = (items: unknown[]) => items.slice(-24).map((raw) => {
+    const item = raw as { input?: unknown; output?: unknown; category?: unknown };
+    return { input: String(item.input || "").slice(0, 240), output: String(item.output || "").slice(0, 160), category: String(item.category || "") };
   });
 
   const problemDigest = buildProblemDigest(problem);
-  const hasReferenceSolution = referenceSolution.trim().length > 0;
-  const genCtx = typeof problem.generationContext === "string" && problem.generationContext.trim()
-    ? problem.generationContext.trim() : "";
+  const genCtx = typeof problem.generationContext === "string" && problem.generationContext.trim() ? problem.generationContext.trim() : "";
   const existingJson = JSON.stringify(compactExisting(existingInputs));
 
-  const systemPrompt = buildStrictPrompt({
-    target, requiredPerformance, requiredAdversarial,
-    problemDigest, existingTestsJson: existingJson, generationContext: genCtx,
-    algorithmSummary: validatedRef?.algorithmSummary || "standard accepted algorithm",
-    hasReferenceSolution,
+  const primaryPrompt = buildStrictPrompt({
+    target,
+    requiredPerformance,
+    requiredAdversarial,
+    problemDigest,
+    existingTestsJson: existingJson,
+    generationContext: genCtx,
+    algorithmSummary: validatedRef?.algorithmSummary || "infer the intended accepted algorithm from the statement",
+    hasReferenceSolution: false,
   });
 
-  let content = await callAi([
-    { role: "system", content: systemPrompt },
-    { role: "user", content: hasReference
-      ? "Generate a diverse OJ test suite. Return JSON only."
-      : "Generate a diverse OJ test suite with exact input and exact output for every test. Return JSON only." },
-  ], Math.max(3500, target * (hasReference ? 260 : 420)), 0.12);
-
-  let parsed: unknown;
-  let candidates: GeneratedTest[];
-  const errors: string[] = [];
-
-  try {
-    parsed = parseJson(content);
-    candidates = parseTests(content);
-  } catch { candidates = []; errors.push("JSON 解析失败"); }
-
-  if (!candidates.length) errors.push("没有可解析的测试点");
-  else {
-    if (candidates.length !== target) errors.push(`数量=${candidates.length}，需要=${target}`);
-    const perfCount = candidates.filter((t) => t.category === "performance").length;
-    if (perfCount < requiredPerformance) errors.push(`performance=${perfCount}，需要≥${requiredPerformance}`);
-    const advCount = candidates.filter((t) => t.category === "adversarial").length;
-    if (advCount < requiredAdversarial) errors.push(`adversarial=${advCount}，需要≥${requiredAdversarial}`);
+  async function safeGenerate(prompt: string, countHint: number, temperature: number) {
+    const content = await callAi([
+      { role: "system", content: prompt },
+      { role: "user", content: "Generate tests now. Return JSON only. Every test must include input, output, category, scale, targets, and reason." },
+    ], Math.max(4200, countHint * 560), temperature);
+    const parsed = parseJson(content);
+    return { parsed, tests: parseTests(content), raw: content };
   }
 
-  if (errors.length) {
+  let parsed: unknown = { analysis: {} };
+  let candidates: GeneratedTest[] = [];
+  let lastRaw = "";
+  const warnings: string[] = [];
+
+  try {
+    const result = await safeGenerate(primaryPrompt, target, 0.08);
+    parsed = result.parsed;
+    candidates = result.tests;
+    lastRaw = result.raw;
+  } catch (error) {
+    warnings.push(`primary generation failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  const withOutputCount = () => candidates.filter((test) => test.input.trim() && test.output.trim()).length;
+  if (candidates.length < Math.min(target, 3) || withOutputCount() === 0) {
     const repairPrompt = [
-      `Previous JSON/test validation errors: ${errors.join("; ")}`,
-      `Regenerate exactly ${target} tests as JSON only.`,
-      hasReference
-        ? "You may omit output because a validated reference solution will compute it."
-        : "Every test must include both input and output. Do not use generator specs.",
-      `Problem:
-${problemDigest}`,
+      "The previous response was not usable enough.",
+      "Return ONLY one JSON object with a tests array.",
+      "Every test MUST contain exact input and exact output. Do not use generators. Do not omit output.",
+      `Need ${target} tests. Categories: boundary, special, ordinary, adversarial, performance.`,
+      `Problem:\n${problemDigest}`,
       `Existing tests to avoid duplicating: ${existingJson}`,
       genCtx ? `Batch context: ${genCtx}` : "",
-      `Bad previous response excerpt:
-${content.slice(0, 2000)}`,
+      lastRaw ? `Previous bad response excerpt:\n${lastRaw.slice(0, 1800)}` : "",
     ].filter(Boolean).join("\n\n");
-
-    content = await callAi([{ role: "user", content: repairPrompt }], Math.max(3200, target * (hasReference ? 300 : 480)), 0.05);
-    parsed = parseJson(content);
-    candidates = parseTests(content);
+    try {
+      const content = await callAi([{ role: "user", content: repairPrompt }], Math.max(4200, target * 620), 0.03);
+      parsed = parseJson(content);
+      candidates = [...candidates, ...parseTests(content)];
+    } catch (error) {
+      warnings.push(`repair generation failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   const plan = makePlan(parsed);
@@ -571,125 +572,108 @@ ${content.slice(0, 2000)}`,
     return test.category === "adversarial" && test.targets.trim().length >= 4 && test.reason.trim().length >= 4;
   }
 
-  const fingerprints = new Set<string>((existingInputs as { input?: unknown; output?: unknown }[]).map((test) => `${String(test.input || "")}\u0000${String(test.output || "")}`));
+  const fingerprints = new Set<string>((existingInputs as { input?: unknown }[]).map((test) => String(test.input || "").trim()));
   const unique: GeneratedTest[] = [];
-  function addUniqueTests(tests: GeneratedTest[]) {
-    for (const test of tests) {
-      const key = `${test.input}\u0000${test.output}`;
-      if (!fingerprints.has(key)) {
-        fingerprints.add(key);
-        unique.push(test);
-        if (unique.length >= target) break;
-      }
-    }
-  }
-  addUniqueTests(candidates);
-
-  if (unique.length < target) {
-    const missing = target - unique.length;
-    const missingPerformance = Math.max(0, requiredPerformance - unique.filter(qualifiesPerformance).length);
-    const missingAdversarial = Math.max(0, requiredAdversarial - unique.filter(qualifiesAdversarial).length);
-    const refillPrompt = [
-      `Add exactly ${missing} new tests. Return ONLY {"tests":[...]}.`,
-      `Still need at least ${missingPerformance} performance tests and ${missingAdversarial} adversarial tests.`,
-      hasReferenceSolution
-        ? "Output may be omitted; generator specs are allowed for large cases."
-        : "Every new test MUST include both input and output. Do not use generator specs.",
-      `Problem:\n${problemDigest}`,
-      `Do not duplicate these previous tests: ${JSON.stringify(compactExisting([...existingInputs, ...unique.map(({ input, output, category }) => ({ input, output, category }))]))}`,
-      genCtx ? `Context: ${genCtx}` : "",
-    ].filter(Boolean).join("\n\n");
-    try {
-      const refillContent = await callAi([{ role: "user", content: refillPrompt }], Math.max(2200, missing * 360), 0.04);
-      addUniqueTests(parseTests(refillContent));
-    } catch {
-      /* keep the usable tests already generated; the caller may continue with another batch */
-    }
+  for (const test of candidates) {
+    const inputKey = test.input.trim();
+    if (!inputKey || fingerprints.has(inputKey)) continue;
+    fingerprints.add(inputKey);
+    unique.push({
+      input: test.input,
+      output: test.output,
+      category: ["boundary", "special", "ordinary", "adversarial", "performance"].includes(test.category) ? test.category : "ordinary",
+      scale: Math.max(1, Math.floor(Number(test.scale) || 1)),
+      targets: test.targets || "AI generated case",
+      reason: test.reason || "Generated from problem constraints",
+    });
+    if (unique.length >= target) break;
   }
 
   if (!unique.length) {
-    throw new Error(`AI 没有生成可用测试点：收到的返回中没有同时包含 input 和 output 的测试点。请确认题面有完整输入输出格式，或换用更强模型后重试。`);
+    throw new Error("AI did not return any parseable test input. Please check whether the problem statement contains clear input/output formats, or try a stronger model.");
   }
 
-  const performance = unique.filter(qualifiesPerformance);
-  const adversarial = unique.filter(qualifiesAdversarial);
   const selected: GeneratedTest[] = [];
-  const selectedKeys = new Set<string>();
+  const seen = new Set<string>();
   function select(items: GeneratedTest[], limit: number) {
     for (const test of items) {
       if (selected.length >= target || limit <= 0) break;
-      const key = `${test.input}\u0000${test.output}`;
-      if (!selectedKeys.has(key)) { selectedKeys.add(key); selected.push(test); limit -= 1; }
+      const key = test.input.trim();
+      if (!seen.has(key)) { seen.add(key); selected.push(test); limit -= 1; }
     }
   }
-  select(performance, requiredPerformance);
-  select(adversarial, requiredAdversarial);
+  select(unique.filter(qualifiesPerformance), requiredPerformance);
+  select(unique.filter(qualifiesAdversarial), requiredAdversarial);
   select(unique, target);
 
-  const finalSelected = selected.slice(0, target);
-
-  // ── Compute outputs using validated reference solution ──
   let computedCount = 0;
-  if (referenceSolution.trim()) {
+  if (hasReference) {
     try {
-      let langId = 0;
-      try { langId = await getCppLangId(); } catch { /* keep 0, will fail gracefully */ }
-      if (langId > 0) {
-        const withOutputs = await Promise.all(finalSelected.map(async (t) => {
-          try {
-            const r = await judge0Submit(referenceSolution, t.input, langId);
-            return { ...t, output: r.stdout.trim(), computed: r.stdout.trim().length > 0 };
-          } catch { return { ...t, output: "", computed: false }; }
-        }));
-        const valid = withOutputs.filter((t) => t.computed);
-        computedCount = valid.length;
-        if (valid.length > 0) {
-          const perf = valid.filter(qualifiesPerformance).length;
-          const adv = valid.filter(qualifiesAdversarial).length;
-          return {
-            tests: valid.map(({ computed: _, ...t }) => t),
-            report: {
-              expectedTimeComplexity: validatedRef?.algorithmSummary || plan.expectedTimeComplexity,
-              expectedSpaceComplexity: plan.expectedSpaceComplexity,
-              stressScale: plan.stressScale,
-              performanceCount: perf,
-              adversarialCount: adv,
-              requestedCount: target,
-              generatedCount: valid.length,
-              partial: valid.length < target,
-              computedCount: valid.length,
-              referenceValidated: true,
-            },
-          };
-        }
-      }
-    } catch { /* Fall through */ }
+      const langId = await getCppLangId();
+      const withOutputs = await Promise.all(selected.map(async (test) => {
+        if (test.output.trim()) return test;
+        try {
+          const result = await judge0Submit(referenceSolution, test.input, langId);
+          const output = result.stdout.trim();
+          if (output) computedCount += 1;
+          return output ? { ...test, output } : test;
+        } catch { return test; }
+      }));
+      selected.splice(0, selected.length, ...withOutputs);
+    } catch (error) {
+      warnings.push(`reference output computation skipped: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
-  const aiOutputSelected = finalSelected.filter((test) => test.output.trim().length > 0);
-  if (!hasReferenceSolution && !aiOutputSelected.length) {
-    throw new Error("AI 没有生成可用测试点：缺少 expected output。请确认题面包含完整输入/输出格式，或换用更强模型后重试。");
-  }
-  if (hasReferenceSolution && !aiOutputSelected.length && finalSelected.length) {
-    throw new Error("参考程序暂时无法计算输出，且 AI 未提供 expected output。请稍后重试或减少测试点数量。");
+  const missingOutputIndexes = selected.map((test, index) => test.output.trim() ? -1 : index).filter((index) => index >= 0);
+  if (missingOutputIndexes.length) {
+    const fillPrompt = [
+      "Fill expected outputs for these online-judge inputs.",
+      "Return ONLY JSON: {\"outputs\":[\"output for case 1\",\"output for case 2\"]}",
+      "The number and order of outputs must match the inputs exactly. Preserve line breaks. Do not explain.",
+      `Problem:\n${problemDigest}`,
+      `Inputs:\n${JSON.stringify(missingOutputIndexes.map((index) => ({ index: index + 1, input: selected[index].input })))}`,
+    ].join("\n\n");
+    try {
+      const fillContent = await callAi([{ role: "user", content: fillPrompt }], Math.max(2200, missingOutputIndexes.length * 420), 0.02);
+      const filled = parseJson(fillContent) as { outputs?: unknown[]; tests?: Array<{ output?: unknown; stdout?: unknown; expected?: unknown }> };
+      const outputs = Array.isArray(filled.outputs)
+        ? filled.outputs.map((value) => normalizeText(stringifyField(value)))
+        : Array.isArray(filled.tests)
+          ? filled.tests.map((value) => normalizeText(stringifyField(value.output ?? value.stdout ?? value.expected)))
+          : [];
+      missingOutputIndexes.forEach((testIndex, outIndex) => {
+        const output = outputs[outIndex] || "";
+        if (output.trim()) selected[testIndex] = { ...selected[testIndex], output };
+      });
+    } catch (error) {
+      warnings.push(`output fill failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
-  const fallbackSelected = aiOutputSelected.length ? aiOutputSelected : finalSelected;
+  const draftOutputCount = selected.filter((test) => !test.output.trim()).length;
+  const finalTests = selected.map((test) => ({
+    ...test,
+    output: test.output.trim() ? test.output : "",
+    targets: test.output.trim() ? test.targets : `${test.targets || "AI generated case"} (expected output needs manual check)`,
+    reason: test.output.trim() ? test.reason : `${test.reason || "Generated from problem constraints"}; output left blank for manual editing`,
+  }));
 
-  // Fallback: return AI-generated tests as-is when no reference output is available.
   return {
-    tests: fallbackSelected.map(({ input, output, category, scale, targets, reason }) => ({ input, output, category, scale, targets, reason })),
+    tests: finalTests,
     report: {
-      expectedTimeComplexity: plan.expectedTimeComplexity,
+      expectedTimeComplexity: validatedRef?.algorithmSummary || plan.expectedTimeComplexity,
       expectedSpaceComplexity: plan.expectedSpaceComplexity,
       stressScale: plan.stressScale,
-      performanceCount: fallbackSelected.filter(qualifiesPerformance).length,
-      adversarialCount: fallbackSelected.filter(qualifiesAdversarial).length,
+      performanceCount: finalTests.filter(qualifiesPerformance).length,
+      adversarialCount: finalTests.filter(qualifiesAdversarial).length,
       requestedCount: target,
-      generatedCount: fallbackSelected.length,
-      partial: fallbackSelected.length < target,
+      generatedCount: finalTests.length,
+      partial: finalTests.length < target || draftOutputCount > 0,
       computedCount,
-      referenceValidated: false,
+      referenceValidated: hasReference && computedCount > 0,
+      draftOutputCount,
+      warnings: warnings.slice(0, 5),
     },
   };
 }

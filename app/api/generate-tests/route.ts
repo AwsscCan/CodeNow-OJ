@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { rateLimit } from "../_lib/rate-limit";
 import { generateComplexityAwareTests } from "../_lib/complexity-tests";
-import { generateReferenceCandidate, validateReference, getCachedReference, setCachedReference } from "../_lib/reference-solution";
+import { getCachedReference } from "../_lib/reference-solution";
 
 export async function POST(request: NextRequest) {
   const rl = rateLimit(request, "ai");
@@ -10,48 +10,21 @@ export async function POST(request: NextRequest) {
   try {
     const { apiKey, endpoint, model, problem, count } = await request.json();
     const requested = Math.floor(Number(count));
-    const target = Number.isFinite(requested) ? Math.max(1, Math.min(24, requested)) : 8;
+    const target = Number.isFinite(requested) ? Math.max(1, Math.min(24, requested)) : 6;
     if (!apiKey || !endpoint || !model || !problem) {
       return NextResponse.json({ error: "AI configuration and problem data are required." }, { status: 400 });
     }
 
-    const key = String(apiKey);
-    const ep = String(endpoint);
-    const md = String(model);
     const digest = buildDigest(problem);
-    const samples = Array.isArray(problem.samples)
-      ? problem.samples.slice(0, 6).map((s: { input: unknown; output: unknown }) => ({ input: String(s.input || ""), output: String(s.output || "") }))
-      : [];
-
-    let validatedRef = getCachedReference(digest);
-    let referenceStatus: { ok: boolean; message: string } = validatedRef
+    const validatedRef = getCachedReference(digest);
+    const referenceStatus = validatedRef
       ? { ok: true, message: "Using cached validated reference solution." }
-      : { ok: false, message: "No validated reference solution yet; AI outputs will be used directly." };
-
-    if (!validatedRef) {
-      try {
-        const candidate = await generateReferenceCandidate(key, ep, md, digest, samples);
-        // Differential fuzzing is intentionally skipped here. The previous 200-round
-        // array-only random input check rejected many valid non-array problems and made
-        // test generation unusable. Official samples + compilation are safer as a soft enhancement.
-        const { report, validated } = await validateReference(candidate, samples, 0);
-        if (validated) {
-          validatedRef = validated;
-          setCachedReference(digest, validatedRef);
-          referenceStatus = { ok: true, message: "Validated reference solution is available and used to compute outputs." };
-        } else {
-          referenceStatus = { ok: false, message: `Reference validation failed; fell back to AI outputs: ${report.errors[0] || report.status}` };
-        }
-      } catch (refError) {
-        const message = refError instanceof Error ? refError.message : "reference generation failed";
-        referenceStatus = { ok: false, message: `Reference solution unavailable; fell back to AI outputs: ${message}` };
-      }
-    }
+      : { ok: false, message: "Fast generation mode: AI generates input and output directly." };
 
     const generated = await generateComplexityAwareTests({
-      apiKey: key,
-      endpoint: ep,
-      model: md,
+      apiKey: String(apiKey),
+      endpoint: String(endpoint),
+      model: String(model),
       problem,
       count: target,
       referenceSolution: validatedRef?.solutionCode,
@@ -65,14 +38,12 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "AI test generation failed.";
     if (/timeout|timed out|abort/i.test(message) || (error instanceof Error && error.name === "TimeoutError")) {
-      return NextResponse.json({ error: "AI response timed out. Try a smaller batch, a faster model, or retry later." }, { status: 504 });
+      return NextResponse.json({ error: "AI response timed out. Try fewer tests, a faster model, or retry later." }, { status: 504 });
     }
     if (/fetch failed|network|socket|connect/i.test(message)) {
       return NextResponse.json({ error: "Cannot connect to the AI service. Please check API Endpoint and Key." }, { status: 502 });
     }
-    if (message.includes("API Endpoint")) {
-      return NextResponse.json({ error: message }, { status: 400 });
-    }
+    if (message.includes("API Endpoint")) return NextResponse.json({ error: message }, { status: 400 });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
