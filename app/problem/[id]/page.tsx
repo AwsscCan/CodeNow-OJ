@@ -12,6 +12,7 @@ import { useJudge } from "../../hooks/use-judge";
 import { Toast } from "../../components/toast";
 import { formatCppCode } from "../../lib/format-cpp";
 import type { Result, SubmissionRecord } from "../../stores/problem-store";
+import { AuthStatus } from "../../components/auth-status";
 
 const CppEditor = lazy(() => import("../../CppEditor").then((m) => ({ default: m.CppEditor })));
 
@@ -316,8 +317,7 @@ export default function ProblemPage() {
               <option value="light">亮色</option><option value="dark">暗色</option><option value="girl">少女</option>
             </select>
           </label>
-          <span className="avatar">LR</span>
-          <div className="user-copy"><b>LinR</b><small>Lv.12 · 1842</small></div>
+          <AuthStatus onSignedOut={() => { store.setHistory([]); aiStore.clearChat(); }} />
         </div>
       </header>
 

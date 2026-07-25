@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useLibraryStore, loadAcwingCatalog, folderName, folderParent, folderContains, orderFolderTree, getAcwingFolders, getAcwingProblems } from "../stores/library-store";
 import { useProblemStore, INITIAL_PROBLEM, STARTER_CODE } from "../stores/problem-store";
+import { AuthStatus } from "../components/auth-status";
 import { useAiStore } from "../stores/ai-store";
 import { useThemeStore } from "../stores/theme-store";
 import { useToast } from "../hooks/use-toast";
@@ -224,8 +225,7 @@ export default function LibraryPage() {
               <option value="light">亮色</option><option value="dark">暗色</option><option value="girl">少女</option>
             </select>
           </label>
-          <span className="avatar">LR</span>
-          <div className="user-copy"><b>LinR</b><small>Lv.12 · 1842</small></div>
+          <AuthStatus onSignedOut={aiStore.clearChat} />
         </div>
       </header>
 

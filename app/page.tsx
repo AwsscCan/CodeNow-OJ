@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useThemeStore } from "./stores/theme-store";
 import { loadAcwingCatalog } from "./stores/library-store";
 import { Toast } from "./components/toast";
+import { AuthStatus } from "./components/auth-status";
 import { useToast } from "./hooks/use-toast";
 
 export default function Home() {
@@ -31,8 +32,7 @@ export default function Home() {
               <option value="light">亮色</option><option value="dark">暗色</option><option value="girl">少女</option>
             </select>
           </label>
-          <span className="avatar">LR</span>
-          <div className="user-copy"><b>LinR</b><small>Lv.12 · 1842</small></div>
+          <AuthStatus onSignedOut={() => {}} />
         </div>
       </header>
 

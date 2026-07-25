@@ -2,8 +2,9 @@
 
 import { useRouter, usePathname } from "next/navigation";
 import { useThemeStore } from "../stores/theme-store";
+import { AuthStatus } from "./auth-status";
 
-export function Topbar({ onToast }: { onToast: (msg: string) => void }) {
+export function Topbar({ onToast, onSignedOut = () => {} }: { onToast: (msg: string) => void; onSignedOut?: () => void }) {
   const router = useRouter();
   const pathname = usePathname();
   const { themeMode, setThemeMode } = useThemeStore();
@@ -43,8 +44,7 @@ export function Topbar({ onToast }: { onToast: (msg: string) => void }) {
             <option value="girl">少女</option>
           </select>
         </label>
-        <span className="avatar">LR</span>
-        <div className="user-copy"><b>LinR</b><small>Lv.12 · 1842</small></div>
+        <AuthStatus onSignedOut={onSignedOut} />
       </div>
     </header>
   );
