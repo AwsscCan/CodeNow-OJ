@@ -15,6 +15,7 @@ vi.mock("../../app/stores/library-store", () => ({
     { id: "AW789", title: "快速排序", difficulty: "普及" as const, time: "1000 ms", memory: "64 MB", description: "排序", inputFormat: "", outputFormat: "", samples: [], folder: "算法基础课/基础算法", sourceUrl: "https://example.com/789" },
     { id: "AW790", title: "归并排序", difficulty: "普及" as const, time: "1000 ms", memory: "64 MB", description: "排序", inputFormat: "", outputFormat: "", samples: [], folder: "算法基础课/基础算法", sourceUrl: "https://example.com/790" },
   ],
+  useLibraryStore: (sel: (s: { catalogVersion: number }) => unknown) => sel({ catalogVersion: 0 }),
 }));
 vi.mock("../../app/stores/theme-store", () => ({
   useThemeStore: () => ({ themeMode: "girl", setThemeMode: vi.fn(), editorTheme: "girl", setEditorTheme: vi.fn() }),

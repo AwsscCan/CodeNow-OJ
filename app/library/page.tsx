@@ -40,6 +40,8 @@ export default function LibraryPage() {
   const [withTests, setWithTests] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // 订阅 catalogVersion：bundled 题源异步加载完成后触发重渲染
+  void store.catalogVersion;
   const acwingFolders = getAcwingFolders();
   const acwingProblems = getAcwingProblems().filter((item) => !store.hiddenBuiltins.includes(item.id));
   const builtinVisible = !store.hiddenBuiltins.includes(INITIAL_PROBLEM.id);

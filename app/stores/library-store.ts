@@ -74,6 +74,8 @@ export async function loadAcwingCatalog() {
     }
   }));
   _acwingCatalog = results.flat();
+  // 异步加载完成后 bump 版本号，触发订阅了 catalogVersion 的组件重渲染
+  useLibraryStore.getState().bumpCatalogVersion();
 }
 
 /** Test-only: reset the bundled catalog cache so fetch stubs take effect. */
@@ -118,6 +120,7 @@ type LibraryStore = {
   cloudArchives: ArchivedProblem[];
   cloudFolderIds: Record<string, string>;
   hiddenBuiltins: string[];
+  catalogVersion: number;
 
   setArchives: (archives: ArchivedProblem[]) => void;
   addArchive: (archive: ArchivedProblem) => void;
@@ -139,6 +142,7 @@ type LibraryStore = {
   setLibraryReady: () => void;
   setCloudArchives: (archives: ArchivedProblem[]) => void;
   setCloudFolderIds: (folders: Record<string, string>) => void;
+  bumpCatalogVersion: () => void;
 };
 
 export const useLibraryStore = create<LibraryStore>()(
@@ -155,6 +159,7 @@ export const useLibraryStore = create<LibraryStore>()(
       cloudArchives: [],
       cloudFolderIds: {},
       hiddenBuiltins: [] as string[],
+      catalogVersion: 0,
 
       setArchives: (archives) => set({ archives }),
       addArchive: (archive) => set((s) => ({ archives: [archive, ...s.archives] })),
@@ -210,6 +215,7 @@ export const useLibraryStore = create<LibraryStore>()(
       setLibraryReady: () => set({ libraryReady: true }),
       setCloudArchives: (cloudArchives) => set({ cloudArchives }),
       setCloudFolderIds: (cloudFolderIds) => set({ cloudFolderIds }),
+      bumpCatalogVersion: () => set((s) => ({ catalogVersion: s.catalogVersion + 1 })),
     }),
     {
       name: "codenow-problem-library",

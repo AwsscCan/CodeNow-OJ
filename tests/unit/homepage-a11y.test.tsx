@@ -4,7 +4,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/navigation", () => ({ usePathname: () => "/", useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
-vi.mock("../../app/stores/library-store", () => ({ loadAcwingCatalog: vi.fn(), getAcwingProblems: () => [] }));
+vi.mock("../../app/stores/library-store", () => ({ loadAcwingCatalog: vi.fn(), getAcwingProblems: () => [], useLibraryStore: (sel: (s: { catalogVersion: number }) => unknown) => sel({ catalogVersion: 0 }) }));
 vi.mock("../../app/stores/theme-store", () => ({
   useThemeStore: () => ({ themeMode: "light", setThemeMode: vi.fn(), editorTheme: "light", setEditorTheme: vi.fn() }),
 }));

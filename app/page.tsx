@@ -5,7 +5,7 @@ import { useEffect } from "react";
 import { Toast } from "./components/toast";
 import { Topbar } from "./components/topbar";
 import { useToast } from "./hooks/use-toast";
-import { getAcwingProblems, loadAcwingCatalog } from "./stores/library-store";
+import { getAcwingProblems, loadAcwingCatalog, useLibraryStore } from "./stores/library-store";
 import { INITIAL_PROBLEM, useProblemStore, type Problem } from "./stores/problem-store";
 import { useThemeStore } from "./stores/theme-store";
 
@@ -16,6 +16,8 @@ export default function Home() {
   const problem = useProblemStore((s) => s.problem);
   const loadLocalProblem = useProblemStore((s) => s.loadLocalProblem);
 
+  // 订阅 catalogVersion：题源异步加载完成后刷新精选题
+  useLibraryStore((s) => s.catalogVersion);
   useEffect(() => { loadAcwingCatalog(); }, []);
 
   const picks = getAcwingProblems().slice(0, 3);
