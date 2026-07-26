@@ -14,7 +14,7 @@ import { ProblemApi, ProblemApiError, type CloudProblem } from "../../lib/proble
 import { useAiStore } from "../../stores/ai-store";
 import { useLibraryStore } from "../../stores/library-store";
 import { useProblemStore } from "../../stores/problem-store";
-import type { SubmissionRecord } from "../../stores/problem-store";
+import type { Problem, SubmissionRecord } from "../../stores/problem-store";
 import { useThemeStore } from "../../stores/theme-store";
 
 const CppEditor = lazy(() => import("../../CppEditor").then((m) => ({ default: m.CppEditor })));
@@ -49,7 +49,7 @@ export default function ProblemPage() {
   const [testPointCount, setTestPointCount] = useState(18);
   const [workspaceResizing, setWorkspaceResizing] = useState(false);
 
-  const saveCloudProblem = useCallback(async (payload: typeof store.problem, version: number, idempotencyKey: string, signal: AbortSignal): Promise<CloudSaveResult> => {
+  const saveCloudProblem = useCallback(async (payload: Problem, version: number, idempotencyKey: string, signal: AbortSignal): Promise<CloudSaveResult> => {
     if (!cloudId) return { ok: false, status: 404 };
     try {
       const metadata = await ProblemApi.update(cloudId, version, {
