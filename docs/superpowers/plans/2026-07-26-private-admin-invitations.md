@@ -66,7 +66,7 @@ Commit: `git commit -m "feat: add administrator schema"`
 - Modify: `app/lib/auth-compat.ts`
 - Create: `tests/unit/invitation-auth.test.ts`
 
-- [ ] **Step 1: Write failing tests for plugin fields and closed registration**
+- [x] **Step 1: Write failing tests for plugin fields and closed registration**
 
 ```ts
 it("returns 404 for public sign-up and reset-mail endpoints in invitation mode", async () => {
@@ -81,17 +81,17 @@ it("keeps sign-in and authenticated change-password available", async () => {
 });
 ```
 
-- [ ] **Step 2: Run the focused test and verify RED**
+- [x] **Step 2: Run the focused test and verify RED**
 
 Run: `npm run test:unit -- tests/unit/invitation-auth.test.ts`
 
 Expected: public sign-up is still routed to Better Auth.
 
-- [ ] **Step 3: Configure Better Auth admin plugin**
+- [x] **Step 3: Configure Better Auth admin plugin**
 
 Add `admin({ defaultRole: "user", adminRoles: ["admin"], allowImpersonatingAdmins: false })` and `adminClient()`; map all plugin fields to the Drizzle schema. In the auth catch-all route, return private/no-store `404` for `/sign-up/email`, `/send-verification-email`, `/request-password-reset`, and `/reset-password` while `INVITE_ONLY === "1"`; do not block sign-in or change-password.
 
-- [ ] **Step 4: Verify GREEN and commit**
+- [x] **Step 4: Verify GREEN and commit**
 
 Run: `npm run test:unit -- tests/unit/invitation-auth.test.ts tests/unit/auth-api.test.ts && npm run build`
 

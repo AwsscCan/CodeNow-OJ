@@ -1,5 +1,6 @@
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { betterAuth } from "better-auth";
+import { admin } from "better-auth/plugins";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import {
   createD1Db,
@@ -54,6 +55,11 @@ export function createAuth({ db, env, waitUntil }: AuthFactoryOptions) {
       },
     }),
     trustedOrigins: [env.baseURL],
+    plugins: [admin({
+      defaultRole: "user",
+      adminRoles: ["admin"],
+      allowImpersonatingAdmins: false,
+    })],
     emailVerification: {
       sendOnSignUp: true,
       sendVerificationEmail: async ({ user, url }) => {
