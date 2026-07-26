@@ -152,7 +152,7 @@ Commit: `git commit -m "feat: administer invited accounts safely"`
 - Create: `app/api/admin/audit/route.ts`
 - Create: `tests/unit/admin-api.test.ts`
 
-- [ ] **Step 1: Write failing route tests**
+- [x] **Step 1: Write failing route tests**
 
 ```ts
 it.each(["anonymous", "normal-user"])("returns 404 to %s", async (identity) => {
@@ -168,19 +168,19 @@ it("lets an administrator invite and paginate users without returning password f
 });
 ```
 
-- [ ] **Step 2: Run and verify RED**
+- [x] **Step 2: Run and verify RED**
 
 Run: `npm run test:unit -- tests/unit/admin-api.test.ts`
 
-- [ ] **Step 3: Implement routes**
+- [x] **Step 3: Implement routes**
 
 Use a shared `404` response and `Cache-Control: private, no-store`. Bound list limits to `1..50`, validate cursors, names, emails, and ban reasons, enforce body limits, and return a temporary password only from successful invite/reset responses.
 
-- [ ] **Step 4: Verify ownership swapping and headers**
+- [x] **Step 4: Verify ownership swapping and headers**
 
 Add tests for forged user IDs, last-admin protection, missing targets, `x-request-id`, no-store, and audit pagination.
 
-- [ ] **Step 5: Verify GREEN and commit**
+- [x] **Step 5: Verify GREEN and commit**
 
 Run: `npm run test:unit -- tests/unit/admin-api.test.ts tests/unit/security-boundaries.test.ts`
 

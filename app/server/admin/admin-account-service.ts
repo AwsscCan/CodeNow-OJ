@@ -159,6 +159,24 @@ export function createAdminAccountService(db: Database) {
       }
       return { ok: true, value: { temporaryPassword: password } };
     },
+
+    async revokeSessions(adminUserId: string, requestId: string, targetUserId: string): Promise<Failure | Success> {
+      if (!await activeAdmin(adminUserId)) return failure(404, "NOT_FOUND", "Not found");
+      if (!await targetUser(targetUserId)) return failure(404, "NOT_FOUND", "Not found");
+      const now = new Date();
+      const auditRow = adminAuditRow({ adminUserId, action: "user.sessions_revoke", targetType: "user", targetId: targetUserId, requestId, now });
+      if (isD1Database(db)) {
+        await db.batch([
+          db.delete(sessions).where(eq(sessions.userId, targetUserId)),
+          db.insert(adminAuditLogs).values(auditRow),
+        ] as never);
+      } else {
+        database.transaction((tx) => {
+          tx.delete(sessions).where(eq(sessions.userId, targetUserId)).run();
+          tx.insert(adminAuditLogs).values(auditRow).run();
+        });
+      }
+      return { ok: true, value: undefined };
+    },
   };
 }
-
