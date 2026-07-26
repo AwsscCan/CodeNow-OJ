@@ -4,6 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { AuthStatus } from "../../components/auth-status";
+import { SyncConflictDialog } from "../../components/sync-conflict-dialog";
 import { Toast } from "../../components/toast";
 import { useCloudSave, type CloudSaveResult, type SyncStatus } from "../../hooks/use-cloud-save";
 import { useJudge } from "../../hooks/use-judge";
@@ -63,7 +64,7 @@ export default function ProblemPage() {
       setCloudState({ version: tests.version });
       return { ok: true, version: tests.version, updatedAt: tests.updatedAt };
     } catch (error) {
-      if (error instanceof ProblemApiError && error.status === 409) return { ok: false, status: 409, currentVersion: error.currentVersion, updatedAt: error.updatedAt };
+      if (error instanceof ProblemApiError && (error.status === 401 || error.status === 409)) return { ok: false, status: error.status, currentVersion: error.currentVersion, updatedAt: error.updatedAt };
       throw error;
     }
   }, [cloudId, setCloudState]);
@@ -75,13 +76,19 @@ export default function ProblemPage() {
       setCloudState({ draftVersion: result.version });
       return { ok: true, version: result.version, updatedAt: result.updatedAt };
     } catch (error) {
-      if (error instanceof ProblemApiError && error.status === 409) return { ok: false, status: 409, currentVersion: error.currentVersion, updatedAt: error.updatedAt };
+      if (error instanceof ProblemApiError && (error.status === 401 || error.status === 409)) return { ok: false, status: error.status, currentVersion: error.currentVersion, updatedAt: error.updatedAt };
       throw error;
     }
   }, [cloudId, setCloudState]);
 
-  const cloudSave = useCloudSave({ enabled: Boolean(session.data?.user && cloudId), version: store.version, save: saveCloudProblem });
-  const draftSave = useCloudSave({ enabled: Boolean(session.data?.user && cloudId), version: store.draftVersion, save: saveCloudDraft });
+  const cloudSave = useCloudSave({
+    enabled: Boolean(session.data?.user && cloudId), userId: session.data?.user.id ?? null,
+    resourceType: "problem", resourceId: cloudId, version: store.version, save: saveCloudProblem,
+  });
+  const draftSave = useCloudSave({
+    enabled: Boolean(session.data?.user && cloudId), userId: session.data?.user.id ?? null,
+    resourceType: "draft", resourceId: cloudId, version: store.draftVersion, save: saveCloudDraft,
+  });
   const queueProblemSave = cloudSave.queueSave;
   const queueDraftSave = draftSave.queueSave;
 
@@ -126,6 +133,11 @@ export default function ProblemPage() {
     }
     const { problem } = await ProblemApi.get(store.cloudId);
     cloudSave.retryWithVersion(store.problem, problem.version);
+  }
+
+  function retryFailedSaves() {
+    if (cloudSave.status === "failed") cloudSave.retryPending();
+    if (draftSave.status === "failed") draftSave.retryPending();
   }
 
   const workspaceRef = useRef<HTMLElement>(null);
@@ -410,6 +422,7 @@ export default function ProblemPage() {
         </div>
         <div className="workspace-actions">
           <span className={`sync-status ${store.syncStatus}`}>{store.syncStatus === "local-only" ? "仅本地" : store.syncStatus === "saving" ? "正在保存…" : store.syncStatus === "synced" ? "已同步" : store.syncStatus === "failed" ? "保存失败" : "版本冲突"}</span>
+          {store.syncStatus === "failed" && <button onClick={retryFailedSaves}>重试保存</button>}
           <button onClick={() => router.push("/library")}>⇧ 导入题目</button>
           <button className="ask-button" onClick={() => setShowChat(true)}>◈ 问 AI</button>
           <button className="ai-button" onClick={() => setShowAi(true)}>✦ AI 解题</button>
@@ -589,11 +602,11 @@ export default function ProblemPage() {
         <footer><textarea value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) handleSendChat(); }} placeholder="询问思路、复杂度、代码报错……（Ctrl + Enter 发送）" /><button disabled={chatBusy || !chatInput.trim()} onClick={handleSendChat}>发送</button></footer>
       </aside></div>}
 
-      {(cloudSave.conflict || draftSave.conflict) && <div className="modal-backdrop"><div className="modal conflict-modal">
-        <span className="modal-kicker">SYNC CONFLICT</span><h2>云端题目已在其他设备更新</h2>
-        <p>本地版本 {(cloudSave.conflict ?? draftSave.conflict)?.localVersion}，云端版本 {(cloudSave.conflict ?? draftSave.conflict)?.currentVersion}。请选择保留哪一份。</p>
-        <div className="modal-actions"><button onClick={useCloudVersion}>使用云端版本</button><button onClick={overwriteCloudVersion}>用本地版本覆盖</button></div>
-      </div></div>}
+      {(cloudSave.conflict || draftSave.conflict) && <SyncConflictDialog
+        conflict={(cloudSave.conflict ?? draftSave.conflict)!}
+        onUseCloud={useCloudVersion}
+        onOverwrite={overwriteCloudVersion}
+      />}
 
       <Toast message={notice} />
     </main>

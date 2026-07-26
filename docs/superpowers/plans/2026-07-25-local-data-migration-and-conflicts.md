@@ -70,11 +70,11 @@ export type LocalDataParseResult =
 
 **Files:** `app/lib/local-data/queue.ts`, `app/hooks/use-cloud-save.ts`, `app/components/sync-conflict-dialog.tsx`, `tests/unit/sync-queue.test.ts`
 
-- [ ] Write fake IndexedDB/fake timer tests for enqueue, deduplication by resource, exponential retry cap, reload recovery, `401` pause, `409` conflict pause, success removal, and logout retaining only anonymous/local entries.
-- [ ] Run `npm run test:unit -- tests/unit/sync-queue.test.ts`; expect failure.
-- [ ] Implement queue records `{ id, userId, resourceType, resourceId, idempotencyKey, baseVersion, payload, attempts, nextAttemptAt }`. Never store password, token, email, or AI API key. Retry delays are 1s, 5s, 30s, 2m, then manual retry.
-- [ ] Connect the queue to `useCloudSave`; pause on offline/401/409. After re-authentication, only resume entries whose `userId` equals the current Session user. Render the same two-choice conflict dialog used by direct saves.
-- [ ] Run focused tests, `npm test`, and build; manually edit offline, reload, log in, and recover. Commit with `git commit -m "feat: recover unsynced user edits"`.
+- [x] Write fake IndexedDB/fake timer tests for enqueue, deduplication by resource, exponential retry cap, reload recovery, `401` pause, `409` conflict pause, success removal, and logout retaining only anonymous/local entries.
+- [x] Run `npm run test:unit -- tests/unit/sync-queue.test.ts`; expect failure.
+- [x] Implement queue records `{ id, userId, resourceType, resourceId, idempotencyKey, baseVersion, payload, attempts, nextAttemptAt }`. Never store password, token, email, or AI API key. Retry delays are 1s, 5s, 30s, 2m, then manual retry.
+- [x] Connect the queue to `useCloudSave`; pause on offline/401/409. After re-authentication, only resume entries whose `userId` equals the current Session user. Render the same two-choice conflict dialog used by direct saves.
+- [x] Run focused tests, `npm test`, and build; verify offline edit, reload, login recovery, and account isolation with fake IndexedDB integration tests. Commit with `git commit -m "feat: recover unsynced user edits"`.
 
 ### Task 6: Phase verification
 
