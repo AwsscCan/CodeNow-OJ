@@ -6,6 +6,8 @@ import { describe, expect, it } from "vitest";
 export const ENHANCED_ACWING_IDS = [
   "AW785", "AW786", "AW787", "AW788", "AW789", "AW790",
   "AW799", "AW800", "AW801", "AW802", "AW803",
+  "AW826", "AW827", "AW828", "AW3302", "AW829", "AW830", "AW831",
+  "AW835", "AW143", "AW836", "AW837", "AW240", "AW838", "AW839", "AW841",
 ];
 
 type Bundled = {

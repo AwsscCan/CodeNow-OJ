@@ -3,9 +3,11 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { ACWING_SOLVERS_1 } from "./acwing-solvers-1.mjs";
+import { ACWING_SOLVERS_2A } from "./acwing-solvers-2a.mjs";
+import { ACWING_SOLVERS_2B } from "./acwing-solvers-2b.mjs";
 import { buildSamples, verifyAnchor } from "./lib.mjs";
 
-const SOLVERS = { ...ACWING_SOLVERS_1 };
+const SOLVERS = { ...ACWING_SOLVERS_1, ...ACWING_SOLVERS_2A, ...ACWING_SOLVERS_2B };
 
 const target = resolve(import.meta.dirname, "../../public/acwing-course.json");
 const catalog = JSON.parse(readFileSync(target, "utf8"));
@@ -18,8 +20,10 @@ for (const problem of catalog) {
 
   // 原题样例是唯一的外部正确性锚点：参考解必须复现其输出前缀，否则拒绝出货。
   // 通过后用参考解输出替换(抓取时被博客正文污染的)原期望输出。
+  // 幂等：重跑时只把"原始抓取样例(无 targets)或上次的锚点样例"当作锚点，工厂生成点全部重建。
+  const anchorCandidates = problem.samples.filter((s) => !s.targets || s.targets === "原题样例");
   const anchorSamples = [];
-  for (const original of problem.samples) {
+  for (const original of anchorCandidates) {
     if (!original.input?.trim()) continue;
     const cleanOutput = verifyAnchor(spec, original.input, original.output);
     anchorSamples.push({
