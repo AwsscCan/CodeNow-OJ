@@ -103,8 +103,7 @@ test("two users keep all private resources isolated through migration, conflicts
   await expect(pageB.getByText("Private B")).toBeVisible();
   await pageB.reload();
   await expect(pageB.getByText("Private B")).toBeVisible();
-  const repeatedMigrationPrompt = pageB.getByRole("button", { name: "暂不导入" });
-  if (await repeatedMigrationPrompt.isVisible()) await repeatedMigrationPrompt.click();
+  await expect(pageB.getByRole("button", { name: "暂不导入" })).toHaveCount(0);
   await pageB.getByRole("button", { name: "退出登录" }).click();
   await expect(pageB.getByRole("link", { name: "登录" })).toBeVisible();
   await expect(pageB.getByText("Private B")).toHaveCount(0);

@@ -45,10 +45,10 @@ function readMigrationState(): MigrationState | null {
   }
 }
 
-function wasDismissed(userId: string, fingerprint: string) {
+function wasDismissed(userId: string) {
   try {
     const value = JSON.parse(sessionStorage.getItem(DISMISSED_STATE_KEY) || "null") as Record<string, unknown> | null;
-    return value?.userId === userId && value.fingerprint === fingerprint;
+    return value?.userId === userId;
   } catch {
     return false;
   }
@@ -112,7 +112,7 @@ export function LocalDataMigration() {
           setView("hidden");
           return;
         }
-        if (wasDismissed(userId, body.previewFingerprint)) {
+        if (wasDismissed(userId)) {
           setView("hidden");
           return;
         }
@@ -163,7 +163,7 @@ export function LocalDataMigration() {
   }
 
   function dismiss() {
-    if (userId && preview) sessionStorage.setItem(DISMISSED_STATE_KEY, JSON.stringify({ userId, fingerprint: preview.previewFingerprint }));
+    if (userId && preview) sessionStorage.setItem(DISMISSED_STATE_KEY, JSON.stringify({ userId }));
     setView("hidden");
   }
 

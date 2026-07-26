@@ -85,6 +85,11 @@ describe("LocalDataMigration", () => {
     expect(localStorage.getItem(libraryKey)).not.toBeNull();
 
     first.unmount();
+    localStorage.setItem("codenow-theme", JSON.stringify({ state: { themeMode: "girl", editorTheme: "dark" } }));
+    vi.mocked(fetch).mockImplementationOnce(() => jsonResponse({
+      counts: { folders: 1, problems: 1, testCases: 1, drafts: 0, conversations: 0 },
+      conflicts: [], previewFingerprint: "fp-after-preference-hydration", expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    }));
     render(<LocalDataMigration />);
     await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
     expect(screen.queryByRole("dialog")).toBeNull();
