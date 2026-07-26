@@ -52,13 +52,15 @@ const EMPTY_PROFILE: ProblemProfile = {
   stressScale: 1,
 };
 
-// Canonical dedup key: two inputs that differ only by per-line trailing
-// whitespace, CRLF, or blank-line padding are the same test case. The stored
-// input keeps its original formatting; only the dedup fingerprint is canonical.
+// Canonical dedup key: two inputs that differ only by whitespace runs, per-line
+// trailing whitespace, CRLF, or blank-line padding are the same test case for
+// any whitespace-tokenized stdin (cin>>/scanf). The stored input keeps its
+// original formatting; only the dedup fingerprint is canonical.
 function canonicalKey(input: string): string {
   return input
     .replace(/\r\n/g, "\n")
-    .replace(/[ \t]+$/gm, "")
+    .replace(/[ \t]+/g, " ")
+    .replace(/ *\n/g, "\n")
     .replace(/\n{2,}/g, "\n")
     .trim();
 }

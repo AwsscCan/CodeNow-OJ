@@ -193,6 +193,39 @@ describe("test generation pipeline", () => {
     expect(result.report.categoryCounts).toMatchObject({ ordinary: 2 });
   });
 
+  it("treats internal multi-space variants as duplicate inputs", async () => {
+    const responses = [
+      aiResponse([
+        test("1\n0\n", "0\n", "boundary"),
+        test("2\n7 7\n", "14\n", "special"),
+        test("3\n9 -9 5\n", "5\n", "adversarial"),
+        test("6\n1 1 1 1 1 1\n", "6\n", "performance", 100000),
+        test("2\n5 5\n", "10\n", "ordinary"),
+        // identical test but with a double space between the values — must be deduped
+        test("2\n5  5\n", "10\n", "ordinary"),
+      ]),
+      aiResponse([
+        test("4\n1 2 3 4\n", "10\n", "ordinary"),
+      ]),
+    ];
+    const fetchMock = vi.fn(async () => responses.shift()!);
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await generateComplexityAwareTests({
+      apiKey: "test-key",
+      endpoint: "https://api.deepseek.com",
+      model: "deepseek-chat",
+      problem,
+      count: 6,
+    });
+
+    const canonical = (value: string) => value.replace(/[ \t]+/g, " ").replace(/ *\n/g, "\n").trim();
+    const canonicalInputs = result.tests.map((item) => canonical(item.input));
+    expect(new Set(canonicalInputs).size).toBe(result.tests.length);
+    expect(result.tests).toHaveLength(6);
+    expect(result.report.categoryCounts).toMatchObject({ ordinary: 2 });
+  });
+
   it("backfills after a validated reference rejects some generated inputs", async () => {
     judge0SubmitMock.mockReset();
     // The reference program accepts every input except the one flagged BAD.
