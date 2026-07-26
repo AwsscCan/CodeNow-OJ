@@ -1,18 +1,18 @@
 "use client";
 
+import { useParams, useRouter } from "next/navigation";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { useProblemStore, STARTER_CODE } from "../../stores/problem-store";
-import { useLibraryStore } from "../../stores/library-store";
-import { useAiStore } from "../../stores/ai-store";
-import { useThemeStore } from "../../stores/theme-store";
-import { useToast } from "../../hooks/use-toast";
-import { useJudge } from "../../hooks/use-judge";
-import { Toast } from "../../components/toast";
-import { formatCppCode } from "../../lib/format-cpp";
-import type { Result, SubmissionRecord } from "../../stores/problem-store";
 import { AuthStatus } from "../../components/auth-status";
+import { Toast } from "../../components/toast";
+import { useJudge } from "../../hooks/use-judge";
+import { useToast } from "../../hooks/use-toast";
+import { formatCppCode } from "../../lib/format-cpp";
+import { useAiStore } from "../../stores/ai-store";
+import { useLibraryStore } from "../../stores/library-store";
+import { useProblemStore } from "../../stores/problem-store";
+import type { SubmissionRecord } from "../../stores/problem-store";
+import { useThemeStore } from "../../stores/theme-store";
 
 const CppEditor = lazy(() => import("../../CppEditor").then((m) => ({ default: m.CppEditor })));
 
@@ -20,10 +20,6 @@ const testCategoryLabels: Record<string, string> = {
   boundary: "边界", special: "特殊", ordinary: "普通",
   adversarial: "反例", performance: "性能", sample: "样例", manual: "手动",
 };
-
-function toastUser(msg: string) {
-  // placeholder - replaced by useToast below
-}
 
 export default function ProblemPage() {
   const params = useParams();
@@ -47,8 +43,6 @@ export default function ProblemPage() {
   const [testGenStatus, setTestGenStatus] = useState("");
   const [testPointCount, setTestPointCount] = useState(18);
   const [workspaceResizing, setWorkspaceResizing] = useState(false);
-  const [mascotMessage, setMascotMessage] = useState(0);
-  const [showMascotAi, setShowMascotAi] = useState(false);
 
   const workspaceRef = useRef<HTMLElement>(null);
   const codePanelRef = useRef<HTMLElement>(null);
@@ -159,12 +153,7 @@ export default function ProblemPage() {
         problemId: store.problem.id,
         problemTitle: store.problem.title,
         submit,
-        onMascotReact: (results) => {
-          const failed = results.find((r) => r.status !== "AC");
-          if (!failed) setMascotMessage(2);
-          else if (failed.status === "CE" || failed.status === "TLE") setMascotMessage(7);
-          else setMascotMessage(6);
-        },
+        onMascotReact: () => undefined,
       });
 
       if (!result) return;
@@ -465,7 +454,7 @@ export default function ProblemPage() {
                   <b>测试点 {idx + 1}</b><code>{result.status}</code><span>{result.duration} ms</span>
                   <small>{result.status === "AC" ? "输出正确" : result.status === "CE" ? result.actual : `期望 ${result.expected}，得到 ${result.actual}`}</small>
                 </div>
-              )) : <div className="empty-state"><span className="terminal-icon">›_</span><strong>C++17 判题器就绪</strong><span>点击"运行测试"进行服务端编译与执行。</span></div>}
+              )) : <div className="empty-state"><span className="terminal-icon">›_</span><strong>C++17 判题器就绪</strong><span>点击“运行测试”进行服务端编译与执行。</span></div>}
             </div>
           </div>
           <footer className="statusbar"><span>✓ IntelliSense</span><span>Ln {store.cursor.line}, Col {store.cursor.column}</span><span>UTF-8</span><span>Spaces: 4</span><span>GNU C++17</span></footer>

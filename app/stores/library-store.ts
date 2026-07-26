@@ -126,7 +126,7 @@ type LibraryStore = {
 
 export const useLibraryStore = create<LibraryStore>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       archives: loadArchives(),
       folders: ["默认题库"],
       selectedFolder: "默认题库",

@@ -18,7 +18,7 @@ describe("Complexity tests - JSON repair helpers", () => {
     const end = cleaned.lastIndexOf("}");
     if (start < 0 || end <= start) throw new Error("No JSON found");
 
-    let candidate = cleaned.slice(start, end + 1);
+    const candidate = cleaned.slice(start, end + 1);
 
     // Apply repairs
     const repairs = [
@@ -122,7 +122,6 @@ describe("Ellipsis expansion", () => {
   });
 
   it("detects descending sequence: 100000 99999 ... 3 2 1", () => {
-    const pattern = "100000 99999 ... 3 2 1";
     const before = "100000 99999";
     const after = "3 2 1";
     const beforeNums = before.split(/\s+/).map(Number);

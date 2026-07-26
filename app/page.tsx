@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useThemeStore } from "./stores/theme-store";
-import { loadAcwingCatalog } from "./stores/library-store";
-import { Toast } from "./components/toast";
+import { useEffect } from "react";
 import { AuthStatus } from "./components/auth-status";
+import { Toast } from "./components/toast";
 import { useToast } from "./hooks/use-toast";
+import { loadAcwingCatalog } from "./stores/library-store";
+import { useThemeStore } from "./stores/theme-store";
 
 export default function Home() {
   const router = useRouter();

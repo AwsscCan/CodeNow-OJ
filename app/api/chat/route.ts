@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { rateLimit } from "../_lib/rate-limit";
 import { AI_CHAT_TEMPERATURE, AI_MAX_TOKENS_CHAT, AI_MAX_CODE_CONTEXT_LENGTH } from "../_lib/constants";
+import { rateLimit } from "../_lib/rate-limit";
 import { validateEndpoint } from "../_lib/validate-endpoint";
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
@@ -10,9 +10,10 @@ export async function POST(request: NextRequest) {
   if (!rl.allowed) return NextResponse.json({ error: "请求过于频繁，请稍后重试" }, { status: 429 });
 
   try {
-    let { apiKey, endpoint, model, problem, code, messages } = await request.json();
+    const requestData = await request.json();
+    const { endpoint, model, problem, code, messages } = requestData;
 
-    apiKey = process.env.AI_API_KEY || apiKey;
+    const apiKey = process.env.AI_API_KEY || requestData.apiKey;
     if (!apiKey) return NextResponse.json({ error: "未配置 AI API Key" }, { status: 400 });
 
     if (!endpoint || !model || !problem) return NextResponse.json({ error: "AI 配置不完整" }, { status: 400 });

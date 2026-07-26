@@ -1,17 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { rateLimit } from "../_lib/rate-limit";
-import { generateComplexityAwareTests } from "../_lib/test-generation-pipeline";
-import { getCachedReference } from "../_lib/reference-solution";
-import { validateEndpoint } from "../_lib/validate-endpoint";
 import { AI_MAX_RAW_PROBLEM_LENGTH, AI_TIMEOUT_MS } from "../_lib/constants";
+import { rateLimit } from "../_lib/rate-limit";
+import { getCachedReference } from "../_lib/reference-solution";
+import { generateComplexityAwareTests } from "../_lib/test-generation-pipeline";
+import { validateEndpoint } from "../_lib/validate-endpoint";
 
 export async function POST(request: NextRequest) {
   const rl = rateLimit(request, "ai");
   if (!rl.allowed) return NextResponse.json({ error: "Too many requests. Please retry later." }, { status: 429 });
 
   try {
-    let { apiKey, endpoint, model, rawProblem } = await request.json();
-    apiKey = process.env.AI_API_KEY || apiKey;
+    const requestData = await request.json();
+    const { endpoint, model, rawProblem } = requestData;
+    const apiKey = process.env.AI_API_KEY || requestData.apiKey;
     if (!apiKey) return NextResponse.json({ error: "AI API Key is not configured." }, { status: 400 });
     if (!endpoint || !model || !rawProblem) return NextResponse.json({ error: "AI configuration and raw problem text are required." }, { status: 400 });
     if (typeof rawProblem !== "string" || rawProblem.trim().length < 20) return NextResponse.json({ error: "Problem text is too short." }, { status: 400 });

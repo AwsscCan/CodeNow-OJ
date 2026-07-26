@@ -28,17 +28,29 @@ export function DesktopMascot({
   onCycle,
   onDragDrop,
   onSetVisible,
-  onSetMessageIndex,
 }: {
   visible: boolean;
   messageIndex: number;
   onCycle: () => void;
   onDragDrop?: (dragged: boolean, insideEditor: boolean) => void;
   onSetVisible: (v: boolean) => void;
-  onSetMessageIndex: (i: number) => void;
 }) {
   const mascotRef = useRef<HTMLElement>(null);
-  const [position, setPosition] = useState<MascotPosition | null>(null);
+  const [position, setPosition] = useState<MascotPosition | null>(() => {
+    if (typeof window === "undefined") return null;
+    const saved = localStorage.getItem("codenow-mascot-position");
+    if (!saved) return null;
+    try {
+      const parsed: unknown = JSON.parse(saved);
+      if (parsed && typeof parsed === "object") {
+        const candidate = parsed as Partial<MascotPosition>;
+        if (typeof candidate.x === "number" && typeof candidate.y === "number") {
+          return { x: candidate.x, y: candidate.y };
+        }
+      }
+    } catch { /* ignore invalid saved positions */ }
+    return null;
+  });
   const [dragging, setDragging] = useState(false);
   const dragged = useRef(false);
   const dragOffset = useRef({ x: 0, y: 0 });
@@ -46,16 +58,6 @@ export function DesktopMascot({
   const nextPosition = useRef<MascotPosition | null>(null);
   const dragFrame = useRef<number | null>(null);
   const dragSize = useRef({ width: 205, height: 255 });
-
-  useEffect(() => {
-    const saved = localStorage.getItem("codenow-mascot-position");
-    if (saved) {
-      try {
-        const p = JSON.parse(saved);
-        if (typeof p.x === "number" && typeof p.y === "number") setPosition(p);
-      } catch { /* ignore */ }
-    }
-  }, []);
 
   useEffect(() => {
     if (position) localStorage.setItem("codenow-mascot-position", JSON.stringify(position));
@@ -83,7 +85,7 @@ export function DesktopMascot({
       }
       if (dragFrame.current === null) dragFrame.current = requestAnimationFrame(apply);
     };
-    const stop = (event: PointerEvent) => {
+    const stop = () => {
       if (dragFrame.current !== null) { cancelAnimationFrame(dragFrame.current); dragFrame.current = null; }
       apply();
       setDragging(false);

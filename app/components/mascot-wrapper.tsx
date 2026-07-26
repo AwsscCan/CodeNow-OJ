@@ -6,14 +6,13 @@ import { DesktopMascot } from "./mascot";
 
 export function MascotWrapper() {
   const theme = useThemeStore();
-  const [visible, setVisible] = useState(true);
-  const [messageIndex, setMessageIndex] = useState(0);
-
-  useEffect(() => {
+  const [visible, setVisible] = useState(() => {
+    if (typeof window === "undefined") return true;
     const saved = localStorage.getItem("codenow-mascot-visible")
       || localStorage.getItem("codeforge-mascot-visible");
-    if (saved === "false") setVisible(false);
-  }, []);
+    return saved !== "false";
+  });
+  const [messageIndex, setMessageIndex] = useState(0);
 
   useEffect(() => {
     localStorage.setItem("codenow-mascot-visible", String(visible));
@@ -27,7 +26,6 @@ export function MascotWrapper() {
       messageIndex={messageIndex}
       onCycle={() => setMessageIndex((v) => (v + 1) % 13)}
       onSetVisible={setVisible}
-      onSetMessageIndex={setMessageIndex}
     />
   );
 }

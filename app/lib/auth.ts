@@ -92,7 +92,7 @@ type CloudflareRuntime = {
   waitUntil?: (promise: Promise<unknown>) => void;
 };
 
-export type RuntimeServices = { auth: Auth; db: Database };
+export type RuntimeServices = { auth: Auth; db: Database; rateLimitPepper: string };
 
 let localServices: RuntimeServices | null = null;
 
@@ -134,7 +134,7 @@ export async function getRuntimeServices(request: Request): Promise<RuntimeServi
 
   if (bindings.DB) {
     const db = createD1Db(bindings.DB);
-    return { db, auth: createAuth({
+    return { db, rateLimitPepper: env.secret, auth: createAuth({
       db,
       env,
       waitUntil: runtime?.waitUntil,
@@ -144,7 +144,7 @@ export async function getRuntimeServices(request: Request): Promise<RuntimeServi
   if (!localServices) {
     const db = createLocalDb(":memory:");
     migrate(db, { migrationsFolder: "drizzle" });
-    localServices = { db, auth: createAuth({ db, env }) };
+    localServices = { db, rateLimitPepper: env.secret, auth: createAuth({ db, env }) };
   }
   return localServices;
 }

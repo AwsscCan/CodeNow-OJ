@@ -1,15 +1,10 @@
-import { validateEndpoint } from "./validate-endpoint";
-import { AI_TIMEOUT_MS, AI_JSON_REPAIR_MAX_RAW_LENGTH, MAX_EXPANDED_CHARS } from "./constants";
-import { judge0Submit, type ValidatedReference } from "./reference-solution";
+import { AI_TIMEOUT_MS, MAX_EXPANDED_CHARS } from "./constants";
 import { expandGenerator, validateInput, listGeneratorTypes } from "./generator-registry";
+import { judge0Submit, type ValidatedReference } from "./reference-solution";
+import { validateEndpoint } from "./validate-endpoint";
 
 type UpstreamData = { choices?: { message?: { content?: string } }[]; error?: { message?: string } };
 type Part = { type?: unknown; value?: unknown; count?: unknown; separator?: unknown; start?: unknown; end?: unknown; step?: unknown; values?: unknown };
-type RawTest = {
-  input?: unknown; output?: unknown; stdin?: unknown; stdout?: unknown; expected?: unknown; expectedOutput?: unknown; expected_output?: unknown; answer?: unknown;
-  input_data?: unknown; output_data?: unknown; in?: unknown; out?: unknown; inputParts?: unknown; outputParts?: unknown;
-  category?: unknown; scale?: unknown; targets?: unknown; reason?: unknown;
-} & Record<string, unknown>;
 export type GeneratedTest = { input: string; output: string; category: string; scale: number; targets: string; reason: string };
 type ComplexityPlan = { expectedTimeComplexity: string; expectedSpaceComplexity: string; bruteForceToReject: string[]; stressScale: number; stressInputStrategy: string };
 
@@ -136,14 +131,6 @@ function materialize(value: unknown, parts: unknown) {
   const text = parts !== undefined ? expandParts(parts) : stringifyField(value);
   if (!text || text.length > MAX_EXPANDED_CHARS) throw new Error("测试点输入或输出为空/过大");
   return normalizeText(text);
-}
-
-function readFirst(test: RawTest, keys: string[]) {
-  for (const key of keys) {
-    const value = test[key];
-    if (value !== undefined && value !== null && stringifyField(value).trim() !== "") return value;
-  }
-  return undefined;
 }
 
 function findTestList(parsed: unknown): unknown[] | null {

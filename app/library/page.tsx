@@ -1,14 +1,14 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useState, useRef, useEffect } from "react";
+import { AuthStatus } from "../components/auth-status";
+import { Toast } from "../components/toast";
+import { useToast } from "../hooks/use-toast";
+import { useAiStore } from "../stores/ai-store";
 import { useLibraryStore, loadAcwingCatalog, folderName, folderParent, folderContains, orderFolderTree, getAcwingFolders, getAcwingProblems } from "../stores/library-store";
 import { useProblemStore, INITIAL_PROBLEM, STARTER_CODE } from "../stores/problem-store";
-import { AuthStatus } from "../components/auth-status";
-import { useAiStore } from "../stores/ai-store";
 import { useThemeStore } from "../stores/theme-store";
-import { useToast } from "../hooks/use-toast";
-import { Toast } from "../components/toast";
 
 export default function LibraryPage() {
   const router = useRouter();
@@ -50,10 +50,6 @@ export default function LibraryPage() {
   const selectedArchives = store.archives.filter((item) => matchesSelectedFolder(item.folder));
   const selectedAcwing = acwingProblems.filter((item) => matchesSelectedFolder(item.folder));
   const showBuiltIn = matchesSelectedFolder("默认题库") && (!store.librarySearch || `${INITIAL_PROBLEM.id} ${INITIAL_PROBLEM.title}`.toLowerCase().includes(store.librarySearch.toLowerCase()));
-
-  const directChildFolders = store.selectedFolder === "全部题目"
-    ? []
-    : orderedFolders.filter((folder) => folderParent(folder) === store.selectedFolder);
 
   useEffect(() => { store.setLibraryReady(); loadAcwingCatalog(); }, []);
 
@@ -257,7 +253,7 @@ export default function LibraryPage() {
                 </div>
               );
             })}
-            <div className="folder-operation-hint">⋮ 拖动排序 · "散"保留题目 · "删"永久删除</div>
+            <div className="folder-operation-hint">⋮ 拖动排序 · “散”保留题目 · “删”永久删除</div>
             <div className="folder-create-caption">{store.selectedFolder === "全部题目" ? "新建根文件夹" : `在「${folderName(store.selectedFolder)}」中新建`}</div>
             <div className="new-folder page-folder"><input value={newFolderName} onChange={(e) => setNewFolderName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") createFolder(); }} placeholder="文件夹名称" /><button onClick={createFolder}>＋</button></div>
           </aside>
@@ -292,7 +288,7 @@ export default function LibraryPage() {
                 </article>
               ))}
               {!showBuiltIn && selectedAcwing.length === 0 && selectedArchives.length === 0 && (
-                <div className="catalog-empty"><b>暂无题目</b><span>点击"添加题目"导入 JSON，或粘贴题面让 AI 自动生成。</span></div>
+                <div className="catalog-empty"><b>暂无题目</b><span>点击“添加题目”导入 JSON，或粘贴题面让 AI 自动生成。</span></div>
               )}
             </div>
           </main>

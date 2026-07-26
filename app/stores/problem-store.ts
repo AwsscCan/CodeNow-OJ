@@ -86,7 +86,7 @@ type ProblemStore = {
 
 export const useProblemStore = create<ProblemStore>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       problem: INITIAL_PROBLEM,
       code: STARTER_CODE,
       results: [],

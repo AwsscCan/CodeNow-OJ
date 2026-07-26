@@ -455,24 +455,24 @@ git commit -m "feat: isolate submission history by user"
 - Create: `tests/unit/auth-security.test.ts`
 - Create: `docs/auth-operations.md`
 
-- [ ] **Step 1: Write security regression tests**
+- [x] **Step 1: Write security regression tests**
 
 Test malformed `Origin`, repeated registration/reset attempts, expired/replayed tokens through Better Auth's test client, production missing secrets, and that `/api/me` never exposes token/account/password fields.
 
-- [ ] **Step 2: Run and verify at least one failure**
+- [x] **Step 2: Run and verify at least one failure**
 
 Run: `npm run test:unit -- tests/unit/auth-security.test.ts`  
 Expected: FAIL until origin checks, rate limiting, and response filtering are connected.
 
-- [ ] **Step 3: Add focused security configuration**
+- [x] **Step 3: Add focused security configuration**
 
 Keep the current CSP, add the deployed origin to Better Auth trusted origins, preserve `form-action 'self'`, and set auth responses to `Cache-Control: no-store`. Add `auth_rate_limits(key_hash, action, window_started_at, attempts, expires_at)` to D1 and implement atomic increment/check in `app/server/security/auth-rate-limit.ts`. Keys are SHA-256 hashes of normalized email or IP plus a server pepper; raw identifiers are never stored. Do not use the existing process-local Map for account endpoints.
 
-- [ ] **Step 4: Document required secrets and local test flow**
+- [x] **Step 4: Document required secrets and local test flow**
 
 `docs/auth-operations.md` must list `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `RESEND_API_KEY`, `AUTH_EMAIL_FROM`, local no-key behavior, domain verification before public registration, migration apply commands, and Session revocation procedure. Never include real secret values.
 
-- [ ] **Step 5: Run the phase gate**
+- [x] **Step 5: Run the phase gate**
 
 Run: `npm run lint`  
 Expected: PASS.  
@@ -482,7 +482,7 @@ Run: `npm run build`
 Expected: PASS.  
 Perform a preview smoke test: register, inspect the development verification URL, verify, log in, create a submission, log out, and confirm the submission API returns `401`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add db/schema.ts drizzle app/server/security/auth-rate-limit.ts app/middleware.ts tests/unit/auth-security.test.ts docs/auth-operations.md

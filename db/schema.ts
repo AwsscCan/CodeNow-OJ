@@ -1,4 +1,4 @@
-import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const users = sqliteTable("user", {
   id: text("id").primaryKey(),
@@ -60,4 +60,15 @@ export const submissions = sqliteTable("submissions", {
   submittedAt: integer("submitted_at", { mode: "timestamp_ms" }).notNull(),
 }, (table) => [
   index("submissions_user_problem_time_idx").on(table.userId, table.problemId, table.submittedAt),
+]);
+
+export const authRateLimits = sqliteTable("auth_rate_limits", {
+  keyHash: text("key_hash").notNull(),
+  action: text("action").notNull(),
+  windowStartedAt: integer("window_started_at", { mode: "timestamp_ms" }).notNull(),
+  attempts: integer("attempts").notNull(),
+  expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.keyHash, table.action] }),
+  index("auth_rate_limits_expires_at_idx").on(table.expiresAt),
 ]);

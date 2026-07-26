@@ -16,7 +16,7 @@ interface GeneratorContext {
 interface TestGenerator {
   type: string;
   description: string;
-  validateParams(params: unknown, ctx: GeneratorContext): string | null; // null = valid
+  validateParams(params: Record<string, unknown>, ctx: GeneratorContext): string | null; // null = valid
   generate(params: Record<string, unknown>, ctx: GeneratorContext): string;
 }
 
@@ -41,7 +41,7 @@ register({
   type: "constant_array",
   description: "Array of identical values",
   validateParams(p, ctx) {
-    const n = Number((p as any)?.n); const v = Number((p as any)?.value);
+    const n = Number(p.n); const v = Number(p.value);
     if (!Number.isFinite(n) || n < 1 || n > ctx.maxN) return `n must be 1..${ctx.maxN}`;
     if (!Number.isFinite(v)) return "value required";
     return null;
@@ -57,7 +57,7 @@ register({
   type: "increasing_array",
   description: "Strictly increasing sequence",
   validateParams(p, ctx) {
-    const n = Number((p as any)?.n);
+    const n = Number(p.n);
     if (!Number.isFinite(n) || n < 1 || n > ctx.maxN) return `n must be 1..${ctx.maxN}`;
     return null;
   },
@@ -73,7 +73,7 @@ register({
   type: "decreasing_array",
   description: "Strictly decreasing sequence",
   validateParams(p, ctx) {
-    const n = Number((p as any)?.n);
+    const n = Number(p.n);
     if (!Number.isFinite(n) || n < 1 || n > ctx.maxN) return `n must be 1..${ctx.maxN}`;
     return null;
   },
@@ -89,7 +89,7 @@ register({
   type: "random_array",
   description: "Random array within range",
   validateParams(p, ctx) {
-    const n = Number((p as any)?.n);
+    const n = Number(p.n);
     if (!Number.isFinite(n) || n < 1 || n > ctx.maxN) return `n must be 1..${ctx.maxN}`;
     return null;
   },
@@ -107,7 +107,7 @@ register({
   type: "permutation",
   description: "Random permutation of 1..n",
   validateParams(p, ctx) {
-    const n = Number((p as any)?.n);
+    const n = Number(p.n);
     if (!Number.isFinite(n) || n < 1 || n > ctx.maxN) return `n must be 1..${ctx.maxN}`;
     return null;
   },
@@ -125,7 +125,7 @@ register({
   type: "many_duplicates",
   description: "Array with many duplicate values",
   validateParams(p, ctx) {
-    const n = Number((p as any)?.n);
+    const n = Number(p.n);
     if (!Number.isFinite(n) || n < 1 || n > ctx.maxN) return `n must be 1..${ctx.maxN}`;
     return null;
   },
@@ -145,7 +145,7 @@ register({
   type: "path_tree",
   description: "Linear tree 1-2-3-...-n",
   validateParams(p, ctx) {
-    const n = Number((p as any)?.n);
+    const n = Number(p.n);
     if (!Number.isFinite(n) || n < 2 || n > ctx.maxN) return `n must be 2..${ctx.maxN}`;
     return null;
   },
@@ -161,7 +161,7 @@ register({
   type: "star_tree",
   description: "Star tree with center node 1",
   validateParams(p, ctx) {
-    const n = Number((p as any)?.n);
+    const n = Number(p.n);
     if (!Number.isFinite(n) || n < 2 || n > ctx.maxN) return `n must be 2..${ctx.maxN}`;
     return null;
   },
@@ -177,7 +177,7 @@ register({
   type: "random_tree",
   description: "Random labeled tree",
   validateParams(p, ctx) {
-    const n = Number((p as any)?.n);
+    const n = Number(p.n);
     if (!Number.isFinite(n) || n < 2 || n > ctx.maxN) return `n must be 2..${ctx.maxN}`;
     return null;
   },
@@ -200,7 +200,7 @@ register({
   type: "cycle_graph",
   description: "Simple cycle graph",
   validateParams(p, ctx) {
-    const n = Number((p as any)?.n);
+    const n = Number(p.n);
     if (!Number.isFinite(n) || n < 3 || n > ctx.maxN) return `n must be 3..${ctx.maxN}`;
     return null;
   },
@@ -217,7 +217,7 @@ register({
   type: "complete_graph",
   description: "Complete undirected graph",
   validateParams(p, ctx) {
-    const n = Number((p as any)?.n);
+    const n = Number(p.n);
     if (!Number.isFinite(n) || n < 2 || n > ctx.maxN) return `n must be 2..${ctx.maxN}`;
     const maxEdges = n * (n - 1) / 2;
     if (maxEdges * 10 > MAX_EXPANDED_CHARS) return "graph too large";
@@ -235,7 +235,7 @@ register({
   type: "broom_tree",
   description: "Broom tree: path + star at end",
   validateParams(p, ctx) {
-    const n = Number((p as any)?.n);
+    const n = Number(p.n);
     if (!Number.isFinite(n) || n < 3 || n > ctx.maxN) return `n must be 3..${ctx.maxN}`;
     return null;
   },
@@ -254,14 +254,14 @@ register({
 register({
   type: "checkerboard_grid",
   description: "Checkerboard grid with alternating values",
-  validateParams(p, ctx) {
-    const r = Number((p as any)?.rows); const c = Number((p as any)?.cols);
+  validateParams(p, _ctx) {
+    const r = Number(p.rows); const c = Number(p.cols);
     if (!Number.isFinite(r) || r < 1 || r > 3000) return "rows must be 1..3000";
     if (!Number.isFinite(c) || c < 1 || c > 3000) return "cols must be 1..3000";
     if (r * c * 10 > MAX_EXPANDED_CHARS) return "grid too large";
     return null;
   },
-  generate(p, ctx) {
+  generate(p, _ctx) {
     const rows = clamp(Number(p.rows), 1, 3000);
     const cols = clamp(Number(p.cols), 1, 3000);
     const a = Number(p.valA) || 0; const b = Number(p.valB) || 1;
@@ -280,7 +280,7 @@ register({
   type: "repeated_char",
   description: "String of repeated character",
   validateParams(p, ctx) {
-    const n = Number((p as any)?.n);
+    const n = Number(p.n);
     if (!Number.isFinite(n) || n < 1 || n > ctx.maxN) return `n must be 1..${ctx.maxN}`;
     return null;
   },
@@ -295,7 +295,7 @@ register({
   type: "palindrome_string",
   description: "Palindrome string",
   validateParams(p, ctx) {
-    const n = Number((p as any)?.n);
+    const n = Number(p.n);
     if (!Number.isFinite(n) || n < 1 || n > ctx.maxN) return `n must be 1..${ctx.maxN}`;
     return null;
   },

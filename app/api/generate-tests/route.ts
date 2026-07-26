@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { rateLimit } from "../_lib/rate-limit";
-import { generateComplexityAwareTests } from "../_lib/test-generation-pipeline";
 import { getCachedReference } from "../_lib/reference-solution";
+import { generateComplexityAwareTests } from "../_lib/test-generation-pipeline";
 
 export async function POST(request: NextRequest) {
   const rl = rateLimit(request, "ai");

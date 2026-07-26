@@ -1,8 +1,8 @@
 "use client";
 
 import Editor, { loader, type Monaco, type OnMount } from "@monaco-editor/react";
-import { memo, useEffect, useRef } from "react";
 import type { editor as MonacoEditor, languages as MonacoLanguages, Position, Range } from "monaco-editor";
+import { memo, useEffect, useRef } from "react";
 import { formatCppCode } from "./lib/format-cpp";
 
 loader.config({ paths: { vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.56.0/min/vs" } });

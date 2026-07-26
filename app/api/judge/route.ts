@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { rateLimit } from "../_lib/rate-limit";
 import {
   CPU_TIME_LIMIT_SECONDS,
   JUDGE0_BASE,
@@ -14,6 +13,7 @@ import {
   MEMORY_LIMIT_KB,
   WALL_TIME_LIMIT_SECONDS,
 } from "../_lib/constants";
+import { rateLimit } from "../_lib/rate-limit";
 
 type TestCase = { id: number; input: string; output: string };
 type JudgeStatus = { id: number; description: string };

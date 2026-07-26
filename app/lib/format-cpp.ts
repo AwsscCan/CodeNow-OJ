@@ -9,7 +9,7 @@ export function formatCppCode(text: string): string {
   const INDENT = "    "; // 4 spaces
 
   for (let i = 0; i < lines.length; i++) {
-    let line = lines[i].trim();
+    const line = lines[i].trim();
 
     // Skip empty lines
     if (!line) {
