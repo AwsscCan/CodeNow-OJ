@@ -65,6 +65,22 @@ function canonicalKey(input: string): string {
     .trim();
 }
 
+// Run an async mapper over items with a bounded number of concurrent workers,
+// preserving result order. Used to verify reference outputs in parallel.
+async function mapConcurrent<T, R>(items: T[], limit: number, fn: (item: T, index: number) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let cursor = 0;
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
+    while (cursor < items.length) {
+      const index = cursor++;
+      results[index] = await fn(items[index], index);
+    }
+  }));
+  return results;
+}
+
+const REFERENCE_VERIFY_CONCURRENCY = 6;
+
 function categoryOf(value: string): Category {
   const category = String(value || "").toLowerCase();
   if (/performance|stress|large|max|性能|压力/.test(category)) return "performance";
@@ -137,11 +153,17 @@ function testSummary(tests: GeneratedTest[]) {
   }));
 }
 
-function auditSummary(tests: GeneratedTest[]) {
-  return tests.slice(-3).map((test) => {
-    const index = tests.indexOf(test);
-    return { caseId: `C${index + 1}`, input: test.input.slice(0, 1_200), output: test.output.slice(0, 600) };
-  });
+// Show the AI a rotating window of the OLDEST not-yet-audited cases (bounded)
+// so every accepted case is re-checked at least once across batches, instead of
+// only ever re-auditing the last three.
+function auditSummary(tests: GeneratedTest[], auditedCaseIds: Set<string>, limit = 6) {
+  const pending: Array<{ caseId: string; input: string; output: string }> = [];
+  for (let i = 0; i < tests.length && pending.length < limit; i++) {
+    const caseId = `C${i + 1}`;
+    if (auditedCaseIds.has(caseId)) continue;
+    pending.push({ caseId, input: tests[i].input.slice(0, 1_200), output: tests[i].output.slice(0, 600) });
+  }
+  return pending;
 }
 
 function countsOf(tests: GeneratedTest[]) {
@@ -214,6 +236,7 @@ function batchPrompt(args: {
   hasReference: boolean;
   first: boolean;
   generationContext: string;
+  auditedCaseIds: Set<string>;
 }) {
   const exactOutput = args.hasReference
     ? "Output may be omitted only when necessary; a validated C++ reference program will recompute it."
@@ -231,7 +254,7 @@ function batchPrompt(args: {
     partsRule,
     "A performance case must be near the legal maximum and large enough to time out the rejected brute-force complexity. Its targets must name that complexity.",
     "Use the exact input grammar, testcase count, indexing, value ranges, and output rules. Never use ..., ellipsis, omitted data, pseudo-data, comments in stdin, or invented fields.",
-    !args.first && !args.hasReference ? `Re-check these earlier small cases. Return one audit per listed case; set valid=false for an invalid input and correctedOutput when its expected output is wrong: ${JSON.stringify(auditSummary(args.accepted))}` : "",
+    !args.first && !args.hasReference ? `Re-check these earlier small cases. Return one audit per listed case; set valid=false for an invalid input and correctedOutput when its expected output is wrong: ${JSON.stringify(auditSummary(args.accepted, args.auditedCaseIds))}` : "",
     `Current profile: ${JSON.stringify(args.profile)}`,
     args.generationContext ? `User batch context: ${args.generationContext}` : "",
     `Already accepted cases (avoid and broaden coverage): ${JSON.stringify(testSummary([...args.existing, ...args.accepted]))}`,
@@ -337,7 +360,7 @@ export async function generateComplexityAwareTests(options: {
   // how many brand-new candidates were accepted. Shared by the main generation
   // loop and the reference backfill loop.
   async function runBatch(requested: number, gaps: Record<Category, number>): Promise<number> {
-    const prompt = batchPrompt({ problemDigest, requested, quota: gaps, accepted: candidates, existing, profile, hasReference, first: batches === 0, generationContext });
+    const prompt = batchPrompt({ problemDigest, requested, quota: gaps, accepted: candidates, existing, profile, hasReference, first: batches === 0, generationContext, auditedCaseIds: auditedCases });
     const messages = previousRaw
       ? [{ role: "assistant", content: previousRaw.slice(-14_000) }, { role: "user", content: prompt }]
       : [{ role: "system", content: prompt }, { role: "user", content: "Generate the first usable batch now." }];
@@ -431,17 +454,33 @@ export async function generateComplexityAwareTests(options: {
       const verified: GeneratedTest[] = [];
       const usedKeys = new Set<string>();
       const verify = async (pool: GeneratedTest[]) => {
+        if (verified.length >= target) return;
+        // Collect fresh, de-duplicated cases from the pool, capped to ~2x what we
+        // still need so a few reference rejections can be absorbed in one round
+        // without over-submitting the whole candidate set.
+        const pending: Array<{ test: GeneratedTest; key: string }> = [];
+        const seen = new Set<string>();
+        const cap = Math.max(1, (target - verified.length) * 2);
         for (const test of pool) {
-          if (verified.length >= target) break;
+          if (pending.length >= cap) break;
           const key = canonicalKey(test.input);
-          if (usedKeys.has(key)) continue;
-          try {
-            const result = await judge0Submit(referenceSolution, test.input, lang);
-            if (!result.accepted) continue;
-            usedKeys.add(key);
-            verified.push({ ...test, output: result.stdout.endsWith("\n") ? result.stdout : `${result.stdout}\n` });
-            computedCount += 1;
-          } catch { /* input rejected by the reference — skip and backfill */ }
+          if (usedKeys.has(key) || seen.has(key)) continue;
+          seen.add(key);
+          pending.push({ test, key });
+        }
+        // Run Judge0 for the whole pending set concurrently, preserving order.
+        const results = await mapConcurrent(pending, REFERENCE_VERIFY_CONCURRENCY, async ({ test }) => {
+          try { return await judge0Submit(referenceSolution, test.input, lang); }
+          catch { return null; }
+        });
+        // Accept in pool (quota-priority) order, up to the target.
+        for (let i = 0; i < pending.length; i++) {
+          if (verified.length >= target) break;
+          const result = results[i];
+          if (!result || !result.accepted) continue;
+          usedKeys.add(pending[i].key);
+          verified.push({ ...pending[i].test, output: result.stdout.endsWith("\n") ? result.stdout : `${result.stdout}\n` });
+          computedCount += 1;
         }
       };
 

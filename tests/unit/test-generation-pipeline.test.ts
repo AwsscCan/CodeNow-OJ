@@ -331,6 +331,79 @@ describe("test generation pipeline", () => {
     expect(result.report.categoryCounts).toMatchObject({ adversarial: 1 });
   });
 
+  it("re-audits the oldest un-audited cases, not only the last three", async () => {
+    const requestBodies: Array<Record<string, unknown>> = [];
+    const responses = [
+      // First batch: five ordinary cases (C1..C5), no other categories yet.
+      aiResponse([
+        test("2\n1\n", "1\n", "ordinary"),
+        test("2\n2\n", "2\n", "ordinary"),
+        test("2\n3\n", "3\n", "ordinary"),
+        test("2\n4\n", "4\n", "ordinary"),
+        test("2\n5\n", "5\n", "ordinary"),
+      ]),
+      // Second batch fills the remaining categories.
+      aiResponse([
+        test("1\n0\n", "0\n", "boundary"),
+        test("2\n7 7\n", "14\n", "special"),
+        test("3\n9 -9 5\n", "5\n", "adversarial"),
+        test("6\n1 1 1 1 1 1\n", "6\n", "performance", 100000),
+      ]),
+    ];
+    vi.stubGlobal("fetch", vi.fn(async (_url: string | URL, init?: RequestInit) => {
+      requestBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      return responses.shift()!;
+    }));
+
+    await generateComplexityAwareTests({
+      apiKey: "test-key", endpoint: "https://api.deepseek.com", model: "deepseek-chat", problem, count: 8,
+    });
+
+    // The second batch prompt must re-audit the OLDEST cases (C1), which the old
+    // last-3 window (C3,C4,C5) would have excluded.
+    const secondPrompt = (requestBodies[1].messages as Array<{ content: string }>).map((m) => m.content).join("\n");
+    expect(secondPrompt).toContain("\"caseId\":\"C1\"");
+    expect(secondPrompt).toContain("\"caseId\":\"C2\"");
+  });
+
+  it("verifies reference outputs concurrently, not one at a time", async () => {
+    judge0SubmitMock.mockReset();
+    let inFlight = 0;
+    let maxInFlight = 0;
+    judge0SubmitMock.mockImplementation(async () => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 15));
+      inFlight -= 1;
+      return { accepted: true, stdout: "OK\n", stderr: "", compileError: "", statusId: 3, time: 5 };
+    });
+    vi.stubGlobal("fetch", vi.fn(async (url: string | URL) => {
+      if (String(url).includes("/languages")) return new Response(JSON.stringify([{ id: 54, name: "C++ (GCC 9.2.0)" }]), { status: 200 });
+      return aiResponse([
+        test("1\n0\n", "0\n", "boundary"),
+        test("2\n7 7\n", "14\n", "special"),
+        test("3\n1 2 3\n", "6\n", "ordinary"),
+        test("4\n1 2 3 4\n", "10\n", "ordinary"),
+        test("5\n5 4 3 2 1\n", "15\n", "adversarial"),
+        test("6\n1 1 1 1 1 1\n", "6\n", "performance", 100000),
+      ]);
+    }));
+
+    const validatedRef = {
+      solutionCode: "int main(){return 0;}", bruteCode: "int main(){return 0;}",
+      algorithmSummary: "sum", expectedTimeComplexity: "O(n)", expectedSpaceComplexity: "O(1)", bruteMaxScale: 10,
+      report: { status: "validated" as const, compiled: true, samplesPassed: true, differentialTestsPassed: 8, differentialTestsFailed: 0, errors: [] },
+    };
+
+    const result = await generateComplexityAwareTests({
+      apiKey: "test-key", endpoint: "https://api.deepseek.com", model: "deepseek-chat", problem, count: 6, validatedRef,
+    });
+
+    expect(result.tests).toHaveLength(6);
+    // Sequential verification pins maxInFlight to 1; concurrent verification lifts it.
+    expect(maxInFlight).toBeGreaterThan(1);
+  });
+
   it("does not claim validated_reference when the compiler is unreachable", async () => {
     judge0SubmitMock.mockReset();
     const aiResponses = [
