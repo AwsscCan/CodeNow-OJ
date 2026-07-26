@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { SyncStatus } from "../../hooks/use-cloud-save";
 import type { NoteProblemKind, NoteVisibility } from "../../lib/note-api";
+import { pasteImageIntoMarkdown } from "../../lib/paste-image";
 import { ProblemRefPicker, type PickedProblem } from "./problem-ref-picker";
 import { SafeMarkdown } from "./safe-markdown";
 
@@ -35,6 +36,7 @@ export function NoteEditor({ value, onChange, onSubmit, submitLabel, status, onD
 }) {
   const [tagDraft, setTagDraft] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [pasteError, setPasteError] = useState("");
 
   const addTag = () => {
     const tag = tagDraft.trim();
@@ -90,11 +92,16 @@ export function NoteEditor({ value, onChange, onSubmit, submitLabel, status, onD
         />
       </div>
 
+      {pasteError && <div className="paste-error" role="alert">{pasteError}</div>}
       <div className="note-editor-split">
         <textarea
-          placeholder="用 Markdown 记录你的解题思路…"
+          placeholder="用 Markdown 记录你的解题思路…支持直接粘贴图片(≤300KB)与 ![说明](https://…) 外链插图"
           value={value.content}
           onChange={(event) => onChange({ ...value, content: event.target.value })}
+          onPaste={(event) => {
+            const handled = pasteImageIntoMarkdown(event, value.content, (content) => { setPasteError(""); onChange({ ...value, content }); }, setPasteError);
+            if (handled) return;
+          }}
         />
         <div className="note-preview">
           <SafeMarkdown className="note-md" value={value.content || "_预览区_"} />

@@ -107,17 +107,20 @@ type LibraryStore = {
   libraryReady: boolean;
   cloudArchives: ArchivedProblem[];
   cloudFolderIds: Record<string, string>;
+  hiddenBuiltins: string[];
 
   setArchives: (archives: ArchivedProblem[]) => void;
   addArchive: (archive: ArchivedProblem) => void;
   removeArchive: (id: string) => void;
   updateArchive: (id: string, updater: (item: ArchivedProblem) => ArchivedProblem) => void;
   renameProblem: (oldId: string, newId: string) => void;
+  materializeBuiltin: (problem: Problem, folder: string, newId: string) => void;
   syncProblemSamples: (problemId: string, samples: TestCase[]) => void;
 
   setFolders: (folders: string[]) => void;
   addFolder: (folder: string) => void;
   removeFolder: (folder: string) => void;
+  moveFolderInto: (source: string, target: string) => void;
   setSelectedFolder: (folder: string) => void;
   toggleCollapsed: (folder: string) => void;
   setFolderOrder: (order: string[]) => void;
@@ -141,6 +144,7 @@ export const useLibraryStore = create<LibraryStore>()(
       libraryReady: false,
       cloudArchives: [],
       cloudFolderIds: {},
+      hiddenBuiltins: [] as string[],
 
       setArchives: (archives) => set({ archives }),
       addArchive: (archive) => set((s) => ({ archives: [archive, ...s.archives] })),
@@ -149,9 +153,27 @@ export const useLibraryStore = create<LibraryStore>()(
       renameProblem: (oldId, newId) => set((s) => ({
         archives: s.archives.map((a) => a.problem.id === oldId ? { ...a, problem: { ...a.problem, id: newId } } : a),
       })),
+      // 内置题去特权：改题号即物化为普通归档副本，原内置条目隐藏
+      materializeBuiltin: (problem, folder, newId) => set((s) => ({
+        archives: [{ problem: { ...problem, id: newId }, folder, archivedAt: new Date().toISOString() }, ...s.archives],
+        hiddenBuiltins: s.hiddenBuiltins.includes(problem.id) ? s.hiddenBuiltins : [...s.hiddenBuiltins, problem.id],
+      })),
 
       setFolders: (folders) => set({ folders }),
       addFolder: (folder) => set((s) => ({ folders: [...s.folders, folder] })),
+      // 拖入成为子文件夹：整树路径与归档/折叠/排序/选中同步迁移
+      moveFolderInto: (source, target) => set((s) => {
+        const name = folderName(source);
+        const next = `${target}/${name}`;
+        const remap = (path: string) => path === source ? next : path.startsWith(`${source}/`) ? `${next}${path.slice(source.length)}` : path;
+        return {
+          folders: s.folders.map(remap),
+          collapsedFolders: s.collapsedFolders.map(remap),
+          folderOrder: s.folderOrder.map(remap),
+          archives: s.archives.map((a) => ({ ...a, folder: remap(a.folder) })),
+          selectedFolder: remap(s.selectedFolder),
+        };
+      }),
       removeFolder: (folder) => set((s) => ({
         folders: s.folders.filter((f) => !folderContains(f, folder)),
         collapsedFolders: s.collapsedFolders.filter((f) => !folderContains(f, folder)),
@@ -188,6 +210,7 @@ export const useLibraryStore = create<LibraryStore>()(
         collapsedFolders: s.collapsedFolders,
         folderOrder: s.folderOrder,
         includeSubfolders: s.includeSubfolders,
+        hiddenBuiltins: s.hiddenBuiltins,
         libraryReady: true,
       }),
     },

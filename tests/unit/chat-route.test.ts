@@ -109,6 +109,24 @@ describe("POST /api/chat 高木人设联动", () => {
     expect(body.reasoning).toBe("我先分析边界…");
   });
 
+  it("takagi 人设下穿帮的思维链被丢弃(自称模型/分析扮演指令)", async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+      choices: [{ message: { content: "答案", reasoning_content: "作为 DeepSeek 模型，用户让我扮演高木同学，我应该……" } }],
+    }), { status: 200 }));
+    const res = await POST(makeRequest({ persona: "takagi" }));
+    const body = await res.json() as { reasoning?: string };
+    expect(body.reasoning, "穿帮思维链不应透出").toBeUndefined();
+  });
+
+  it("非 takagi 人设不做穿帮过滤，思维链原样透出", async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+      choices: [{ message: { content: "答案", reasoning_content: "作为 AI 助手我先分析题目约束…" } }],
+    }), { status: 200 }));
+    const res = await POST(makeRequest());
+    const body = await res.json() as { reasoning?: string };
+    expect(body.reasoning).toContain("AI 助手");
+  });
+
   it("记忆注入有截断保护：超量条目只保留最近 8 条且压平换行", async () => {
     const memories = Array.from({ length: 12 }, (_, i) => `记忆${i}号`);
     memories.push("异常\n换行注入");

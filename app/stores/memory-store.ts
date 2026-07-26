@@ -16,6 +16,7 @@ type MemoryStore = {
   memories: MemoryEntry[];
   remember: (kind: MemoryKind, text: string) => void;
   recentMemories: (limit: number) => string[];
+  forgetProblemMistakes: (problemId: string) => void;
   clearMemories: () => void;
 };
 
@@ -66,6 +67,10 @@ export const useMemoryStore = create<MemoryStore>()(
       recentMemories: (limit) => get().memories
         .slice(-Math.max(0, limit))
         .map((m) => (m.count > 1 ? `${m.text}（已出现 ${m.count} 次）` : m.text)),
+      // 全 AC 雪耻：该题的错误记忆一笔勾销，习惯类保留
+      forgetProblemMistakes: (problemId) => set((s) => ({
+        memories: s.memories.filter((m) => !(m.kind === "mistake" && m.text.includes(`「${problemId} `))),
+      })),
       clearMemories: () => set({ memories: [] }),
     }),
     {

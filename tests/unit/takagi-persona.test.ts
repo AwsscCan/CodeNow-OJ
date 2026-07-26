@@ -39,6 +39,13 @@ describe("高木同学人设共享模块", () => {
     expect(TAKAGI_CORE).toMatch(/病娇|毒舌/);
   });
 
+  it("思考过程也要求保持高木第一人称视角，不提及模型身份", () => {
+    const prompt = buildTakagiChatPrompt("CTX");
+    expect(prompt).toMatch(/思考过程/);
+    expect(prompt).toMatch(/第一人称|内心/);
+    expect(prompt).toMatch(/不要.*(提及|出现).*(模型|扮演|提示词)/);
+  });
+
   it("聊天场景提示词=人设+编程助教职责+题目上下文", () => {
     const prompt = buildTakagiChatPrompt("【当前题目上下文占位】");
     expect(prompt).toContain(TAKAGI_CORE);

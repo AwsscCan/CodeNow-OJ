@@ -11,6 +11,7 @@ import { Toast } from "../../components/toast";
 import { Topbar } from "../../components/topbar";
 import { useCloudSave, type CloudSaveResult, type SyncStatus } from "../../hooks/use-cloud-save";
 import { useConversationSync } from "../../hooks/use-conversation-sync";
+import { useEscapeClose } from "../../hooks/use-escape-close";
 import { useJudge } from "../../hooks/use-judge";
 import { useToast } from "../../hooks/use-toast";
 import { authClient } from "../../lib/auth-client";
@@ -288,9 +289,12 @@ export default function ProblemPage() {
       store.setCompilerDiagnostic(result.diagnostic);
       reactMascotToJudge(result.results, { submit });
 
-      // 记忆池：判题失败自动沉淀错误记忆，反哺 AI 对话与桌宠台词
+      // 记忆池：判题失败自动沉淀错误记忆；全 AC 雪耻则勾销该题旧账
       const judgeMemory = distillJudgeMemory(store.problem, result.results);
       if (judgeMemory) useMemoryStore.getState().remember(judgeMemory.kind, judgeMemory.text);
+      else if (result.results.length && result.results.every((r) => r.status === "AC")) {
+        useMemoryStore.getState().forgetProblemMistakes(store.problem.id);
+      }
 
       // Always add to local history (both run and submit)
       if (result.submission) {
@@ -313,6 +317,19 @@ export default function ProblemPage() {
 
   // 少女主题下 AI 对话与桌宠共用高木同学人设
   const isTakagi = theme.themeMode === "girl";
+
+  // Esc 逐层收起浮层
+  useEscapeClose(showChat, () => setShowChat(false));
+  useEscapeClose(showAi, () => setShowAi(false));
+  useEscapeClose(showMascotAiPrompt, () => setShowMascotAiPrompt(false));
+  useEscapeClose(Boolean(store.selectedSubmission), () => store.setSelectedSubmission(null));
+
+  // 聊天新消息自动滚到底部
+  const chatMessagesRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const node = chatMessagesRef.current;
+    if (node) node.scrollTop = node.scrollHeight;
+  }, [aiStore.chatMessages, chatBusy, showChat]);
 
   // 判题动态摘要：让 AI(高木)读到最近一次运行结果与提交记录
   function buildJudgeContext() {
@@ -679,7 +696,7 @@ export default function ProblemPage() {
             : <span>{aiStore.provider === "deepseek" ? "DS" : "OA"}</span>}
           <div><b>{aiStore.model}</b><small>{isTakagi ? "陪你一起看这道题 · ちゃんと見てるよ" : "已携带当前题面和代码"}</small></div>
         </div>
-        <div className="chat-messages">
+        <div className="chat-messages" ref={chatMessagesRef}>
           {!aiStore.chatMessages.length && <div className="chat-welcome">
             {isTakagi ? <>
               <img className="takagi-welcome-portrait" src="/codenow/portrait-classroom.jpg" alt="" aria-hidden="true" loading="lazy" decoding="async" />

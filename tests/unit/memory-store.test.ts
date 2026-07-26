@@ -85,6 +85,18 @@ describe("useMemoryStore 记忆池", () => {
     expect(s().memories[s().memories.length - 1].text).toBe(`记忆${MEMORY_LIMIT + 4}`);
   });
 
+  it("forgetProblemMistakes：全 AC 雪耻后清除该题错误记忆，保留他题与习惯", () => {
+    const s = () => useMemoryStore.getState();
+    s().remember("mistake", "在「P1001 A + B Problem」WA 过(1/3)，第 2 个点先挂");
+    s().remember("mistake", "在「CF0042 滑动窗口」超时过，倾向先写暴力解法");
+    s().remember("habit", "常在边界情况上没把握");
+    s().forgetProblemMistakes("P1001");
+    const memories = s().memories;
+    expect(memories.some((m) => m.text.includes("P1001"))).toBe(false);
+    expect(memories.some((m) => m.text.includes("CF0042"))).toBe(true);
+    expect(memories.some((m) => m.kind === "habit")).toBe(true);
+  });
+
   it("recentMemories 取最近 N 条，重复次数标注在文本中", () => {
     const s = () => useMemoryStore.getState();
     s().remember("mistake", "旧记忆");

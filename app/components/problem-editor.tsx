@@ -3,10 +3,8 @@
 "use client";
 
 import { useState } from "react";
+import { pasteImageIntoMarkdown } from "../lib/paste-image";
 import type { Problem } from "../stores/problem-store";
-
-/** 内嵌 base64 图片的大小上限：防止 localStorage 与云端行大小被大图撑爆 */
-const IMAGE_SIZE_LIMIT = 300 * 1024;
 
 type MarkdownField = "description" | "inputFormat" | "outputFormat";
 
@@ -28,23 +26,10 @@ export function ProblemEditor({ problem, onSave, onCancel }: {
   }
 
   function pasteImage(event: React.ClipboardEvent<HTMLTextAreaElement>, field: MarkdownField) {
-    const item = Array.from(event.clipboardData?.items ?? []).find((entry) => entry.type.startsWith("image/"));
-    if (!item) return;
-    event.preventDefault();
-    const file = item.getAsFile();
-    if (!file) return;
-    if (file.size > IMAGE_SIZE_LIMIT) {
-      return setError("图片超过 300KB，请压缩后粘贴，或改用外链语法 ![说明](https://…)");
-    }
-    const start = event.currentTarget.selectionStart ?? draft[field].length;
-    const end = event.currentTarget.selectionEnd ?? start;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const markdown = `![题图](${String(reader.result)})`;
+    pasteImageIntoMarkdown(event, draft[field], (next) => {
       setError("");
-      setDraft((d) => ({ ...d, [field]: `${d[field].slice(0, start)}${markdown}${d[field].slice(end)}` }));
-    };
-    reader.readAsDataURL(file);
+      setDraft((d) => ({ ...d, [field]: next }));
+    }, setError, "题图");
   }
 
   function save() {

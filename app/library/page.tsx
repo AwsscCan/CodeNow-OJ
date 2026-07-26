@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
 import { Toast } from "../components/toast";
 import { Topbar } from "../components/topbar";
+import { useEscapeClose } from "../hooks/use-escape-close";
 import { useToast } from "../hooks/use-toast";
 import { authClient } from "../lib/auth-client";
 import { buildCloudFolderPaths, ProblemApi } from "../lib/problem-api";
@@ -24,6 +25,8 @@ export default function LibraryPage() {
   const [newFolderName, setNewFolderName] = useState("");
   const [draggedFolder, setDraggedFolder] = useState<string | null>(null);
   const [dragOverFolder, setDragOverFolder] = useState<string | null>(null);
+  const [dragOverMode, setDragOverMode] = useState<"sort" | "into">("sort");
+  const [menuFolder, setMenuFolder] = useState<string | null>(null);
   const [showImport, setShowImport] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [nextProblemId, setNextProblemId] = useState("");
@@ -38,7 +41,13 @@ export default function LibraryPage() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const acwingFolders = getAcwingFolders();
-  const acwingProblems = getAcwingProblems();
+  const acwingProblems = getAcwingProblems().filter((item) => !store.hiddenBuiltins.includes(item.id));
+  const builtinVisible = !store.hiddenBuiltins.includes(INITIAL_PROBLEM.id);
+
+  // Esc 收起弹窗
+  useEscapeClose(showImport, () => setShowImport(false));
+  useEscapeClose(Boolean(renamingId), () => setRenamingId(null));
+  useEscapeClose(Boolean(menuFolder), () => setMenuFolder(null));
 
   const folders = [...store.folders, ...(store.cloudArchives.length ? ["云端题库"] : []), ...Object.keys(store.cloudFolderIds), ...acwingFolders];
   const orderedFolders = orderFolderTree(folders, store.folderOrder);
@@ -54,7 +63,7 @@ export default function LibraryPage() {
 
   const selectedArchives = [...store.cloudArchives, ...store.archives].filter((item) => matchesSelectedFolder(item.folder));
   const selectedAcwing = acwingProblems.filter((item) => matchesSelectedFolder(item.folder));
-  const showBuiltIn = matchesSelectedFolder("默认题库") && (!store.librarySearch || `${INITIAL_PROBLEM.id} ${INITIAL_PROBLEM.title}`.toLowerCase().includes(store.librarySearch.toLowerCase()));
+  const showBuiltIn = builtinVisible && matchesSelectedFolder("默认题库") && (!store.librarySearch || `${INITIAL_PROBLEM.id} ${INITIAL_PROBLEM.title}`.toLowerCase().includes(store.librarySearch.toLowerCase()));
 
   useEffect(() => { store.setLibraryReady(); loadAcwingCatalog(); }, []);
   useEffect(() => {
@@ -177,10 +186,52 @@ export default function LibraryPage() {
     if (!renamingId) return;
     const nextId = nextProblemId.trim();
     if (!/^[A-Za-z][A-Za-z0-9_-]{0,19}$/.test(nextId)) return toast("题号需以字母开头，仅含字母数字下划线短横线，最长 20 位");
-    store.renameProblem(renamingId, nextId);
+    if (store.archives.some((a) => a.problem.id === renamingId)) {
+      store.renameProblem(renamingId, nextId);
+    } else {
+      // 内置题(P1001/AcWing)去特权：改题号即物化为普通归档副本
+      const builtin = renamingId === INITIAL_PROBLEM.id
+        ? { problem: INITIAL_PROBLEM, folder: "默认题库" }
+        : (() => { const item = acwingProblems.find((p) => p.id === renamingId); return item ? { problem: item, folder: item.folder } : null; })();
+      if (!builtin) return toast("未找到该题目");
+      store.materializeBuiltin(builtin.problem, builtin.folder, nextId);
+    }
     setRenamingId(null);
     setNextProblemId("");
     toast(`题号已修改为 ${nextId}`);
+  }
+
+  /** 落点三段判定：上/下 30% 为排序，中段为拖入成为子文件夹；无高度信息时退回排序语义 */
+  function dropZoneOf(clientY: number, rect: DOMRect): "before" | "after" | "into" {
+    if (rect.height <= 0) return clientY > rect.top ? "after" : "before";
+    const ratio = (clientY - rect.top) / rect.height;
+    return ratio < 0.3 ? "before" : ratio > 0.7 ? "after" : "into";
+  }
+
+  async function reparentFolder(target: string) {
+    const source = draggedFolder;
+    setDragOverFolder(null);
+    setDraggedFolder(null);
+    if (!source || source === target) return;
+    if (folderContains(target, source)) return toast("不能把文件夹拖进自己的子文件夹");
+    const name = folderName(source);
+    const nextPath = `${target}/${name}`;
+    if (nextPath.split("/").filter(Boolean).length > 5) return toast("最多支持 5 级文件夹");
+    if (orderedFolders.includes(nextPath)) return toast("目标文件夹下已有同名文件夹");
+    const sourceCloudId = store.cloudFolderIds[source];
+    const targetCloudId = store.cloudFolderIds[target];
+    if (sourceCloudId || targetCloudId) {
+      if (!sourceCloudId || !targetCloudId) return toast("本地与云端文件夹之间暂不支持拖入");
+      await ProblemApi.updateFolder(sourceCloudId, { parentId: targetCloudId });
+      const remap = (path: string) => path === source ? nextPath : path.startsWith(`${source}/`) ? `${nextPath}${path.slice(source.length)}` : path;
+      store.setCloudFolderIds(Object.fromEntries(Object.entries(store.cloudFolderIds).map(([path, id]) => [remap(path), id])));
+      store.setCloudArchives(store.cloudArchives.map((item) => folderContains(item.folder, source) ? { ...item, folder: remap(item.folder) } : item));
+    } else {
+      if (!store.folders.includes(source)) return toast("内置目录不支持拖入");
+      if (!store.folders.includes(target)) return toast("目标文件夹不支持拖入");
+      store.moveFolderInto(source, target);
+    }
+    toast(`已将「${name}」移入「${folderName(target)}」`);
   }
 
   function reorderFolder(target: string, placeAfter: boolean) {
@@ -318,27 +369,29 @@ export default function LibraryPage() {
               const collapsed = store.collapsedFolders.includes(folder);
               // const marginStyle = { marginLeft: `${(folder.split("/").length - 1) * 13}px` };
               return (
-                <div className={`folder-entry ${dragOverFolder === folder ? "drag-over" : ""}`} key={folder} style={{ marginLeft: `${(folder.split("/").length - 1) * 13}px` }}
+                <div className={`folder-entry ${dragOverFolder === folder ? (dragOverMode === "into" ? "drag-into" : "drag-over") : ""}`} key={folder} style={{ marginLeft: `${(folder.split("/").length - 1) * 13}px` }}
                   draggable
                   onDragStart={(e) => { setDraggedFolder(folder); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", folder); }}
                   onDragEnd={() => { setDraggedFolder(null); setDragOverFolder(null); }}
-                  onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOverFolder(folder); }}
+                  onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOverFolder(folder); setDragOverMode(dropZoneOf(e.clientY, e.currentTarget.getBoundingClientRect()) === "into" ? "into" : "sort"); }}
                   onDragLeave={() => setDragOverFolder((item) => item === folder ? null : item)}
-                  onDrop={(e) => { e.preventDefault(); const b = e.currentTarget.getBoundingClientRect(); reorderFolder(folder, e.clientY > b.top + b.height / 2); }}>
-                  <span className="folder-drag" aria-hidden="true" title="按住整行拖动排序">⋮</span>
+                  onDrop={(e) => { e.preventDefault(); const zone = dropZoneOf(e.clientY, e.currentTarget.getBoundingClientRect()); if (zone === "into") { void reparentFolder(folder); } else { reorderFolder(folder, zone === "after"); } }}>
+                  {folder !== "默认题库" && (store.folders.includes(folder) || Boolean(store.cloudFolderIds[folder]))
+                    ? <button className="folder-drag" aria-label={`文件夹操作 ${folder}`} title="点击展开操作 · 按住整行拖动排序" onClick={() => setMenuFolder((m) => m === folder ? null : folder)}>⋮</button>
+                    : <span className="folder-drag" aria-hidden="true" title="按住整行拖动排序">⋮</span>}
                   {hasChildren ? <button className="folder-expand" onClick={() => store.toggleCollapsed(folder)}>{collapsed ? "›" : "⌄"}</button> : <span className="folder-spacer" />}
                   <button className={`folder-select ${store.selectedFolder === folder ? "active" : ""}`} onClick={() => store.setSelectedFolder(folder)}>
                     <span>▱ {folderName(folder)}</span>
                     <b>{store.archives.filter((a) => folderContains(a.folder, folder)).length + acwingProblems.filter((p) => folderContains(p.folder, folder)).length + (folder === "默认题库" ? 1 : 0)}</b>
                   </button>
-                  {folder !== "默认题库" && (store.folders.includes(folder) || Boolean(store.cloudFolderIds[folder])) && <>
-                    <button className="folder-action dissolve" onClick={() => dissolveFolder(folder)}>散</button>
-                    <button className="folder-action destructive" onClick={() => deleteFolder(folder)}>删</button>
-                  </>}
+                  {menuFolder === folder && <div className="folder-menu" role="menu">
+                    <button role="menuitem" onClick={() => { setMenuFolder(null); void dissolveFolder(folder); }}>散：解散并保留题目</button>
+                    <button role="menuitem" className="danger" onClick={() => { setMenuFolder(null); void deleteFolder(folder); }}>删：永久删除</button>
+                  </div>}
                 </div>
               );
             })}
-            <div className="folder-operation-hint">按住整行拖动排序 · “散”保留题目 · “删”永久删除</div>
+            <div className="folder-operation-hint">按住整行拖动排序，拖到行中部可移入为子文件夹 · 点 ⋮ 展开散/删操作</div>
             <div className="folder-create-caption">{store.selectedFolder === "全部题目" ? "新建根文件夹" : `在「${folderName(store.selectedFolder)}」中新建`}</div>
             <div className="new-folder page-folder"><input value={newFolderName} onChange={(e) => setNewFolderName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") createFolder(); }} placeholder="文件夹名称" /><button onClick={createFolder}>＋</button></div>
           </aside>
@@ -355,10 +408,10 @@ export default function LibraryPage() {
             </div>
             <div className="catalog-header"><span>题目</span><span>难度</span><span>测试点</span><span>分类</span><span></span></div>
             <div className="catalog-list">
-              {showBuiltIn && <article className="catalog-row built-in"><div className="catalog-problem-link"><span className="catalog-id-edit locked"><code>{INITIAL_PROBLEM.id}</code></span><button className="catalog-title-open" onClick={openBuiltIn}><span><b>{INITIAL_PROBLEM.title}</b><small>经典入门题 · 内置题目</small></span></button></div><span className="difficulty beginner">{INITIAL_PROBLEM.difficulty}</span><span>{INITIAL_PROBLEM.samples.length} 个</span><span>默认题库</span><i onClick={openBuiltIn}>进入做题 →</i></article>}
+              {showBuiltIn && <article className="catalog-row built-in"><div className="catalog-problem-link"><button className="catalog-id-edit editable" onClick={() => { setRenamingId(INITIAL_PROBLEM.id); setNextProblemId(INITIAL_PROBLEM.id); }}><code>{INITIAL_PROBLEM.id}</code></button><button className="catalog-title-open" onClick={openBuiltIn}><span><b>{INITIAL_PROBLEM.title}</b><small>经典入门题 · 内置题目</small></span></button></div><span className="difficulty beginner">{INITIAL_PROBLEM.difficulty}</span><span>{INITIAL_PROBLEM.samples.length} 个</span><span>默认题库</span><i onClick={openBuiltIn}>进入做题 →</i></article>}
               {selectedAcwing.map((item) => (
                 <article className="catalog-row external-problem" key={item.id}>
-                  <div className="catalog-problem-link"><span className="catalog-id-edit locked"><code>{item.id}</code></span><button className="catalog-title-open" onClick={() => openBundled(item)}><span><b>{item.title}</b><small>{item.extractionStatus === "complete" ? "题面已自动提取" : "题面需结合来源核对"} · 博客园来源</small></span></button></div>
+                  <div className="catalog-problem-link"><button className="catalog-id-edit editable" onClick={() => { setRenamingId(item.id); setNextProblemId(item.id); }}><code>{item.id}</code></button><button className="catalog-title-open" onClick={() => openBundled(item)}><span><b>{item.title}</b><small>{item.extractionStatus === "complete" ? "题面已自动提取" : "题面需结合来源核对"} · 博客园来源</small></span></button></div>
                   <span className="difficulty normal">{item.difficulty}</span><span>{item.samples.length} 个</span><span title={item.folder}>{folderName(item.folder)}</span>
                   <div className="row-actions"><a href={item.sourceUrl} target="_blank" rel="noreferrer">来源</a><i onClick={() => openBundled(item)}>进入 →</i></div>
                 </article>

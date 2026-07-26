@@ -189,6 +189,33 @@ describe("少女主题 AI 对话高木化", () => {
   });
 });
 
+describe("聊天新消息自动滚动", () => {
+  it("消息追加后消息区滚动到底部", async () => {
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", { get: () => 500, configurable: true });
+    const { container, getByText } = render(<ProblemPage />);
+    fireEvent.click(getByText("◈ 问 AI"));
+    const messages = container.querySelector(".chat-messages") as HTMLElement;
+    expect(messages).toBeTruthy();
+    act(() => { useAiStore.getState().addChatMessage({ role: "assistant", content: "新消息来了" }); });
+    await vi.waitFor(() => expect(messages.scrollTop).toBe(500));
+    delete (HTMLElement.prototype as Record<string, unknown>)["scrollHeight" as never];
+  });
+});
+
+describe("Esc 关闭浮层", () => {
+  it("Esc 收起 AI 解题弹窗与聊天抽屉", () => {
+    const { container, getByText } = render(<ProblemPage />);
+    fireEvent.click(getByText("✦ AI 解题"));
+    expect(container.querySelector(".ai-modal")).toBeTruthy();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(container.querySelector(".ai-modal")).toBeNull();
+    fireEvent.click(getByText("◈ 问 AI"));
+    expect(container.querySelector(".chat-drawer")).toBeTruthy();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(container.querySelector(".chat-drawer")).toBeNull();
+  });
+});
+
 describe("样例卡复制按钮", () => {
   it("输入与输出都有复制按钮，输出复制写入期望输出", () => {
     const writeText = vi.fn(async () => {});
@@ -272,6 +299,23 @@ describe("用户记忆池：沉淀与注入", () => {
       expect(memories.length, "判题失败应沉淀记忆").toBeGreaterThan(0);
       expect(memories[memories.length - 1].kind).toBe("mistake");
       expect(memories[memories.length - 1].text).toContain(INITIAL_PROBLEM.id);
+    });
+  });
+
+  it("全 AC 雪耻：清除该题此前沉淀的错误记忆", async () => {
+    useMemoryStore.getState().remember("mistake", `在「${INITIAL_PROBLEM.id} ${INITIAL_PROBLEM.title}」WA 过(1/2)，第 2 个点先挂`);
+    runTestsMock.mockResolvedValueOnce({
+      results: [
+        { id: 1, status: "AC", actual: "3", expected: "3", duration: 4 },
+        { id: 2, status: "AC", actual: "73", expected: "73", duration: 5 },
+      ],
+      diagnostic: "",
+      submission: null,
+    });
+    const { getByText } = render(<ProblemPage />);
+    fireEvent.click(getByText("▷ 运行测试"));
+    await vi.waitFor(() => {
+      expect(useMemoryStore.getState().memories.some((m) => m.text.includes(INITIAL_PROBLEM.id)), "全 AC 后该题错误记忆应被清除").toBe(false);
     });
   });
 
