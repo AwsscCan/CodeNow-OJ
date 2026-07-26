@@ -515,6 +515,31 @@ export async function generateComplexityAwareTests(options: {
     }
   } else {
     selected = selectByQuota(candidates, target, quota);
+
+    // Count self-check: the main loop can bail early (stagnation / attempt
+    // budget) with fewer than `target` usable cases. Make dedicated backfill
+    // attempts with a fresh budget that chase the missing count until we hit
+    // the target or genuinely run out of new material.
+    let fillAttempts = 0;
+    let fillStagnant = 0;
+    while (selected.length < target && fillAttempts < maxAttempts && fillStagnant < 3 && Date.now() < overallDeadline - 1_500) {
+      const before = candidates.length;
+      const gaps = missingQuota(quota, candidates);
+      const need = target - candidates.length;
+      const missingCategories = Object.values(gaps).reduce((sum, value) => sum + value, 0);
+      const requested = Math.min(20, Math.max(1, Math.ceil(Math.max(need, missingCategories) * 1.2)));
+      await runBatch(requested, gaps);
+      fillAttempts += 1;
+      fillStagnant = candidates.length > before ? 0 : fillStagnant + 1;
+      selected = selectByQuota(candidates, target, quota);
+    }
+  }
+
+  // Final count self-check: if we still could not reach the target, say so
+  // explicitly so the caller/UI surfaces the shortfall instead of silently
+  // returning fewer test points.
+  if (selected.length < target) {
+    warnings.unshift(`只生成了 ${selected.length}/${target} 个测试点：模型未能提供更多不重复的有效数据，可再次点击继续补足。`);
   }
 
   const categoryCounts = countsOf(selected);

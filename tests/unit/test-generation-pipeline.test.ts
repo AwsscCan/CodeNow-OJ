@@ -81,6 +81,33 @@ describe("test generation pipeline", () => {
     }
   });
 
+  it("self-checks the count and backfills when the model stalls before the target", async () => {
+    // The model returns duplicates for the first four calls (stalling the main
+    // loop), then recovers with fresh cases. Without a count self-check the run
+    // would return only the single deduped case.
+    let calls = 0;
+    const dup = test("1\n0\n", "0\n", "boundary");
+    vi.stubGlobal("fetch", vi.fn(async (url: string | URL) => {
+      if (String(url).includes("/languages")) return new Response(JSON.stringify([{ id: 54, name: "C++ (GCC 9.2.0)" }]), { status: 200 });
+      calls += 1;
+      if (calls <= 4) return aiResponse([dup, dup, dup]);
+      return aiResponse([
+        test("2\n1 1\n", "2\n", "ordinary"),
+        test("2\n2 2\n", "4\n", "special"),
+        test("3\n9 -9 5\n", "5\n", "adversarial"),
+        test("6\n1 1 1 1 1 1\n", "6\n", "performance", 100000),
+        test("2\n3 3\n", "6\n", "ordinary"),
+        test("2\n4 4\n", "8\n", "ordinary"),
+      ]);
+    }));
+
+    const result = await generateComplexityAwareTests({
+      apiKey: "test-key", endpoint: "https://api.deepseek.com", model: "deepseek-chat", problem, count: 6,
+    });
+
+    expect(result.tests).toHaveLength(6);
+  });
+
   it("reaches a large target in very few AI round-trips", async () => {
     vi.stubGlobal("fetch", obedientFetch());
     const result = await generateComplexityAwareTests({
