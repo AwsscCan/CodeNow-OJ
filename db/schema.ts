@@ -1,4 +1,5 @@
-import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { sql } from "drizzle-orm";
+import { check, index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import type { AnySQLiteColumn } from "drizzle-orm/sqlite-core";
 
 export const users = sqliteTable("user", {
@@ -154,4 +155,43 @@ export const dataImports = sqliteTable("data_imports", {
 }, (table) => [
   uniqueIndex("data_imports_user_id_idempotency_key_unique").on(table.userId, table.idempotencyKey),
   index("data_imports_user_id_created_at_idx").on(table.userId, table.createdAt),
+]);
+
+export const userPreferences = sqliteTable("user_preferences", {
+  userId: text("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  themeMode: text("theme_mode").notNull().default("light"),
+  editorTheme: text("editor_theme").notNull().default("light"),
+  settingsJson: text("settings_json").notNull().default("{}"),
+  version: integer("version").notNull().default(1),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+}, (table) => [index("user_preferences_updated_at_idx").on(table.updatedAt)]);
+
+export const aiConversations = sqliteTable("ai_conversations", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  problemRef: text("problem_ref"),
+  title: text("title").notNull(),
+  version: integer("version").notNull().default(1),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+}, (table) => [
+  index("ai_conversations_user_id_updated_at_idx").on(table.userId, table.updatedAt),
+  index("ai_conversations_user_id_problem_ref_idx").on(table.userId, table.problemRef),
+]);
+
+export const aiMessages = sqliteTable("ai_messages", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  conversationId: text("conversation_id").notNull().references(() => aiConversations.id, { onDelete: "cascade" }),
+  role: text("role", { enum: ["user", "assistant"] }).notNull(),
+  content: text("content").notNull(),
+  sortOrder: integer("sort_order").notNull(),
+  version: integer("version").notNull().default(1),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+}, (table) => [
+  check("ai_messages_role_check", sql`${table.role} in ('user', 'assistant')`),
+  uniqueIndex("ai_messages_conversation_id_sort_order_unique").on(table.conversationId, table.sortOrder),
+  index("ai_messages_user_id_conversation_id_sort_order_idx").on(table.userId, table.conversationId, table.sortOrder),
 ]);

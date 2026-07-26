@@ -14,11 +14,11 @@
 
 **Files:** `db/schema.ts`, `tests/unit/user-sync-schema.test.ts`, `drizzle/0005_*.sql`
 
-- [ ] Write a failing schema test for one `userPreferences` row per user and indexed `aiConversations`/`aiMessages` with user ownership, role enum validation, sort order, timestamps, and versions.
-- [ ] Run the focused test; expect missing exports.
-- [ ] Define tables. `settings_json` may contain UI-only settings; do not add an API-key or credential column. Messages use `role = user|assistant`; conversation deletion cascades to messages.
-- [ ] Generate and inspect migration, then run focused tests and build.
-- [ ] Commit with `git commit -m "feat: add preferences and conversation schema"`.
+- [x] Write a failing schema test for one `userPreferences` row per user and indexed `aiConversations`/`aiMessages` with user ownership, role enum validation, sort order, timestamps, and versions.
+- [x] Run the focused test; expect missing exports.
+- [x] Define tables. `settings_json` may contain UI-only settings; do not add an API-key or credential column. Messages use `role = user|assistant`; conversation deletion cascades to messages.
+- [x] Generate and inspect migration `drizzle/0006_uneven_hemingway.sql`, then run focused tests and build.
+- [x] Commit with `git commit -m "feat: add preferences and conversation schema"`.
 
 ### Task 2: Implement preference sync without secrets
 
