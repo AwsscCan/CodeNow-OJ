@@ -105,7 +105,7 @@ Commit: `git commit -m "feat: close public account registration"`
 - Create: `app/server/admin/admin-account-service.ts`
 - Create: `tests/unit/admin-account-service.test.ts`
 
-- [ ] **Step 1: Write failing service tests**
+- [x] **Step 1: Write failing service tests**
 
 ```ts
 it("creates an invited verified user with a one-time temporary password", async () => {
@@ -122,21 +122,21 @@ it("refuses to ban the last active administrator", async () => {
 });
 ```
 
-- [ ] **Step 2: Run the test and verify RED**
+- [x] **Step 2: Run the test and verify RED**
 
 Run: `npm run test:unit -- tests/unit/admin-account-service.test.ts`
 
 Expected: missing admin service modules.
 
-- [ ] **Step 3: Implement minimal services**
+- [x] **Step 3: Implement minimal services**
 
 `requireAdmin` resolves the Session and returns `null` for missing/non-admin/banned users. Generate passwords with `crypto.getRandomValues`, call Better Auth admin endpoints for create-user, set-password, ban/unban, and revoke-user-sessions, update `mustChangePassword`, and write an allowlisted audit row in the same application operation. Reject sensitive metadata keys recursively.
 
-- [ ] **Step 4: Add last-admin, duplicate invitation, reset, ban, unban, and audit tests**
+- [x] **Step 4: Add last-admin, duplicate invitation, reset, ban, unban, and audit tests**
 
 Verify duplicate email returns `409`, password reset revokes Sessions, audit metadata excludes email and password, and a second active admin permits banning the first.
 
-- [ ] **Step 5: Verify GREEN and commit**
+- [x] **Step 5: Verify GREEN and commit**
 
 Run: `npm run test:unit -- tests/unit/admin-account-service.test.ts tests/unit/security-boundaries.test.ts`
 
