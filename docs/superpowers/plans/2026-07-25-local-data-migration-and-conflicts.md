@@ -50,11 +50,11 @@ export type LocalDataParseResult =
 
 **Files:** `db/schema.ts`, `drizzle/0004_*.sql`, `app/server/imports/import-service.ts`, `app/api/imports/local-data/commit/route.ts`, `tests/unit/import-commit.test.ts`
 
-- [ ] Write failing tests for required idempotency key, repeated identical commit returning the first result, fingerprint mismatch, conflict decisions `overwrite|duplicate|skip`, stale cloud version, rollback on an invalid item, and no local API key fields.
-- [ ] Run the focused test; expect missing schema/handler failures.
-- [ ] Add `dataImports(id, userId, idempotencyKey, fingerprint, resultJson, createdAt)` with unique `(userId, idempotencyKey)`. Generate and inspect the migration.
-- [ ] Implement `commitImport`: check an existing idempotency result first; recompute fingerprint; validate every conflict decision; use D1 batch transactions; duplicate codes receive the first available `-COPY-N` suffix; overwrite requires the previewed `cloudVersion`; insert the result record in the same transaction.
-- [ ] Run focused tests, all unit tests, and build; expect PASS. Commit with `git commit -m "feat: import local data idempotently"`.
+- [x] Write failing tests for required idempotency key, repeated identical commit returning the first result, fingerprint mismatch, conflict decisions `overwrite|duplicate|skip`, stale cloud version, rollback on an invalid item, and no local API key fields.
+- [x] Run the focused test; expect missing schema/handler failures.
+- [x] Add `dataImports(id, userId, idempotencyKey, fingerprint, resultJson, createdAt)` with unique `(userId, idempotencyKey)`. Generate and inspect the migration.
+- [x] Implement `commitImport`: check an existing idempotency result first; recompute fingerprint; validate every conflict decision; use D1 batch transactions; duplicate codes receive the first available `-COPY-N` suffix; overwrite requires the previewed `cloudVersion`; insert the result record in the same transaction.
+- [x] Run focused tests, all unit tests, and build; expect PASS. Commit with `git commit -m "feat: import local data idempotently"`.
 
 ### Task 4: Add the migration wizard
 

@@ -143,3 +143,15 @@ export const codeDrafts = sqliteTable("code_drafts", {
   uniqueIndex("code_drafts_user_id_problem_ref_language_unique").on(table.userId, table.problemKind, table.problemRef, table.language),
   index("code_drafts_user_id_updated_at_idx").on(table.userId, table.updatedAt),
 ]);
+
+export const dataImports = sqliteTable("data_imports", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  idempotencyKey: text("idempotency_key").notNull(),
+  fingerprint: text("fingerprint").notNull(),
+  resultJson: text("result_json").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+}, (table) => [
+  uniqueIndex("data_imports_user_id_idempotency_key_unique").on(table.userId, table.idempotencyKey),
+  index("data_imports_user_id_created_at_idx").on(table.userId, table.createdAt),
+]);
