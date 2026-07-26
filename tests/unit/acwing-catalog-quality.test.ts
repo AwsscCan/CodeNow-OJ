@@ -10,6 +10,8 @@ export const ENHANCED_ACWING_IDS = [
   "AW835", "AW143", "AW836", "AW837", "AW240", "AW838", "AW839", "AW841",
   "AW842", "AW843", "AW844", "AW845", "AW846", "AW847", "AW848",
   "AW849", "AW853", "AW851", "AW852", "AW854", "AW858", "AW859", "AW860", "AW861",
+  "AW866", "AW868", "AW869", "AW870", "AW871", "AW872", "AW873", "AW875", "AW876",
+  "AW877", "AW878", "AW204", "AW883", "AW884", "AW889", "AW890", "AW891", "AW892", "AW893", "AW894",
 ];
 
 type Bundled = {
