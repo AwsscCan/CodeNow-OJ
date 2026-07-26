@@ -32,11 +32,11 @@
 
 **Files:** `app/server/problems/problem-validation.ts`, `app/server/problems/problem-repository.ts`, `tests/unit/problem-repository.test.ts`
 
-- [ ] Write failing repository tests for: same problem code allowed across users; duplicate within one user rejected; user B cannot read/update user A; soft-deleted rows are absent; 512 KiB per input/output and 20 MiB per problem are enforced; stale version returns a typed conflict.
-- [ ] Run `npm run test:unit -- tests/unit/problem-repository.test.ts`; expect module-not-found.
-- [ ] Implement `validateProblem(input)` and `validateTestCases(items)` returning discriminated `{ ok: true, value } | { ok: false, code, field, message }` results. Export `ProblemConflictError` with `currentVersion` and `updatedAt`.
-- [ ] Implement `listProblems(userId, cursor)`, `getProblem(userId, id)`, `createProblem(userId, input)`, `updateProblem(userId, id, version, patch)`, `replaceTestCases(userId, problemId, version, cases)`, and `softDeleteProblem(userId, id, version)`. Every lookup includes `userId`; `replaceTestCases` uses a D1 batch/transaction and increments the parent version exactly once.
-- [ ] Run the focused tests; expect PASS. Commit `app/server/problems` and tests with `git commit -m "feat: add user scoped problem repository"`.
+- [x] Write failing repository tests for: same problem code allowed across users; duplicate within one user rejected; user B cannot read/update user A; soft-deleted rows are absent; 512 KiB per input/output and 20 MiB per problem are enforced; stale version returns a typed conflict.
+- [x] Run `npm run test:unit -- tests/unit/problem-repository.test.ts`; expect module-not-found.
+- [x] Implement `validateProblem(input)` and `validateTestCases(items)` returning discriminated `{ ok: true, value } | { ok: false, code, field, message }` results. Export `ProblemConflictError` with `currentVersion` and `updatedAt`.
+- [x] Implement `listProblems(userId, cursor)`, `getProblem(userId, id)`, `createProblem(userId, input)`, `updateProblem(userId, id, version, patch)`, `replaceTestCases(userId, problemId, version, cases)`, and `softDeleteProblem(userId, id, version)`. Every lookup includes `userId`; `replaceTestCases` uses a D1 batch/transaction and increments the parent version exactly once.
+- [x] Run the focused tests; expect PASS. Commit `app/server/problems` and tests with `git commit -m "feat: add user scoped problem repository"`.
 
 Repository result contracts must be explicit:
 
