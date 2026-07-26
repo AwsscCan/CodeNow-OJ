@@ -63,8 +63,11 @@ export default function LibraryPage() {
     store.selectedFolder === "全部题目" ||
     (store.includeSubfolders ? folderContains(folder, store.selectedFolder) : folder === store.selectedFolder);
 
-  const selectedArchives = [...store.cloudArchives, ...store.archives].filter((item) => matchesSelectedFolder(item.folder));
-  const selectedAcwing = acwingProblems.filter((item) => matchesSelectedFolder(item.folder));
+  // 搜索匹配题号或标题(大小写不敏感)，对全部题源统一生效
+  const search = store.librarySearch.trim().toLowerCase();
+  const matchesSearch = (id: string, title: string) => !search || `${id} ${title}`.toLowerCase().includes(search);
+  const selectedArchives = [...store.cloudArchives, ...store.archives].filter((item) => matchesSelectedFolder(item.folder) && matchesSearch(item.problem.id, item.problem.title));
+  const selectedAcwing = acwingProblems.filter((item) => matchesSelectedFolder(item.folder) && matchesSearch(item.id, item.title));
   const showBuiltIn = builtinVisible && matchesSelectedFolder("默认题库") && (!store.librarySearch || `${INITIAL_PROBLEM.id} ${INITIAL_PROBLEM.title}`.toLowerCase().includes(store.librarySearch.toLowerCase()));
 
   useEffect(() => { store.setLibraryReady(); loadAcwingCatalog(); }, []);
