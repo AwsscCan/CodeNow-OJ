@@ -49,3 +49,5 @@ __pycache__/
 .claude/
 /.worktrees/
 /.data/
+/.dev.vars
+/backups/

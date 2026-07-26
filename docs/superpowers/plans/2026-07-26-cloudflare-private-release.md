@@ -17,10 +17,10 @@
 - Create: `scripts/validate-cloudflare-config.mjs`
 - Create: `tests/unit/cloudflare-config.test.ts`
 
-- [ ] Write a failing unit test that passes sample JSON to `validateCloudflareConfig` and requires `env.preview` and `env.production`, different Worker names, different non-empty D1 IDs, `migrations_dir: "drizzle"`, `workers_dev: true`, and no inline secrets.
-- [ ] Run `npm run test:unit -- tests/unit/cloudflare-config.test.ts`; expect the validator export to be missing.
-- [ ] Implement the pure validator and ignore `.dev.vars`, `backups/`, and `.wrangler/` without creating deployment configuration before real database IDs exist.
-- [ ] Run the focused test; expect PASS.
+- [x] Write a failing unit test that passes sample JSON to `validateCloudflareConfig` and requires `env.preview` and `env.production`, different Worker names, different non-empty D1 IDs, `migrations_dir: "drizzle"`, `workers_dev: true`, and no inline secrets.
+- [x] Run `npm run test:unit -- tests/unit/cloudflare-config.test.ts`; expect the validator export to be missing.
+- [x] Implement the pure validator and ignore `.dev.vars`, `backups/`, and `.wrangler/` without creating deployment configuration before real database IDs exist.
+- [x] Run the focused test; expect PASS.
 - [ ] Commit with `git commit -m "ops: validate isolated Cloudflare environments"`.
 
 ### Task 2: Create preview and production D1 databases
