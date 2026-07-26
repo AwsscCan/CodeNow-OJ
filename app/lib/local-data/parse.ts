@@ -9,6 +9,7 @@ import type {
   LocalDataTestCaseV1,
   LocalDataThemeV1,
 } from "./types";
+import { MAX_SUBMISSION_SOURCE_LENGTH } from "../../api/_lib/constants";
 
 const MAX_TEST_FIELD_BYTES = 512 * 1024;
 const MAX_PROBLEM_TEST_BYTES = 20 * 1024 * 1024;
@@ -265,6 +266,9 @@ export function parseLocalData(raw: unknown): LocalDataParseResult {
       }
     }
 
+    if (typeof workspaceState.code === "string" && workspaceState.code.length > MAX_SUBMISSION_SOURCE_LENGTH) {
+      throw new DataTooLargeError(`Draft source code is limited to ${MAX_SUBMISSION_SOURCE_LENGTH} characters`);
+    }
     const currentDraft = workspaceProblemId && typeof workspaceState.code === "string"
       ? { problemId: workspaceProblemId, language: "cpp" as const, sourceCode: workspaceState.code }
       : null;

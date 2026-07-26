@@ -23,10 +23,10 @@
 
 **Files:** `app/lib/local-data/types.ts`, `app/lib/local-data/parse.ts`, `tests/unit/local-data-parse.test.ts`
 
-- [ ] Write fixtures for current `codenow-*`, legacy `codeforge-*`, corrupt JSON, missing fields, duplicate test IDs, and oversize test bodies. Assert parsing never throws and produces `{ manifest, warnings }` or `{ error }`.
-- [ ] Run `npm run test:unit -- tests/unit/local-data-parse.test.ts`; expect module-not-found.
-- [ ] Define `LocalDataManifestV1` with `schemaVersion: 1`, folders, problems, current draft, preferences, and conversations. Implement strict string/enum/array guards; regenerate IDs; normalize folder paths; apply the same size limits as cloud APIs; never parse or include AI API keys.
-- [ ] Run focused tests; expect PASS. Commit with `git commit -m "feat: parse legacy local user data"`.
+- [x] Write fixtures for current `codenow-*`, legacy `codeforge-*`, corrupt JSON, missing fields, duplicate test IDs, and oversize test bodies. Assert parsing never throws and produces `{ manifest, warnings }` or `{ error }`.
+- [x] Run `npm run test:unit -- tests/unit/local-data-parse.test.ts`; expect module-not-found.
+- [x] Define `LocalDataManifestV1` with `schemaVersion: 1`, folders, problems, current draft, preferences, and conversations. Implement strict string/enum/array guards; regenerate IDs; normalize folder paths; apply the same size limits as cloud APIs; never parse or include AI API keys.
+- [x] Run focused tests; expect PASS. Commit with `git commit -m "feat: parse legacy local user data"`.
 
 Canonical result:
 

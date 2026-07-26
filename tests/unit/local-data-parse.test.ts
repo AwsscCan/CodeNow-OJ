@@ -189,6 +189,14 @@ describe("parseLocalData", () => {
     expect(result).toMatchObject({ ok: false, error: { code: "DATA_TOO_LARGE" } });
   });
 
+  it("rejects a current draft larger than the cloud source-code limit", () => {
+    const result = parseLocalData(snapshot({
+      "codenow-workspace": { state: { problem, code: "x".repeat(200_001) } },
+    }));
+
+    expect(result).toMatchObject({ ok: false, error: { code: "DATA_TOO_LARGE" } });
+  });
+
   it("rejects unsupported manifest versions without throwing", () => {
     expect(parseLocalData(JSON.stringify({ schemaVersion: 2 }))).toMatchObject({
       ok: false,

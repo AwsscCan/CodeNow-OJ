@@ -12,8 +12,8 @@
 
 ## Required execution order
 
-- [ ] **Plan 1 — Authentication foundation:** Execute `docs/superpowers/plans/2026-07-25-user-auth-foundation.md`. Exit gate: verified registration/login/reset works in vinext and Cloudflare build; submissions are isolated by user.
-- [ ] **Plan 2 — Cloud problem data:** Execute `docs/superpowers/plans/2026-07-25-cloud-problem-data.md`. Exit gate: folders, private problems, test cases, and drafts persist cross-device with `409` conflict detection.
+- [x] **Plan 1 — Authentication foundation:** Execute `docs/superpowers/plans/2026-07-25-user-auth-foundation.md`. Exit gate: verified registration/login/reset works in vinext and Cloudflare build; submissions are isolated by user.
+- [x] **Plan 2 — Cloud problem data:** Execute `docs/superpowers/plans/2026-07-25-cloud-problem-data.md`. Exit gate: folders, private problems, test cases, and drafts persist cross-device with `409` conflict detection.
 - [ ] **Plan 3 — Local migration and recovery:** Execute `docs/superpowers/plans/2026-07-25-local-data-migration-and-conflicts.md`. Exit gate: guest data imports idempotently and unsynced edits survive offline/session failures.
 - [ ] **Plan 4 — Preferences, AI sync, release:** Execute `docs/superpowers/plans/2026-07-25-preferences-ai-sync-and-release.md`. Exit gate: approved non-secret data syncs, two-user E2E isolation passes, and preview deployment is signed off.
 
