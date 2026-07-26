@@ -13,8 +13,8 @@ export const resolveProblemContext: ResolveProblemContext = async (request) => {
 
 export const privateNoStore = { "Cache-Control": "private, no-store" };
 
-export function apiError(status: number, code: string, message: string, field?: string) {
-  return Response.json({ error: { code, message, ...(field ? { field } : {}) } }, { status, headers: privateNoStore });
+export function apiError(status: number, code: string, message: string, field?: string, details?: { currentVersion?: number; updatedAt?: string }) {
+  return Response.json({ error: { code, message, ...(field ? { field } : {}), ...details } }, { status, headers: privateNoStore });
 }
 
 export async function readJson(request: Request): Promise<Record<string, unknown> | null> {
@@ -26,4 +26,3 @@ export function resultResponse(result: { ok: boolean; status?: number; code?: st
   if (!result.ok) return apiError(result.status ?? 400, result.code ?? "INVALID_REQUEST", result.message ?? "Invalid request", result.field);
   return Response.json(result, { status: successStatus, headers: privateNoStore });
 }
-

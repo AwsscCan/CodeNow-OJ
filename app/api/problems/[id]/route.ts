@@ -16,7 +16,7 @@ export function createProblemDetailHandlers(resolveContext: ResolveProblemContex
       const patch = body.patch as Record<string, unknown>;
       if ("userId" in body || "userId" in patch) return apiError(400, "CLIENT_USER_ID_FORBIDDEN", "不能指定 userId");
       const result = await context.repository.updateProblem(context.userId, id, body.version, patch);
-      if (!result.ok) return apiError(result.status, result.code, result.message, result.field);
+      if (!result.ok) return apiError(result.status, result.code, result.message, result.field, { currentVersion: result.currentVersion, updatedAt: result.updatedAt });
       return Response.json({ problem: result.value, version: result.version, updatedAt: result.updatedAt }, { headers: privateNoStore });
     },
     DELETE: async (request: Request, id: string) => {
@@ -27,7 +27,7 @@ export function createProblemDetailHandlers(resolveContext: ResolveProblemContex
       const version = typeof body?.version === "number" ? body.version : queryVersion;
       if (!Number.isInteger(version) || version < 1) return apiError(400, "INVALID_VERSION", "需要有效版本号");
       const result = await context.repository.softDeleteProblem(context.userId, id, version);
-      if (!result.ok) return apiError(result.status, result.code, result.message, result.field);
+      if (!result.ok) return apiError(result.status, result.code, result.message, result.field, { currentVersion: result.currentVersion, updatedAt: result.updatedAt });
       return Response.json({ deleted: result.value, version: result.version, updatedAt: result.updatedAt }, { headers: privateNoStore });
     },
   };
@@ -38,4 +38,3 @@ type RouteContext = { params: Promise<{ id: string }> };
 export async function GET(request: Request, context: RouteContext) { return handlers.GET(request, (await context.params).id); }
 export async function PATCH(request: Request, context: RouteContext) { return handlers.PATCH(request, (await context.params).id); }
 export async function DELETE(request: Request, context: RouteContext) { return handlers.DELETE(request, (await context.params).id); }
-

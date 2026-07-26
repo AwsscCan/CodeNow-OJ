@@ -6,8 +6,11 @@ import type { CSSProperties } from "react";
 import { AuthStatus } from "../../components/auth-status";
 import { Toast } from "../../components/toast";
 import { useJudge } from "../../hooks/use-judge";
+import { useCloudSave, type CloudSaveResult, type SyncStatus } from "../../hooks/use-cloud-save";
 import { useToast } from "../../hooks/use-toast";
 import { formatCppCode } from "../../lib/format-cpp";
+import { authClient } from "../../lib/auth-client";
+import { ProblemApi, ProblemApiError, type CloudProblem } from "../../lib/problem-api";
 import { useAiStore } from "../../stores/ai-store";
 import { useLibraryStore } from "../../stores/library-store";
 import { useProblemStore } from "../../stores/problem-store";
@@ -32,6 +35,7 @@ export default function ProblemPage() {
   const theme = useThemeStore();
   const { notice, toast } = useToast();
   const { running, runTests } = useJudge();
+  const session = authClient.useSession();
 
   // Local UI state
   const [showAi, setShowAi] = useState(false);
@@ -43,6 +47,83 @@ export default function ProblemPage() {
   const [testGenStatus, setTestGenStatus] = useState("");
   const [testPointCount, setTestPointCount] = useState(18);
   const [workspaceResizing, setWorkspaceResizing] = useState(false);
+
+  const saveCloudProblem = useCallback(async (payload: typeof store.problem, version: number, idempotencyKey: string, signal: AbortSignal): Promise<CloudSaveResult> => {
+    if (!store.cloudId) return { ok: false, status: 404 };
+    try {
+      const metadata = await ProblemApi.update(store.cloudId, version, {
+        problemCode: payload.id, title: payload.title, difficulty: payload.difficulty, timeLimit: payload.time, memoryLimit: payload.memory,
+        description: payload.description, inputFormat: payload.inputFormat, outputFormat: payload.outputFormat,
+        sourceUrl: payload.sourceUrl ?? null, extractionStatus: payload.extractionStatus ?? null,
+      }, idempotencyKey, signal);
+      const tests = await ProblemApi.replaceTests(store.cloudId, metadata.version, payload.samples.map((item) => ({
+        input: item.input, expectedOutput: item.output, category: item.category, scale: item.scale, targets: item.targets, reason: item.reason,
+      })), idempotencyKey, signal);
+      store.setCloudState({ version: tests.version });
+      return { ok: true, version: tests.version, updatedAt: tests.updatedAt };
+    } catch (error) {
+      if (error instanceof ProblemApiError && error.status === 409) return { ok: false, status: 409, currentVersion: error.currentVersion };
+      throw error;
+    }
+  }, [store.cloudId, store.setCloudState]);
+
+  const saveCloudDraft = useCallback(async (sourceCode: string, version: number, idempotencyKey: string, signal: AbortSignal): Promise<CloudSaveResult> => {
+    if (!store.cloudId) return { ok: false, status: 404 };
+    try {
+      const result = await ProblemApi.saveDraft("private", store.cloudId, "cpp", sourceCode, version, idempotencyKey, signal);
+      store.setCloudState({ draftVersion: result.version });
+      return { ok: true, version: result.version, updatedAt: result.updatedAt };
+    } catch (error) {
+      if (error instanceof ProblemApiError && error.status === 409) return { ok: false, status: 409, currentVersion: error.currentVersion };
+      throw error;
+    }
+  }, [store.cloudId, store.setCloudState]);
+
+  const cloudSave = useCloudSave({ enabled: Boolean(session.data?.user && store.cloudId), version: store.version, save: saveCloudProblem });
+  const draftSave = useCloudSave({ enabled: Boolean(session.data?.user && store.cloudId), version: store.draftVersion, save: saveCloudDraft });
+
+  useEffect(() => { if (store.cloudId) cloudSave.queueSave(store.problem); }, [store.problem, store.cloudId]);
+  useEffect(() => { if (store.cloudId) draftSave.queueSave(store.code); }, [store.code, store.cloudId]);
+  useEffect(() => {
+    const states = [cloudSave.status, draftSave.status];
+    const status: SyncStatus = states.includes("conflicted") ? "conflicted" : states.includes("failed") ? "failed" : states.includes("saving") ? "saving" : states.every((item) => item === "local-only") ? "local-only" : "synced";
+    store.setCloudState({ syncStatus: status });
+  }, [cloudSave.status, draftSave.status]);
+
+  function fromCloud(cloud: CloudProblem) {
+    return {
+      id: cloud.problemCode, title: cloud.title, difficulty: cloud.difficulty, time: cloud.timeLimit, memory: cloud.memoryLimit,
+      description: cloud.description, inputFormat: cloud.inputFormat, outputFormat: cloud.outputFormat,
+      sourceUrl: cloud.sourceUrl ?? undefined, extractionStatus: cloud.extractionStatus ?? undefined,
+      samples: cloud.testCases.map((test, index) => ({ id: index + 1, input: test.input, output: test.expectedOutput, category: test.category ?? undefined, scale: test.scale ?? undefined, targets: test.targets ?? undefined, reason: test.reason ?? undefined })),
+    };
+  }
+
+  async function useCloudVersion() {
+    if (!store.cloudId) return;
+    if (!cloudSave.conflict && draftSave.conflict) {
+      const draft = await ProblemApi.getDraft("private", store.cloudId, "cpp");
+      store.setCode(draft.draft.sourceCode);
+      store.setCloudState({ draftVersion: draft.version });
+      draftSave.discardPending(draft.version);
+      return;
+    }
+    const { problem } = await ProblemApi.get(store.cloudId);
+    store.setProblem(fromCloud(problem));
+    store.setCloudState({ version: problem.version });
+    cloudSave.discardPending(problem.version);
+  }
+
+  async function overwriteCloudVersion() {
+    if (!store.cloudId) return;
+    if (!cloudSave.conflict && draftSave.conflict) {
+      const draft = await ProblemApi.getDraft("private", store.cloudId, "cpp");
+      draftSave.retryWithVersion(store.code, draft.version);
+      return;
+    }
+    const { problem } = await ProblemApi.get(store.cloudId);
+    cloudSave.retryWithVersion(store.problem, problem.version);
+  }
 
   const workspaceRef = useRef<HTMLElement>(null);
   const codePanelRef = useRef<HTMLElement>(null);
@@ -313,7 +394,7 @@ export default function ProblemPage() {
               <option value="light">亮色</option><option value="dark">暗色</option><option value="girl">少女</option>
             </select>
           </label>
-          <AuthStatus onSignedOut={() => { store.setHistory([]); aiStore.clearChat(); }} />
+          <AuthStatus onSignedOut={() => { store.setHistory([]); store.setCloudState({ cloudId: null, version: 0, draftVersion: 0, syncStatus: "local-only" }); aiStore.clearChat(); }} />
         </div>
       </header>
 
@@ -325,6 +406,7 @@ export default function ProblemPage() {
           <mark>{store.problem.difficulty}</mark>
         </div>
         <div className="workspace-actions">
+          <span className={`sync-status ${store.syncStatus}`}>{store.syncStatus === "local-only" ? "仅本地" : store.syncStatus === "saving" ? "正在保存…" : store.syncStatus === "synced" ? "已同步" : store.syncStatus === "failed" ? "保存失败" : "版本冲突"}</span>
           <button onClick={() => router.push("/library")}>⇧ 导入题目</button>
           <button className="ask-button" onClick={() => setShowChat(true)}>◈ 问 AI</button>
           <button className="ai-button" onClick={() => setShowAi(true)}>✦ AI 解题</button>
@@ -503,6 +585,12 @@ export default function ProblemPage() {
         </div>
         <footer><textarea value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) handleSendChat(); }} placeholder="询问思路、复杂度、代码报错……（Ctrl + Enter 发送）" /><button disabled={chatBusy || !chatInput.trim()} onClick={handleSendChat}>发送</button></footer>
       </aside></div>}
+
+      {(cloudSave.conflict || draftSave.conflict) && <div className="modal-backdrop"><div className="modal conflict-modal">
+        <span className="modal-kicker">SYNC CONFLICT</span><h2>云端题目已在其他设备更新</h2>
+        <p>本地版本 {(cloudSave.conflict ?? draftSave.conflict)?.localVersion}，云端版本 {(cloudSave.conflict ?? draftSave.conflict)?.currentVersion}。请选择保留哪一份。</p>
+        <div className="modal-actions"><button onClick={useCloudVersion}>使用云端版本</button><button onClick={overwriteCloudVersion}>用本地版本覆盖</button></div>
+      </div></div>}
 
       <Toast message={notice} />
     </main>

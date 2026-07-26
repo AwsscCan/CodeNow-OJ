@@ -70,12 +70,12 @@ export type SaveResult<T> =
 
 **Files:** `app/lib/problem-api.ts`, `app/hooks/use-cloud-save.ts`, `app/stores/library-store.ts`, `app/stores/problem-store.ts`, `app/library/page.tsx`, `app/problem/[id]/page.tsx`, `tests/unit/cloud-save.test.ts`
 
-- [ ] Write fake-timer tests for the sync hook: anonymous changes stay `local-only`; authenticated edits debounce once; success becomes `synced`; network error becomes `failed` without deleting local state; `409` becomes `conflicted` and exposes both versions.
-- [ ] Run `npm run test:unit -- tests/unit/cloud-save.test.ts`; expect missing hook.
-- [ ] Implement `ProblemApi` as a typed fetch wrapper and `useCloudSave({ enabled, version, save, onConflict })`. Use an `AbortController`, a stable idempotency key per pending change, and retain the payload until success.
-- [ ] Add non-persisted store fields `cloudId`, `version`, and `syncStatus`. When logged in, hydrate library metadata from `/api/problems`; fetch a problem with test cases only when opened. Keep current localStorage behavior for guests.
-- [ ] Add visible save-state text and a conflict dialog with exactly two actions: “使用云端版本” and “用本地版本覆盖”. The overwrite action first refetches and sends the returned current version; never bypass version checking.
-- [ ] Run the focused test, `npm test`, and `npm run build`; expect PASS. Manually verify device A/device B conflict. Commit with `git commit -m "feat: sync private problems and drafts"`.
+- [x] Write fake-timer tests for the sync hook: anonymous changes stay `local-only`; authenticated edits debounce once; success becomes `synced`; network error becomes `failed` without deleting local state; `409` becomes `conflicted` and exposes both versions.
+- [x] Run `npm run test:unit -- tests/unit/cloud-save.test.ts`; expect missing hook.
+- [x] Implement `ProblemApi` as a typed fetch wrapper and `useCloudSave({ enabled, version, save, onConflict })`. Use an `AbortController`, a stable idempotency key per pending change, and retain the payload until success.
+- [x] Add non-persisted store fields `cloudId`, `version`, and `syncStatus`. When logged in, hydrate library metadata from `/api/problems`; fetch a problem with test cases only when opened. Keep current localStorage behavior for guests.
+- [x] Add visible save-state text and a conflict dialog with exactly two actions: “使用云端版本” and “用本地版本覆盖”. The overwrite action first refetches and sends the returned current version; never bypass version checking.
+- [x] Run the focused test, `npm test`, and `npm run build`; expect PASS. Manually verify device A/device B conflict. Commit with `git commit -m "feat: sync private problems and drafts"`.
 
 ### Task 6: Phase verification
 

@@ -64,7 +64,9 @@ describe("private problem APIs", () => {
     expect((await collection.POST(request("/api/problems", "POST", { title: "missing fields" }))).status).toBe(400);
     const created = await (await collection.POST(request("/api/problems", "POST", problem))).json() as { problem: { id: string } };
     const detail = createProblemDetailHandlers(context);
-    expect((await detail.PATCH(request(`/api/problems/${created.problem.id}`, "PATCH", { version: 99, patch: { title: "stale" } }), created.problem.id)).status).toBe(409);
+    const stale = await detail.PATCH(request(`/api/problems/${created.problem.id}`, "PATCH", { version: 99, patch: { title: "stale" } }), created.problem.id);
+    expect(stale.status).toBe(409);
+    expect(await stale.json()).toMatchObject({ error: { currentVersion: 1 } });
     const tests = createTestCaseHandlers(context);
     const oversized = [{ input: "x".repeat(512 * 1024 + 1), expectedOutput: "ok" }];
     expect((await tests.PUT(request(`/api/problems/${created.problem.id}/test-cases`, "PUT", { version: 1, testCases: oversized }), created.problem.id)).status).toBe(413);

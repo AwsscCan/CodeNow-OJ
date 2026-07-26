@@ -5,6 +5,8 @@ import { useState, useRef, useEffect } from "react";
 import { AuthStatus } from "../components/auth-status";
 import { Toast } from "../components/toast";
 import { useToast } from "../hooks/use-toast";
+import { authClient } from "../lib/auth-client";
+import { ProblemApi } from "../lib/problem-api";
 import { useAiStore } from "../stores/ai-store";
 import { useLibraryStore, loadAcwingCatalog, folderName, folderParent, folderContains, orderFolderTree, getAcwingFolders, getAcwingProblems } from "../stores/library-store";
 import { useProblemStore, INITIAL_PROBLEM, STARTER_CODE } from "../stores/problem-store";
@@ -13,7 +15,8 @@ import { useThemeStore } from "../stores/theme-store";
 export default function LibraryPage() {
   const router = useRouter();
   const store = useLibraryStore();
-  const { setProblem, setCode, setResults, setCompilerDiagnostic } = useProblemStore();
+  const { setProblem, setCode, setResults, setCompilerDiagnostic, setCloudState } = useProblemStore();
+  const session = authClient.useSession();
   const aiStore = useAiStore();
   const theme = useThemeStore();
   const { notice, toast } = useToast();
@@ -35,7 +38,7 @@ export default function LibraryPage() {
   const acwingFolders = getAcwingFolders();
   const acwingProblems = getAcwingProblems();
 
-  const folders = [...store.folders, ...acwingFolders];
+  const folders = [...store.folders, ...(store.cloudArchives.length ? ["云端题库"] : []), ...acwingFolders];
   const orderedFolders = orderFolderTree(folders, store.folderOrder);
 
   const visibleFolders = orderedFolders.filter((folder) => {
@@ -47,18 +50,57 @@ export default function LibraryPage() {
     store.selectedFolder === "全部题目" ||
     (store.includeSubfolders ? folderContains(folder, store.selectedFolder) : folder === store.selectedFolder);
 
-  const selectedArchives = store.archives.filter((item) => matchesSelectedFolder(item.folder));
+  const selectedArchives = [...store.cloudArchives, ...store.archives].filter((item) => matchesSelectedFolder(item.folder));
   const selectedAcwing = acwingProblems.filter((item) => matchesSelectedFolder(item.folder));
   const showBuiltIn = matchesSelectedFolder("默认题库") && (!store.librarySearch || `${INITIAL_PROBLEM.id} ${INITIAL_PROBLEM.title}`.toLowerCase().includes(store.librarySearch.toLowerCase()));
 
   useEffect(() => { store.setLibraryReady(); loadAcwingCatalog(); }, []);
+  useEffect(() => {
+    if (!session.data?.user) { store.setCloudArchives([]); return; }
+    const controller = new AbortController();
+    ProblemApi.list(controller.signal).then(({ problems }) => {
+      store.setCloudArchives(problems.map((item) => ({
+        cloudId: item.id,
+        version: item.version,
+        folder: "云端题库",
+        archivedAt: item.updatedAt,
+        problem: {
+          id: item.problemCode, title: item.title, difficulty: item.difficulty, time: item.timeLimit, memory: item.memoryLimit,
+          description: item.description, inputFormat: item.inputFormat, outputFormat: item.outputFormat, samples: [],
+          sourceUrl: item.sourceUrl ?? undefined, extractionStatus: item.extractionStatus ?? undefined,
+        },
+      })));
+    }).catch(() => { /* keep the local library available while offline */ });
+    return () => controller.abort();
+  }, [session.data?.user?.id]);
 
-  function openArchived(item: typeof store.archives[number]) {
-    setProblem(item.problem);
+  async function openArchived(item: typeof store.archives[number]) {
+    let selected = item.problem;
+    if (item.cloudId) {
+      const { problem: cloud } = await ProblemApi.get(item.cloudId);
+      selected = {
+        id: cloud.problemCode, title: cloud.title, difficulty: cloud.difficulty, time: cloud.timeLimit, memory: cloud.memoryLimit,
+        description: cloud.description, inputFormat: cloud.inputFormat, outputFormat: cloud.outputFormat,
+        sourceUrl: cloud.sourceUrl ?? undefined, extractionStatus: cloud.extractionStatus ?? undefined,
+        samples: cloud.testCases.map((test, index) => ({
+          id: index + 1, input: test.input, output: test.expectedOutput, category: test.category ?? undefined,
+          scale: test.scale ?? undefined, targets: test.targets ?? undefined, reason: test.reason ?? undefined,
+        })),
+      };
+      setCloudState({ cloudId: item.cloudId, version: cloud.version, syncStatus: "synced" });
+      try {
+        const draft = await ProblemApi.getDraft("private", item.cloudId, "cpp");
+        setCode(draft.draft.sourceCode);
+        setCloudState({ draftVersion: draft.version });
+      } catch { setCloudState({ draftVersion: 0 }); }
+    } else {
+      setCloudState({ cloudId: null, version: 0, draftVersion: 0, syncStatus: "local-only" });
+    }
+    setProblem(selected);
     setResults([]);
     setCompilerDiagnostic("");
-    router.push(`/problem/${item.problem.id}`);
-    toast(`已打开 ${item.problem.id} · ${item.problem.title}`);
+    router.push(`/problem/${selected.id}`);
+    toast(`已打开 ${selected.id} · ${selected.title}`);
   }
 
   function openBundled(item: ReturnType<typeof getAcwingProblems>[number]) {
@@ -159,7 +201,20 @@ export default function LibraryPage() {
       const archiveFolder = store.selectedFolder === "全部题目" ? "默认题库" : store.selectedFolder;
       const incoming = data.problem as Record<string, unknown>;
       const numbered = { ...incoming, id: nextId } as typeof INITIAL_PROBLEM;
-      store.addArchive({ problem: numbered, folder: archiveFolder, archivedAt: new Date().toISOString() });
+      if (session.data?.user) {
+        const created = await ProblemApi.create({
+          problemCode: numbered.id, title: numbered.title, difficulty: numbered.difficulty, timeLimit: numbered.time, memoryLimit: numbered.memory,
+          description: numbered.description, inputFormat: numbered.inputFormat, outputFormat: numbered.outputFormat,
+          sourceUrl: numbered.sourceUrl ?? null, extractionStatus: numbered.extractionStatus ?? null,
+        });
+        const saved = await ProblemApi.replaceTests(created.problem.id, created.version, numbered.samples.map((item) => ({
+          input: item.input, expectedOutput: item.output, category: item.category, scale: item.scale, targets: item.targets, reason: item.reason,
+        })), crypto.randomUUID());
+        store.setCloudArchives([{ problem: numbered, folder: "云端题库", archivedAt: saved.updatedAt, cloudId: created.problem.id, version: saved.version }, ...store.cloudArchives]);
+        setCloudState({ cloudId: created.problem.id, version: saved.version, draftVersion: 0, syncStatus: "synced" });
+      } else {
+        store.addArchive({ problem: numbered, folder: archiveFolder, archivedAt: new Date().toISOString() });
+      }
       setProblem(numbered);
       setCode(STARTER_CODE);
       setCompilerDiagnostic("");
@@ -176,7 +231,7 @@ export default function LibraryPage() {
   function importProblem(file?: File) {
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       try {
         const parsed = JSON.parse(String(reader.result));
         // Basic validation
@@ -187,7 +242,17 @@ export default function LibraryPage() {
         }, 0) + 1;
         const nextId = customProblemId.trim() || `CF${String(nextNumber).padStart(4, "0")}`;
         const archiveFolder = store.selectedFolder === "全部题目" ? "默认题库" : store.selectedFolder;
-        store.addArchive({ problem: { ...parsed, id: nextId } as typeof INITIAL_PROBLEM, folder: archiveFolder, archivedAt: new Date().toISOString() });
+        const numbered = { ...parsed, id: nextId } as typeof INITIAL_PROBLEM;
+        if (session.data?.user) {
+          const created = await ProblemApi.create({
+            problemCode: numbered.id, title: numbered.title, difficulty: numbered.difficulty, timeLimit: numbered.time, memoryLimit: numbered.memory,
+            description: numbered.description, inputFormat: numbered.inputFormat, outputFormat: numbered.outputFormat,
+          });
+          const saved = await ProblemApi.replaceTests(created.problem.id, created.version, numbered.samples.map((item) => ({ input: item.input, expectedOutput: item.output })), crypto.randomUUID());
+          store.setCloudArchives([{ problem: numbered, folder: "云端题库", archivedAt: saved.updatedAt, cloudId: created.problem.id, version: saved.version }, ...store.cloudArchives]);
+        } else {
+          store.addArchive({ problem: numbered, folder: archiveFolder, archivedAt: new Date().toISOString() });
+        }
         setShowImport(false);
         setCustomProblemId("");
         toast(`已导入并归档：${nextId}`);
@@ -215,7 +280,7 @@ export default function LibraryPage() {
               <option value="light">亮色</option><option value="dark">暗色</option><option value="girl">少女</option>
             </select>
           </label>
-          <AuthStatus onSignedOut={aiStore.clearChat} />
+          <AuthStatus onSignedOut={() => { aiStore.clearChat(); store.setCloudArchives([]); setCloudState({ cloudId: null, version: 0, draftVersion: 0, syncStatus: "local-only" }); }} />
         </div>
       </header>
 

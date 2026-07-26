@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import type { SyncStatus } from "../hooks/use-cloud-save";
 
 type TestCase = { id: number; input: string; output: string; category?: string; scale?: number; targets?: string; reason?: string };
 type Problem = {
@@ -64,6 +65,10 @@ type ProblemStore = {
   workspaceSplit: number;
   cursor: { line: number; column: number };
   notice: string;
+  cloudId: string | null;
+  version: number;
+  draftVersion: number;
+  syncStatus: SyncStatus;
 
   setProblem: (problem: Problem) => void;
   setCode: (code: string) => void;
@@ -77,6 +82,7 @@ type ProblemStore = {
   setWorkspaceSplit: (v: number) => void;
   setCursor: (line: number, column: number) => void;
   setNotice: (msg: string) => void;
+  setCloudState: (state: Partial<Pick<ProblemStore, "cloudId" | "version" | "draftVersion" | "syncStatus">>) => void;
   addTest: () => void;
   removeTest: (id: number) => void;
   updateTest: (id: number, field: "input" | "output" | "targets" | "reason", value: string) => void;
@@ -99,6 +105,10 @@ export const useProblemStore = create<ProblemStore>()(
       workspaceSplit: 46,
       cursor: { line: 1, column: 1 },
       notice: "",
+      cloudId: null,
+      version: 0,
+      draftVersion: 0,
+      syncStatus: "local-only",
 
       setProblem: (problem) => set({ problem }),
       setCode: (code) => { set({ code, compilerDiagnostic: "" }); },
@@ -112,6 +122,7 @@ export const useProblemStore = create<ProblemStore>()(
       setWorkspaceSplit: (workspaceSplit) => set({ workspaceSplit }),
       setCursor: (line, column) => set((s) => s.cursor.line === line && s.cursor.column === column ? s : { cursor: { line, column } }),
       setNotice: (notice) => set({ notice }),
+      setCloudState: (state) => set(state),
 
       addTest: () => set((s) => ({
         problem: { ...s.problem, samples: [...s.problem.samples, { id: Date.now(), input: "", output: "" }] },

@@ -21,7 +21,7 @@ type Problem = {
   sourceUrl?: string;
   extractionStatus?: "complete" | "needs_review";
 };
-type ArchivedProblem = { problem: Problem; folder: string; archivedAt: string };
+type ArchivedProblem = { problem: Problem; folder: string; archivedAt: string; cloudId?: string; version?: number };
 type BundledProblem = Problem & { folder: string; sourceUrl: string; extractionStatus: "complete" | "needs_review" };
 
 export type { Problem, ArchivedProblem, BundledProblem, TestCase };
@@ -105,6 +105,7 @@ type LibraryStore = {
   includeSubfolders: boolean;
   librarySearch: string;
   libraryReady: boolean;
+  cloudArchives: ArchivedProblem[];
 
   setArchives: (archives: ArchivedProblem[]) => void;
   addArchive: (archive: ArchivedProblem) => void;
@@ -122,6 +123,7 @@ type LibraryStore = {
   setIncludeSubfolders: (v: boolean) => void;
   setLibrarySearch: (s: string) => void;
   setLibraryReady: () => void;
+  setCloudArchives: (archives: ArchivedProblem[]) => void;
 };
 
 export const useLibraryStore = create<LibraryStore>()(
@@ -135,6 +137,7 @@ export const useLibraryStore = create<LibraryStore>()(
       includeSubfolders: true,
       librarySearch: "",
       libraryReady: false,
+      cloudArchives: [],
 
       setArchives: (archives) => set({ archives }),
       addArchive: (archive) => set((s) => ({ archives: [archive, ...s.archives] })),
@@ -170,6 +173,7 @@ export const useLibraryStore = create<LibraryStore>()(
       setIncludeSubfolders: (includeSubfolders) => set({ includeSubfolders }),
       setLibrarySearch: (librarySearch) => set({ librarySearch }),
       setLibraryReady: () => set({ libraryReady: true }),
+      setCloudArchives: (cloudArchives) => set({ cloudArchives }),
     }),
     {
       name: "codenow-problem-library",
