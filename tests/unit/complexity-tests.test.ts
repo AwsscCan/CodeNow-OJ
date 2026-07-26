@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { parseGeneratedTests } from "../../app/api/_lib/complexity-tests";
 
 // Test the pure JSON parsing/repair functions by importing the module.
 // We directly test the internal functions exposed for testing.
@@ -179,5 +180,28 @@ describe("Ellipsis expansion", () => {
     expect(prevNums[0]).toBe(nextNums[0]);
     // Second column sequences
     expect(nextNums[1] - prevNums[1]).toBe(99999);
+  });
+});
+
+describe("Ellipsis expansion — end to end via parseGeneratedTests", () => {
+  it("expands an inline arithmetic ellipsis instead of dropping the test", () => {
+    const raw = JSON.stringify({ tests: [{ input: "5\n1 2 3 ... 5", output: "15\n", category: "ordinary" }] });
+    const parsed = parseGeneratedTests(raw);
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0].input).toBe("5\n1 2 3 4 5\n");
+  });
+
+  it("expands a single-column multi-line ellipsis sequence instead of dropping the test", () => {
+    const raw = JSON.stringify({ tests: [{ input: "5\n1\n2\n...\n4\n5", output: "15\n", category: "ordinary" }] });
+    const parsed = parseGeneratedTests(raw);
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0].input).toBe("5\n1\n2\n3\n4\n5\n");
+  });
+
+  it("expands a structured multi-line ellipsis with a fixed prefix column", () => {
+    const raw = JSON.stringify({ tests: [{ input: "5\n5 1\n5 2\n...\n5 4\n5 5", output: "ok\n", category: "ordinary" }] });
+    const parsed = parseGeneratedTests(raw);
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0].input).toBe("5\n5 1\n5 2\n5 3\n5 4\n5 5\n");
   });
 });

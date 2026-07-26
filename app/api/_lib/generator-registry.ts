@@ -35,6 +35,13 @@ function seededRandom(seed: number): () => number {
 
 function clamp(v: number, lo: number, hi: number) { return Math.max(lo, Math.min(hi, v)); }
 
+// Coerce a param to a finite number, falling back ONLY when it is absent or
+// non-numeric. Unlike `Number(x) || default`, a legitimate 0 is preserved.
+function numOr(value: unknown, fallback: number): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
 // ── Array Generators ──
 
 register({
@@ -63,8 +70,8 @@ register({
   },
   generate(p, ctx) {
     const n = clamp(Number(p.n), 1, ctx.maxN);
-    const step = clamp(Number(p.step) || 1, 1, 1000);
-    const start = clamp(Number(p.start) || 1, -1e9, 1e9);
+    const step = clamp(numOr(p.step, 1), 1, 1000);
+    const start = clamp(numOr(p.start, 1), -1e9, 1e9);
     return `${n}\n${Array.from({ length: n }, (_, i) => start + i * step).join(" ")}\n`;
   },
 });
@@ -79,8 +86,8 @@ register({
   },
   generate(p, ctx) {
     const n = clamp(Number(p.n), 1, ctx.maxN);
-    const start = clamp(Number(p.start) || n, 1, 1e9);
-    const step = clamp(Number(p.step) || 1, 1, 1000);
+    const start = clamp(numOr(p.start, n), -1e9, 1e9);
+    const step = clamp(numOr(p.step, 1), 1, 1000);
     return `${n}\n${Array.from({ length: n }, (_, i) => start - i * step).join(" ")}\n`;
   },
 });
@@ -91,13 +98,14 @@ register({
   validateParams(p, ctx) {
     const n = Number(p.n);
     if (!Number.isFinite(n) || n < 1 || n > ctx.maxN) return `n must be 1..${ctx.maxN}`;
+    if (numOr(p.hi, 1e5) < numOr(p.lo, 0)) return "hi must be >= lo";
     return null;
   },
   generate(p, ctx) {
     const n = clamp(Number(p.n), 1, ctx.maxN);
-    const lo = clamp(Number(p.lo) || 0, -1e9, 1e9);
-    const hi = clamp(Number(p.hi) || 1e5, lo, 1e9);
-    const seed = (Number(p.seed) || 42) | 0;
+    const lo = clamp(numOr(p.lo, 0), -1e9, 1e9);
+    const hi = clamp(numOr(p.hi, 1e5), lo, 1e9);
+    const seed = numOr(p.seed, 42) | 0;
     const rand = seededRandom(seed);
     return `${n}\n${Array.from({ length: n }, () => Math.floor(lo + rand() * (hi - lo + 1))).join(" ")}\n`;
   },
@@ -131,8 +139,8 @@ register({
   },
   generate(p, ctx) {
     const n = clamp(Number(p.n), 1, ctx.maxN);
-    const distinct = clamp(Number(p.distinct) || 5, 1, 10);
-    const seed = (Number(p.seed) || 99) | 0;
+    const distinct = clamp(numOr(p.distinct, 5), 1, 10);
+    const seed = numOr(p.seed, 99) | 0;
     const rand = seededRandom(seed);
     const values = Array.from({ length: distinct }, () => Math.floor(rand() * 1e5));
     return `${n}\n${Array.from({ length: n }, () => values[Math.floor(rand() * distinct)]).join(" ")}\n`;
@@ -183,7 +191,7 @@ register({
   },
   generate(p, ctx) {
     const n = clamp(Number(p.n), 2, ctx.maxN);
-    const seed = (Number(p.seed) || 42) | 0;
+    const seed = numOr(p.seed, 42) | 0;
     const rand = seededRandom(seed);
     let out = `${n}\n`;
     for (let i = 2; i <= n; i++) {
@@ -264,7 +272,7 @@ register({
   generate(p, _ctx) {
     const rows = clamp(Number(p.rows), 1, 3000);
     const cols = clamp(Number(p.cols), 1, 3000);
-    const a = Number(p.valA) || 0; const b = Number(p.valB) || 1;
+    const a = numOr(p.valA, 0); const b = numOr(p.valB, 1);
     let out = `${rows} ${cols}\n`;
     for (let i = 0; i < rows; i++) {
       for (let j = 0; j < cols; j++) out += ((i + j) % 2 === 0 ? a : b) + (j < cols - 1 ? " " : "");
@@ -301,7 +309,7 @@ register({
   },
   generate(p, ctx) {
     const n = clamp(Number(p.n), 1, ctx.maxN);
-    const seed = (Number(p.seed) || 7) | 0; const rand = seededRandom(seed);
+    const seed = numOr(p.seed, 7) | 0; const rand = seededRandom(seed);
     const half = Math.floor(n / 2);
     const chars = "abcdefghijklmnopqrstuvwxyz";
     const r: string[] = [];

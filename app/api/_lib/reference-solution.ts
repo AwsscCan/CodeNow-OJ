@@ -98,7 +98,11 @@ export async function judge0Submit(sourceCode: string, stdin: string, languageId
   if (!result || result.status.id <= 2) throw new Error("判题轮询超时");
 
   return {
-    stdout: decode64(result.stdout).trim(),
+    // Preserve the exact stdout of the reference program (only CRLF->LF) so the
+    // stored ground-truth output is byte-faithful. Leading whitespace is part of
+    // the required answer for format-sensitive problems; trailing whitespace is
+    // ignored by Judge0 at judge time, so we do NOT strip either here.
+    stdout: decode64(result.stdout).replace(/\r\n/g, "\n"),
     stderr: decode64(result.stderr) || decode64(result.message),
     compileError: decode64(result.compile_output),
     statusId: result.status.id,
@@ -121,9 +125,11 @@ const DANGEROUS_PATTERNS = [
   /\b__asm__?\b/, /\basm\s+volatile\b/,
   /#include\s*<sys\/socket\.h>/, /#include\s*<netinet\/in\.h>/,
   /#include\s*<arpa\/inet\.h>/, /#include\s*<unistd\.h>/,
+  // C++ file streams — the reference must read stdin / write stdout only.
+  /#include\s*<fstream>/, /\bstd::(?:basic_)?(?:i|o)?fstream\b/, /\b(?:i|o)fstream\b/, /\bfstream\b/,
 ];
 
-function staticCheck(code: string): string | null {
+export function staticCheck(code: string): string | null {
   for (const pattern of DANGEROUS_PATTERNS) {
     if (pattern.test(code)) return `代码包含不安全调用: ${pattern.source}`;
   }

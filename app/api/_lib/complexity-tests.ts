@@ -185,19 +185,20 @@ function expandEllipsis(text: string): string | null {
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
-    const ellipsisMatch = line.match(/^(.*?)([.…]{2,})(.*)$/);
 
+    // A standalone "..." line is a MULTI-LINE ellipsis — must be checked before
+    // the inline matcher, which would otherwise match it with empty before/after.
+    if (/^[.…]{2,}$/.test(line)) {
+      const prevLine = i > 0 ? lines[i - 1].trim() : "";
+      const nextLine = i < lines.length - 1 ? lines[i + 1].trim() : "";
+      const expandedLines = expandMultiLineEllipsis(prevLine, nextLine);
+      if (expandedLines === null) return null;
+      expanded.push(...expandedLines);
+      continue;
+    }
+
+    const ellipsisMatch = line.match(/^(.*?)([.…]{2,})(.*)$/);
     if (!ellipsisMatch) {
-      // No ellipsis on this line — check if it's a standalone "..." line
-      if (/^[.…]{2,}$/.test(line)) {
-        // Multi-line ellipsis: lines before and after define a sequence
-        const prevLine = i > 0 ? lines[i - 1].trim() : "";
-        const nextLine = i < lines.length - 1 ? lines[i + 1].trim() : "";
-        const expandedLines = expandMultiLineEllipsis(prevLine, nextLine);
-        if (expandedLines === null) return null;
-        expanded.push(...expandedLines);
-        continue;
-      }
       expanded.push(line);
       continue;
     }
@@ -268,13 +269,15 @@ function expandMultiLineEllipsis(prev: string, next: string): string[] | null {
   const prevNums = prev.trim().split(/\s+/).filter((s) => /^-?\d+$/.test(s)).map(Number);
   const nextNums = next.trim().split(/\s+/).filter((s) => /^-?\d+$/.test(s)).map(Number);
 
-  // Simplest case: single numbers per line
+  // Simplest case: single numbers per line. The unit direction (not the full
+  // gap) drives iteration; we return only the INTERIOR values (endpoints are
+  // emitted as their own lines by the caller).
   if (prevNums.length === 1 && nextNums.length === 1) {
-    const step = nextNums[0] - prevNums[0];
+    const dir = Math.sign(nextNums[0] - prevNums[0]);
     const count = Math.abs(nextNums[0] - prevNums[0]);
-    if (count < 2 || count > 100000) return null;
+    if (dir === 0 || count < 2 || count > 100000) return null;
     const result: string[] = [];
-    for (let v = prevNums[0] + step; v !== nextNums[0]; v += step) {
+    for (let v = prevNums[0] + dir; v !== nextNums[0]; v += dir) {
       result.push(String(v));
     }
     return result;
@@ -288,12 +291,12 @@ function expandMultiLineEllipsis(prev: string, next: string): string[] | null {
       if (prevNums[k] !== nextNums[k]) { allMatch = false; break; }
     }
     if (allMatch) {
-      const step = nextNums[nextNums.length - 1] - prevNums[prevNums.length - 1];
+      const dir = Math.sign(nextNums[nextNums.length - 1] - prevNums[prevNums.length - 1]);
       const count = Math.abs(nextNums[nextNums.length - 1] - prevNums[prevNums.length - 1]);
-      if (count < 2 || count > 100000) return null;
+      if (dir === 0 || count < 2 || count > 100000) return null;
       const prefix = prevNums.slice(0, -1).join(" ");
       const result: string[] = [];
-      for (let v = prevNums[prevNums.length - 1] + step; v !== nextNums[nextNums.length - 1]; v += step) {
+      for (let v = prevNums[prevNums.length - 1] + dir; v !== nextNums[nextNums.length - 1]; v += dir) {
         result.push(`${prefix} ${v}`);
       }
       return result;

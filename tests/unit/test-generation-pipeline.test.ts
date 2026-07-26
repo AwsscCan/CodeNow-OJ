@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parseGeneratedTests } from "../../app/api/_lib/complexity-tests";
-import { buildCategoryQuota, generateComplexityAwareTests } from "../../app/api/_lib/test-generation-pipeline";
+import { buildCategoryQuota, generateComplexityAwareTests, __resetLanguageCacheForTests } from "../../app/api/_lib/test-generation-pipeline";
 
 const judge0SubmitMock = vi.fn();
 vi.mock("../../app/api/_lib/reference-solution", async (importOriginal) => {
@@ -43,6 +43,7 @@ function aiResponse(tests: ReturnType<typeof test>[], audits: Array<Record<strin
 }
 
 afterEach(() => vi.unstubAllGlobals());
+beforeEach(() => __resetLanguageCacheForTests());
 
 describe("test generation pipeline", () => {
   it("builds an exact quota whose sum matches every supported target", () => {
@@ -284,6 +285,116 @@ describe("test generation pipeline", () => {
     expect(result.report.computedCount).toBe(4);
     expect(result.report.referenceValidated).toBe(true);
     expect(result.report.categoryCounts).toMatchObject({ adversarial: 1 });
+  });
+
+  it("does not claim validated_reference when the compiler is unreachable", async () => {
+    judge0SubmitMock.mockReset();
+    const aiResponses = [
+      aiResponse([
+        test("1\n0\n", "0\n", "boundary"),
+        test("2\n7 7\n", "14\n", "special"),
+        test("3\n1 2 3\n", "6\n", "ordinary"),
+        test("4\n1 -1 2 100\n", "102\n", "adversarial"),
+        test("6\n1 1 1 1 1 1\n", "6\n", "performance", 100000),
+      ]),
+    ];
+    vi.stubGlobal("fetch", vi.fn(async (url: string | URL) => {
+      if (String(url).includes("/languages")) return new Response("upstream down", { status: 503 });
+      return aiResponses.shift()!;
+    }));
+
+    const validatedRef = {
+      solutionCode: "int main(){return 0;}", bruteCode: "int main(){return 0;}",
+      algorithmSummary: "sum", expectedTimeComplexity: "O(n)", expectedSpaceComplexity: "O(1)", bruteMaxScale: 10,
+      report: { status: "validated" as const, compiled: true, samplesPassed: true, differentialTestsPassed: 8, differentialTestsFailed: 0, errors: [] },
+    };
+
+    const result = await generateComplexityAwareTests({
+      apiKey: "test-key", endpoint: "https://api.deepseek.com", model: "deepseek-chat", problem, count: 5, validatedRef,
+    });
+
+    // Nothing was actually run through the reference program.
+    expect(result.report.computedCount).toBe(0);
+    expect(result.report.referenceValidated).toBe(false);
+    // The load-bearing signals must be honest: not reference-verified, not high quality.
+    expect(result.report.verificationMode).not.toBe("validated_reference");
+    expect(result.report.qualityOk).toBe(false);
+  });
+
+  it("fills output-bearing cases when the compiler is unreachable instead of truncating", async () => {
+    judge0SubmitMock.mockReset();
+    const aiResponses = [
+      aiResponse([
+        // quota-priority categories are draft (no output); only ordinary carries outputs
+        test("1\n0\n", "", "boundary"),
+        test("2\n7 7\n", "", "special"),
+        test("9\n1 2 3\n", "", "adversarial"),
+        test("3\n1 2 3\n", "6\n", "ordinary"),
+        test("4\n1 2 3 4\n", "10\n", "ordinary"),
+        test("5\n1 1 1 1 1\n", "5\n", "ordinary"),
+        test("2\n9 -3\n", "6\n", "ordinary"),
+      ]),
+    ];
+    vi.stubGlobal("fetch", vi.fn(async (url: string | URL) => {
+      if (String(url).includes("/languages")) return new Response("down", { status: 500 });
+      return aiResponses.shift()!;
+    }));
+
+    const validatedRef = {
+      solutionCode: "int main(){return 0;}", bruteCode: "int main(){return 0;}",
+      algorithmSummary: "sum", expectedTimeComplexity: "O(n)", expectedSpaceComplexity: "O(1)", bruteMaxScale: 10,
+      report: { status: "validated" as const, compiled: true, samplesPassed: true, differentialTestsPassed: 8, differentialTestsFailed: 0, errors: [] },
+    };
+
+    const result = await generateComplexityAwareTests({
+      apiKey: "test-key", endpoint: "https://api.deepseek.com", model: "deepseek-chat", problem, count: 4, validatedRef,
+    });
+
+    // All four output-bearing ordinary cases should be kept, not truncated to 1.
+    expect(result.tests).toHaveLength(4);
+    expect(result.tests.every((item) => item.output.trim())).toBe(true);
+  });
+
+  it("prioritizes the still-missing category during reference backfill", async () => {
+    judge0SubmitMock.mockReset();
+    judge0SubmitMock.mockImplementation(async (_src: string, input: string) => (
+      input.includes("BAD")
+        ? { accepted: false, stdout: "", stderr: "re", compileError: "", statusId: 11, time: 5 }
+        : { accepted: true, stdout: "OK\n", stderr: "", compileError: "", statusId: 3, time: 5 }
+    ));
+    const aiResponses = [
+      // adversarial is rejected (BAD) so first pass leaves the adversarial quota short
+      aiResponse([
+        test("1\n0\n", "0\n", "boundary"),
+        test("2\n7 7\n", "14\n", "special"),
+        test("3\n1 2 3\n", "6\n", "ordinary"),
+        test("9\nBAD\n", "0\n", "adversarial"),
+      ]),
+      // backfill returns a valid ORDINARY before the valid ADVERSARIAL — order must not matter
+      aiResponse([
+        test("4\n1 2 3 4\n", "10\n", "ordinary"),
+        test("5\n1 -1 2 -2 100\n", "100\n", "adversarial"),
+      ]),
+    ];
+    vi.stubGlobal("fetch", vi.fn(async (url: string | URL) => {
+      if (String(url).includes("/languages")) return new Response(JSON.stringify([{ id: 54, name: "C++ (GCC 9.2.0)" }]), { status: 200 });
+      return aiResponses.shift()!;
+    }));
+
+    const validatedRef = {
+      solutionCode: "int main(){return 0;}", bruteCode: "int main(){return 0;}",
+      algorithmSummary: "sum", expectedTimeComplexity: "O(n)", expectedSpaceComplexity: "O(1)", bruteMaxScale: 10,
+      report: { status: "validated" as const, compiled: true, samplesPassed: true, differentialTestsPassed: 8, differentialTestsFailed: 0, errors: [] },
+    };
+
+    const result = await generateComplexityAwareTests({
+      apiKey: "test-key", endpoint: "https://api.deepseek.com", model: "deepseek-chat", problem, count: 4, validatedRef,
+    });
+
+    expect(result.tests).toHaveLength(4);
+    expect(result.report.categoryCounts).toMatchObject({ adversarial: 1 });
+    expect(result.report.unmetQuota.adversarial).toBe(0);
+    expect(result.report.qualityOk).toBe(true);
   });
 });
 

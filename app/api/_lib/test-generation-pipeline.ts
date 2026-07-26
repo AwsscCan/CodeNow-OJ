@@ -240,6 +240,10 @@ function batchPrompt(args: {
 }
 
 let cppLanguageId: number | null = null;
+
+/** Test-only: clear the memoized Judge0 language id so fetch stubs take effect. */
+export function __resetLanguageCacheForTests() { cppLanguageId = null; }
+
 async function getCppLanguageId() {
   if (cppLanguageId !== null) return cppLanguageId;
   const response = await fetch("https://ce.judge0.com/languages", { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(12_000) });
@@ -413,8 +417,10 @@ export async function generateComplexityAwareTests(options: {
     }
 
     if (languageId === null) {
-      // Cannot reach the compiler — keep whatever draft outputs exist.
-      selected = selectByQuota(candidates, target, quota).filter((test) => test.output.trim());
+      // Cannot reach the compiler — keep whatever draft outputs exist. Filter to
+      // output-bearing candidates BEFORE quota selection so selection fills up to
+      // target from the usable subset instead of selecting-then-truncating.
+      selected = selectByQuota(candidates.filter((test) => test.output.trim()), target, quota);
     } else {
       const lang = languageId;
       const verified: GeneratedTest[] = [];
@@ -451,7 +457,11 @@ export async function generateComplexityAwareTests(options: {
         await runBatch(requested, gaps);
         backfillAttempts += 1;
         if (candidates.length > before) {
-          await verify(candidates.slice(before));
+          const fresh = candidates.slice(before);
+          // Verify still-missing categories first so a valid quota-filling case
+          // is not starved by an earlier-listed case that reaches the target.
+          await verify(selectByQuota(fresh, need, gaps));
+          await verify(fresh);
           backfillStagnant = 0;
         } else {
           backfillStagnant += 1;
@@ -466,7 +476,14 @@ export async function generateComplexityAwareTests(options: {
   const categoryCounts = countsOf(selected);
   const unmetQuota = missingQuota(quota, selected);
   const draftOutputCount = selected.filter((test) => !test.output.trim()).length;
-  const qualityOk = selected.length === target && draftOutputCount === 0 && Object.values(unmetQuota).every((value) => value === 0);
+  // When a reference was expected but nothing was actually verified (e.g. the
+  // compiler was unreachable), the outputs are unverified AI drafts — do not
+  // report reference-grade trust.
+  const referenceExpectedButUnverified = hasReference && computedCount === 0;
+  const qualityOk = selected.length === target
+    && draftOutputCount === 0
+    && Object.values(unmetQuota).every((value) => value === 0)
+    && !referenceExpectedButUnverified;
   const report: GenerationReport = {
     expectedTimeComplexity: profile.acceptedComplexity,
     expectedSpaceComplexity: profile.spaceComplexity,
@@ -483,7 +500,7 @@ export async function generateComplexityAwareTests(options: {
     categoryCounts,
     unmetQuota,
     qualityOk,
-    verificationMode: hasReference ? "validated_reference" : auditedCases.size ? "ai_cross_batch" : "ai_structured",
+    verificationMode: hasReference && computedCount > 0 ? "validated_reference" : auditedCases.size ? "ai_cross_batch" : "ai_structured",
     auditedCount: auditedCases.size,
     batches,
     elapsedMs: Date.now() - startedAt,
