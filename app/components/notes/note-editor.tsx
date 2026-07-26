@@ -95,7 +95,7 @@ export function NoteEditor({ value, onChange, onSubmit, submitLabel, status, onD
       {pasteError && <div className="paste-error" role="alert">{pasteError}</div>}
       <div className="note-editor-split">
         <textarea
-          placeholder="用 Markdown 记录你的解题思路…支持直接粘贴图片(≤300KB)与 ![说明](https://…) 外链插图"
+          placeholder="用 Markdown 记录你的解题思路…支持 LaTeX 公式($…$)、直接粘贴图片(≤300KB)与外链插图"
           value={value.content}
           onChange={(event) => onChange({ ...value, content: event.target.value })}
           onPaste={(event) => {

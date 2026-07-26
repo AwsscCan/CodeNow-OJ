@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "./styles/tokens.css";
+@import "katex/dist/katex.min.css";
 
 :root { --ink:#172033; --muted:#7b8497; --line:#e6e9ef; --blue:#3478f6; --blue2:#245fdf; --paper:#fff; --canvas:#f6f7f9; --editor:#121722;
   /* vinext 的 next/font 在 Windows 会把本地绝对路径烘进产物导致字体必然加载失败，改用系统字体栈 */

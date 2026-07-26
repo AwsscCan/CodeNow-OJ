@@ -51,7 +51,7 @@ export function ProblemEditor({ problem, onSave, onCancel }: {
         <label>内存限制<input value={draft.memory} onChange={(e) => update("memory", e.target.value)} placeholder="128 MB" /></label>
       </div>
       <label>题目描述<textarea value={draft.description} onChange={(e) => update("description", e.target.value)} onPaste={(e) => pasteImage(e, "description")} /></label>
-      <small className="paste-image-hint">支持 Markdown；可直接粘贴图片(≤300KB 自动内嵌)，大图请用外链 ![说明](https://…)</small>
+      <small className="paste-image-hint">支持 Markdown 与 LaTeX 公式($…$/$$…$$)；可直接粘贴图片(≤300KB 自动内嵌)，大图请用外链 ![说明](https://…)</small>
       <label>输入格式<textarea value={draft.inputFormat} onChange={(e) => update("inputFormat", e.target.value)} onPaste={(e) => pasteImage(e, "inputFormat")} /></label>
       <label>输出格式<textarea value={draft.outputFormat} onChange={(e) => update("outputFormat", e.target.value)} onPaste={(e) => pasteImage(e, "outputFormat")} /></label>
       {error && <div className="field-error" role="alert">{error}</div>}
