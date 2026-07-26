@@ -13,6 +13,8 @@ import {
   MASCOT_RECENT_LINE_MAX_LENGTH,
 } from "../_lib/constants";
 import { rateLimit } from "../_lib/rate-limit";
+import { buildTakagiMascotPrompt } from "../_lib/takagi-persona";
+import { formatQuoteContext, pickTakagiQuotes, tagsForPhase } from "../_lib/takagi-quotes";
 import { validateEndpoint } from "../_lib/validate-endpoint";
 
 /** 每种情境对应的表情与给模型的语气指引 */
@@ -27,16 +29,7 @@ const PHASE_STYLE: Record<string, { mood: string; sprite: number; brief: string 
   tle: { mood: "smug", sprite: 2, brief: "跑超时了，你嫌他太慢、得意地嘲笑他的复杂度" },
 };
 
-const SYSTEM_PROMPT =
-  "你是“高木同学”（からかい上手の高木さん）——坐在同桌旁边看他刷算法编程题的女生。" +
-  "你聪明、傲娇、最爱捉弄同桌，表面上损他实则在意他；自信、爱跟他打赌，偶尔夹一句日语（ふふ / ね / もう / だめ / へえ）。" +
-  "现在根据他的编程状态，说一句符合人设的台词来调侃或鼓励他。\n" +
-  "硬性要求：\n" +
-  "1. 只输出台词本身，中文为主，最多 30 个字，最多夹一个简短日语词。\n" +
-  "2. 像真人脱口而出：不要解释、不要引号、不要括号动作、不要 emoji、不要换行。\n" +
-  "3. 语气俏皮傲娇，可以捉弄但别刻薄，绝不说脏话。\n" +
-  "4. 不要复用“最近说过”列表里的句子，也不要用相同的开头或相同的吐槽点，换个角度说。\n" +
-  "5. 只针对【当前状态】说话，代码片段仅作参考，不要逐行点评代码。";
+const SYSTEM_PROMPT = buildTakagiMascotPrompt();
 
 /** 去除换行/控制符并压平为单行，限长——用于会拼进 prompt 的用户可控字段，收窄注入面 */
 function sanitizeField(raw: unknown, max: number): string {
@@ -59,7 +52,7 @@ function sanitizeLine(raw: string): string {
     .slice(0, MASCOT_LINE_MAX_LENGTH);
 }
 
-function buildUserPrompt(event: Record<string, unknown>, recentLines: string[]): string {
+function buildUserPrompt(event: Record<string, unknown>, recentLines: string[], memories: string[]): string {
   const phase = String(event.phase || "idle");
   const style = PHASE_STYLE[phase] ?? PHASE_STYLE.idle;
   const title = sanitizeField(event.problemTitle, MASCOT_TITLE_MAX_LENGTH) || "当前题目";
@@ -71,6 +64,9 @@ function buildUserPrompt(event: Record<string, unknown>, recentLines: string[]):
   const lines = [`【当前状态】${style.brief}。`, `题目：${title}。`];
   if (total > 0) lines.push(`测试点通过 ${passed}/${total}${firstFailedIndex >= 0 ? `，第 ${firstFailedIndex + 1} 个点最先出问题` : ""}。`);
   if (codeExcerpt.trim()) lines.push(`（参考）他此刻的代码片段：\n${codeExcerpt}`);
+  const quoteContext = formatQuoteContext(pickTakagiQuotes(tagsForPhase(phase), 3));
+  if (quoteContext) lines.push(quoteContext);
+  if (memories.length) lines.push(`你对他的长期观察（可自然玩梗，但别逐条复述）：\n- ${memories.join("\n- ")}`);
   if (recentLines.length) lines.push(`最近说过（不要重复或雷同）：\n- ${recentLines.join("\n- ")}`);
   lines.push("现在，用高木同学的口吻针对【当前状态】说一句新台词。");
   return lines.join("\n");
@@ -88,6 +84,12 @@ export async function POST(request: NextRequest) {
           .filter((item: unknown): item is string => typeof item === "string" && item.trim().length > 0)
           .slice(-MASCOT_RECENT_MAX_ITEMS)
           .map((item: string) => sanitizeField(item, MASCOT_RECENT_LINE_MAX_LENGTH))
+      : [];
+    const memories: string[] = Array.isArray(requestData.memories)
+      ? requestData.memories
+          .filter((item: unknown): item is string => typeof item === "string" && item.trim().length > 0)
+          .slice(-3)
+          .map((item: string) => sanitizeField(item, 60))
       : [];
 
     const apiKey = process.env.AI_API_KEY || requestData.apiKey;
@@ -110,7 +112,7 @@ export async function POST(request: NextRequest) {
         max_tokens: AI_MAX_TOKENS_MASCOT,
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: buildUserPrompt(event as Record<string, unknown>, recentLines) },
+          { role: "user", content: buildUserPrompt(event as Record<string, unknown>, recentLines, memories) },
         ],
       }),
     });

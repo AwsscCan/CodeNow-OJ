@@ -3,10 +3,12 @@
 import { useParams, useRouter } from "next/navigation";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { AuthStatus } from "../../components/auth-status";
 import { ProblemNotesPanel } from "../../components/notes/problem-notes-panel";
+import { SafeMarkdown } from "../../components/notes/safe-markdown";
+import { ProblemEditor } from "../../components/problem-editor";
 import { SyncConflictDialog } from "../../components/sync-conflict-dialog";
 import { Toast } from "../../components/toast";
+import { Topbar } from "../../components/topbar";
 import { useCloudSave, type CloudSaveResult, type SyncStatus } from "../../hooks/use-cloud-save";
 import { useConversationSync } from "../../hooks/use-conversation-sync";
 import { useJudge } from "../../hooks/use-judge";
@@ -17,6 +19,7 @@ import { ProblemApi, ProblemApiError, type CloudProblem } from "../../lib/proble
 import { useAiStore } from "../../stores/ai-store";
 import { useLibraryStore } from "../../stores/library-store";
 import { useMascotStore } from "../../stores/mascot-store";
+import { distillJudgeMemory, distillQuestionMemory, useMemoryStore } from "../../stores/memory-store";
 import { useProblemStore } from "../../stores/problem-store";
 import type { Problem, SubmissionRecord } from "../../stores/problem-store";
 import { useThemeStore } from "../../stores/theme-store";
@@ -43,7 +46,6 @@ export default function ProblemPage() {
   const setMascotContext = useMascotStore((s) => s.setContext);
   const setMascotPhase = useMascotStore((s) => s.setPhase);
   const reactMascotToJudge = useMascotStore((s) => s.reactToJudge);
-  const aiSolveRequestId = useMascotStore((s) => s.aiSolveRequestId);
   const session = authClient.useSession();
   const conversationSync = useConversationSync(session.data?.user.id ?? null, cloudId ?? store.problem.id);
 
@@ -55,6 +57,7 @@ export default function ProblemPage() {
   const [chatBusy, setChatBusy] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
   const [generatingTests, setGeneratingTests] = useState(false);
+  const [editingProblem, setEditingProblem] = useState(false);
   const [testGenStatus, setTestGenStatus] = useState("");
   const [testPointCount, setTestPointCount] = useState(18);
   const [workspaceResizing, setWorkspaceResizing] = useState(false);
@@ -171,14 +174,12 @@ export default function ProblemPage() {
   }, [store.code, setMascotContext]);
 
   // 桌宠：被拖入代码区(aiSolveRequestId 递增)时先弹高木风"比试确认"框，点"是"才开 AI 解题弹窗。
-  // 初值取 store 当前值，避免跨题目导航时把历史递增值误判为新触发而误弹窗。
-  const aiSolveSeen = useRef(useMascotStore.getState().aiSolveRequestId);
-  useEffect(() => {
-    if (aiSolveRequestId > aiSolveSeen.current) {
-      aiSolveSeen.current = aiSolveRequestId;
-      if (!showAi && !showMascotAiPrompt) setShowMascotAiPrompt(true);
-    }
-  }, [aiSolveRequestId, showAi, showMascotAiPrompt]);
+  // 用 store 订阅只响应挂载期间的递增，跨题目导航的历史值天然不会误触发。
+  const showAiRef = useRef(showAi);
+  useEffect(() => { showAiRef.current = showAi; }, [showAi]);
+  useEffect(() => useMascotStore.subscribe((state, prev) => {
+    if (state.aiSolveRequestId > prev.aiSolveRequestId && !showAiRef.current) setShowMascotAiPrompt(true);
+  }), []);
 
   // Sync test cases back to library IMMEDIATELY on every change + on unmount
   useEffect(() => {
@@ -287,6 +288,10 @@ export default function ProblemPage() {
       store.setCompilerDiagnostic(result.diagnostic);
       reactMascotToJudge(result.results, { submit });
 
+      // 记忆池：判题失败自动沉淀错误记忆，反哺 AI 对话与桌宠台词
+      const judgeMemory = distillJudgeMemory(store.problem, result.results);
+      if (judgeMemory) useMemoryStore.getState().remember(judgeMemory.kind, judgeMemory.text);
+
       // Always add to local history (both run and submit)
       if (result.submission) {
         store.setHistory([result.submission, ...store.history]);
@@ -301,7 +306,28 @@ export default function ProblemPage() {
     }
   }
 
-  // AI
+  // AI 请求只带题面语义与前 2 个样例；全量测试点会拖慢生成并浪费 token
+  function slimProblem() {
+    return { ...store.problem, samples: store.problem.samples.slice(0, 2) };
+  }
+
+  // 少女主题下 AI 对话与桌宠共用高木同学人设
+  const isTakagi = theme.themeMode === "girl";
+
+  // 判题动态摘要：让 AI(高木)读到最近一次运行结果与提交记录
+  function buildJudgeContext() {
+    const passed = store.results.filter((r) => r.status === "AC").length;
+    const failIdx = store.results.findIndex((r) => r.status !== "AC");
+    const first = failIdx >= 0 ? store.results[failIdx] : null;
+    return {
+      lastRun: store.results.length ? {
+        passed, total: store.results.length,
+        firstFailed: first ? { index: failIdx, status: first.status, expected: String(first.expected).slice(0, 80), actual: String(first.actual).slice(0, 80) } : null,
+      } : null,
+      history: store.history.slice(0, 3).map((h) => ({ at: h.submittedAt, status: h.status, passed: h.passed })),
+    };
+  }
+
   async function handleAskAi() {
     const key = aiStore.apiKeys[aiStore.provider];
     if (!key.trim()) return toast("请先填写 API Key");
@@ -310,7 +336,7 @@ export default function ProblemPage() {
       const res = await fetch("/api/ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ apiKey: key, endpoint: aiStore.endpoint, model: aiStore.model, problem: store.problem }),
+        body: JSON.stringify({ apiKey: key, endpoint: aiStore.endpoint, model: aiStore.model, problem: slimProblem() }),
       });
       const data = await res.json() as { code?: string; error?: string };
       if (!res.ok || !data.code) throw new Error(data.error || "生成失败");
@@ -332,17 +358,25 @@ export default function ProblemPage() {
     const next = [...aiStore.chatMessages, { role: "user" as const, content: question }];
     aiStore.addChatMessage({ role: "user", content: question });
     void conversationSync.append({ role: "user", content: question }).catch(() => undefined);
+    // 记忆池：从提问沉淀习惯，并把已有记忆随请求注入
+    const questionMemory = distillQuestionMemory(question);
+    if (questionMemory) useMemoryStore.getState().remember(questionMemory.kind, questionMemory.text);
     setChatInput("");
     setChatBusy(true);
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ apiKey: key, endpoint: aiStore.endpoint, model: aiStore.model, problem: store.problem, code: store.code, messages: next }),
+        body: JSON.stringify({
+          apiKey: key, endpoint: aiStore.endpoint, model: aiStore.model, problem: slimProblem(), code: store.code, messages: next,
+          memories: useMemoryStore.getState().recentMemories(8),
+          judge: buildJudgeContext(),
+          ...(isTakagi ? { persona: "takagi" } : {}),
+        }),
       });
-      const data = await res.json() as { answer?: string; error?: string };
+      const data = await res.json() as { answer?: string; reasoning?: string; error?: string };
       if (!res.ok || !data.answer) throw new Error(data.error || "AI 没有返回内容");
-      aiStore.addChatMessage({ role: "assistant", content: data.answer! });
+      aiStore.addChatMessage({ role: "assistant", content: data.answer!, ...(data.reasoning ? { reasoning: data.reasoning } : {}) });
       void conversationSync.append({ role: "assistant", content: data.answer! }).catch(() => undefined);
     } catch (err) {
       toast(err instanceof Error ? err.message : "AI 对话失败");
@@ -425,25 +459,7 @@ export default function ProblemPage() {
 
   return (
     <main className={`app-shell theme-${theme.themeMode}`}>
-      {/* Topbar */}
-      <header className="topbar">
-        <div className="brand"><img className="brand-mark" src="/codenow/icon.jpg" alt="CodeNow 图标" /><span>CodeNow</span><em>OJ</em></div>
-        <nav>
-          <button onClick={() => router.push("/library")}>题库</button>
-          <button className="nav-active">做题</button>
-          <button onClick={() => toast("比赛功能正在开发中，敬请期待")}>比赛</button>
-          <button onClick={() => router.push("/notes")}>讨论</button>
-        </nav>
-        <div className="header-actions">
-          <label className="theme-picker" title="切换网站主题">
-            <span aria-hidden="true">✦</span>
-            <select aria-label="网站主题" value={theme.themeMode} onChange={(e) => theme.setThemeMode(e.target.value as "light"|"dark"|"girl")}>
-              <option value="light">亮色</option><option value="dark">暗色</option><option value="girl">少女</option>
-            </select>
-          </label>
-          <AuthStatus onSignedOut={() => { store.clearPrivateWorkspace(); aiStore.clearChat(); }} />
-        </div>
-      </header>
+      <Topbar onToast={toast} onSignedOut={() => { store.clearPrivateWorkspace(); aiStore.clearChat(); }} />
 
       {/* Workspace Bar */}
       <section className="workspace-bar">
@@ -453,11 +469,11 @@ export default function ProblemPage() {
           <mark>{store.problem.difficulty}</mark>
         </div>
         <div className="workspace-actions">
-          <span className={`sync-status ${store.syncStatus}`}>{store.syncStatus === "local-only" ? "仅本地" : store.syncStatus === "saving" ? "正在保存…" : store.syncStatus === "synced" ? "已同步" : store.syncStatus === "failed" ? "保存失败" : "版本冲突"}</span>
+          <span className={`sync-status ${store.syncStatus}`}><i className="sync-dot" aria-hidden="true" />{store.syncStatus === "local-only" ? "本地保存" : store.syncStatus === "saving" ? "正在保存…" : store.syncStatus === "synced" ? "已同步" : store.syncStatus === "failed" ? "保存失败" : "版本冲突"}</span>
           {store.syncStatus === "failed" && <button onClick={retryFailedSaves}>重试保存</button>}
           <button onClick={() => router.push("/library")}>⇧ 导入题目</button>
-          <button className="ask-button" onClick={() => setShowChat(true)}>◈ 问 AI</button>
-          <button className="ai-button" onClick={() => setShowAi(true)}>✦ AI 解题</button>
+          <button className="ask-button" onClick={() => setShowChat(true)}>{isTakagi ? "◈ 问高木" : "◈ 问 AI"}</button>
+          <button className="ai-button" onClick={() => setShowAi(true)}>{isTakagi ? "✦ 高木解题" : "✦ AI 解题"}</button>
           <button className="run-button" disabled={running} onClick={() => handleRun(false)}>{running ? "运行中…" : "▷ 运行测试"}</button>
           <button className="submit-button" disabled={running} onClick={() => handleRun(true)}>提交</button>
         </div>
@@ -474,7 +490,18 @@ export default function ProblemPage() {
           </div>
           {store.tab === "problem" ? (
             <div className="problem-content">
-              <h1>{store.problem.title}</h1>
+              {editingProblem ? (
+                <ProblemEditor
+                  problem={store.problem}
+                  onSave={(next) => { store.setProblem(next); setEditingProblem(false); toast("题面已更新，将自动同步"); }}
+                  onCancel={() => setEditingProblem(false)}
+                />
+              ) : (
+              <>
+              <div className="problem-title-row">
+                <h1>{store.problem.title}</h1>
+                <button type="button" className="edit-problem-btn" title="手动修正 AI 识别错误" onClick={() => setEditingProblem(true)}>✎ 编辑题面</button>
+              </div>
               {store.problem.sourceUrl && (
                 <div className={`source-banner ${store.problem.extractionStatus === "needs_review" ? "review" : ""}`}>
                   <span>{store.problem.extractionStatus === "needs_review" ? "需核对" : "已导入"}</span>
@@ -487,19 +514,22 @@ export default function ProblemPage() {
                 <span>▣ 内存限制 <b>{store.problem.memory}</b></span>
                 <span>提交 <b>86.4k</b></span><span>通过率 <b>62.7%</b></span>
               </div>
-              <section><h2>题目描述</h2><p>{store.problem.description}</p></section>
-              <section><h2>输入格式</h2><p>{store.problem.inputFormat}</p></section>
-              <section><h2>输出格式</h2><p>{store.problem.outputFormat}</p></section>
+              <section><h2>题目描述</h2><SafeMarkdown value={store.problem.description} className="problem-md" /></section>
+              <section><h2>输入格式</h2><SafeMarkdown value={store.problem.inputFormat} className="problem-md" /></section>
+              <section><h2>输出格式</h2><SafeMarkdown value={store.problem.outputFormat} className="problem-md" /></section>
               <section><h2>样例</h2>
                 {store.problem.samples.slice(0, 2).map((sample, idx) => (
                   <div className="sample-card" key={sample.id}>
                     <div><span>输入 #{idx + 1}</span><button onClick={() => navigator.clipboard?.writeText(sample.input)}>复制</button></div>
                     <pre>{sample.input}</pre>
-                    <div><span>输出 #{idx + 1}</span></div><pre>{sample.output}</pre>
+                    <div><span>输出 #{idx + 1}</span><button onClick={() => navigator.clipboard?.writeText(sample.output)}>复制</button></div>
+                    <pre>{sample.output}</pre>
                   </div>
                 ))}
               </section>
               <aside className="hint"><b>C++ 提示</b><span>整数范围不确定时建议使用 <code>long long</code>。</span></aside>
+              </>
+              )}
             </div>
           ) : store.tab === "tests" ? (
             <div className="tests-content">
@@ -547,7 +577,7 @@ export default function ProblemPage() {
         <button className="resize-handle" type="button" aria-label="拖动调整题目区和编辑器宽度" onPointerDown={startResize}><span>{Math.round(store.workspaceSplit)}%</span></button>
 
         {/* Code Panel */}
-        <section ref={codePanelRef} data-mascot-drop-zone="editor" className={`code-panel editor-theme-${theme.editorTheme}`}>
+        <section ref={codePanelRef} className={`code-panel editor-theme-${theme.editorTheme}`}>
           <div className="editor-toolbar">
             <div className="file-tab"><span>C++</span> main.cpp <i>●</i></div>
             <div>
@@ -562,7 +592,7 @@ export default function ProblemPage() {
               </label>
             </div>
           </div>
-          <div ref={editorAreaRef} className="editor-area">
+          <div ref={editorAreaRef} data-mascot-drop-zone="editor" className="editor-area">
             <Suspense fallback={<div className="monaco-loading"><span>C++</span><b>正在加载智能编辑器…</b></div>}>
               <CppEditor value={store.code} themeMode={theme.editorTheme} compilerDiagnostic={store.compilerDiagnostic} onChange={handleEditorChange} onCursorChange={handleCursorChange} />
             </Suspense>
@@ -610,16 +640,24 @@ export default function ProblemPage() {
 
       {/* 桌宠比试确认框：拖入代码区先问"要不要比试"，点"是"才开 AI 解题 */}
       {showMascotAiPrompt && <div className="modal-backdrop" onMouseDown={() => setShowMascotAiPrompt(false)}><div className="modal mascot-ai-modal" onMouseDown={(e) => e.stopPropagation()}>
-        <button className="modal-close" onClick={() => setShowMascotAiPrompt(false)}>×</button><span className="modal-kicker">TAKAGI CHALLENGE</span><h2>AI 解题，来比一局？</h2>
+        <button className="modal-close" onClick={() => setShowMascotAiPrompt(false)}>×</button>
+        <img className="mascot-ai-portrait" src="/codenow/sunny-selfie.jpg" alt="" aria-hidden="true" loading="lazy" decoding="async" />
+        <span className="modal-kicker">TAKAGI CHALLENGE</span><h2>AI 解题，来比一局？</h2>
         <p>把我拖到代码旁边，是想让我出手吗？勝負しよ。先让 AI 写一份 C++17，你来挑错。要是看不出来，可就算我赢咯。</p>
         <div className="mascot-ai-actions"><button onClick={() => setShowMascotAiPrompt(false)}>还是自己来</button><button onClick={() => { setShowMascotAiPrompt(false); setShowAi(true); }}>使用 AI 解题</button></div>
       </div></div>}
 
       {/* AI Modal */}
-      {showAi && <div className="modal-backdrop" onMouseDown={() => setShowAi(false)}><div className="modal ai-modal" onMouseDown={(e) => e.stopPropagation()}>
+      {showAi && <div className="modal-backdrop" onMouseDown={() => setShowAi(false)}><div className={`modal ai-modal ${isTakagi ? "takagi-solver" : ""}`} onMouseDown={(e) => e.stopPropagation()}>
         <button className="modal-close" onClick={() => setShowAi(false)}>×</button>
-        <span className="modal-kicker purple">AI COPILOT</span><h2>让 AI 编写解答</h2>
-        <p>选择 API 服务商。每个服务商的密钥会分别保存在当前浏览器中，下次可直接使用。</p>
+        {isTakagi ? <>
+          <img className="mascot-ai-portrait" src="/codenow/portrait-sailor.jpg" alt="" aria-hidden="true" loading="lazy" decoding="async" />
+          <span className="modal-kicker">TAKAGI SOLVER</span><h2>让高木同学出手</h2>
+          <p>勝負しよ？我来写一份 C++17，你负责挑错——要是找不出毛病，就算我赢。密钥只保存在你这台浏览器里。</p>
+        </> : <>
+          <span className="modal-kicker purple">AI COPILOT</span><h2>让 AI 编写解答</h2>
+          <p>选择 API 服务商。每个服务商的密钥会分别保存在当前浏览器中，下次可直接使用。</p>
+        </>}
         <div className="provider-switch">
           <button className={aiStore.provider === "deepseek" ? "active deepseek" : ""} onClick={() => aiStore.setProvider("deepseek")}><b>DeepSeek</b><small>DS 官方 API</small></button>
           <button className={aiStore.provider === "openai" ? "active" : ""} onClick={() => aiStore.setProvider("openai")}><b>OpenAI</b><small>官方兼容接口</small></button>
@@ -628,23 +666,43 @@ export default function ProblemPage() {
         <label>API Endpoint<input value={aiStore.endpoint} onChange={(e) => aiStore.setEndpoint(e.target.value)} placeholder="https://api.deepseek.com" /></label>
         <label>API Key<div className="api-key-input"><input type="password" value={aiStore.apiKeys[aiStore.provider]} onChange={(e) => aiStore.setApiKey(aiStore.provider, e.target.value)} placeholder="输入后会保存在本机浏览器" autoComplete="off" />{aiStore.apiKeys[aiStore.provider] && <button onClick={() => aiStore.clearApiKey(aiStore.provider)}>清除</button>}</div><small className="storage-note">仅保存在当前浏览器，不会写入网站服务器</small></label>
         <label>模型{aiStore.provider === "deepseek" ? <select value={aiStore.model} onChange={(e) => aiStore.setModel(e.target.value)}><option value="deepseek-v4-flash">DeepSeek V4 Flash · 快速</option><option value="deepseek-v4-pro">DeepSeek V4 Pro · 高质量</option></select> : <input value={aiStore.model} onChange={(e) => aiStore.setModel(e.target.value)} placeholder="模型 ID" />}</label>
-        <div className="ai-summary"><span>当前题目</span><b>{store.problem.id} · {store.problem.title}</b><small>{store.problem.samples.length} 个测试点将随题面一并发送</small></div>
+        <div className="ai-summary"><span>当前题目</span><b>{store.problem.id} · {store.problem.title}</b><small>仅发送题面与前 2 个样例，测试点不随请求发送，生成更快</small></div>
         <button className="generate-button" disabled={aiBusy} onClick={handleAskAi}>{aiBusy ? "正在思考并编写 C++…" : `✦ 使用 ${aiStore.provider === "deepseek" ? "DeepSeek" : aiStore.provider === "openai" ? "OpenAI" : "自定义 API"} 生成 C++17 解答`}</button>
       </div></div>}
 
       {/* Chat Drawer */}
-      {showChat && <div className="chat-backdrop" onMouseDown={() => setShowChat(false)}><aside className="chat-drawer" onMouseDown={(e) => e.stopPropagation()}>
-        <header><div><span>AI 助教</span><b>{store.problem.id} · {store.problem.title}</b></div><button onClick={() => setShowChat(false)}>×</button></header>
-        <div className="chat-context"><span>{aiStore.provider === "deepseek" ? "DS" : "OA"}</span><div><b>{aiStore.model}</b><small>已携带当前题面和代码</small></div></div>
+      {showChat && <div className="chat-backdrop" onMouseDown={() => setShowChat(false)}><aside className={`chat-drawer ${isTakagi ? "takagi-mode" : ""}`} onMouseDown={(e) => e.stopPropagation()}>
+        <header><div><span>{isTakagi ? "同桌 · 高木同学" : "AI 助教"}</span><b>{store.problem.id} · {store.problem.title}</b></div><button onClick={() => setShowChat(false)}>×</button></header>
+        <div className="chat-context">
+          {isTakagi
+            ? <img className="takagi-face" src="/codenow/study-smile.jpg" alt="" aria-hidden="true" loading="lazy" decoding="async" />
+            : <span>{aiStore.provider === "deepseek" ? "DS" : "OA"}</span>}
+          <div><b>{aiStore.model}</b><small>{isTakagi ? "陪你一起看这道题 · ちゃんと見てるよ" : "已携带当前题面和代码"}</small></div>
+        </div>
         <div className="chat-messages">
           {!aiStore.chatMessages.length && <div className="chat-welcome">
-            <strong>哪里不明白，直接问我</strong><span>我会结合当前题目和你的代码回答。</span>
-            <button onClick={() => setChatInput("这道题应该从什么思路入手？")}>提示解题思路</button>
-            <button onClick={() => setChatInput("帮我检查当前代码可能存在的问题")}>检查当前代码</button>
-            <button onClick={() => setChatInput("请解释这道题需要注意的边界情况")}>分析边界情况</button>
+            {isTakagi ? <>
+              <img className="takagi-welcome-portrait" src="/codenow/portrait-classroom.jpg" alt="" aria-hidden="true" loading="lazy" decoding="async" />
+              <strong>（故意放慢了收拾书包的动作）</strong>
+              <span>你刚才，是不是偷偷看我这边了？……哦，是卡题了啊。要一起看看吗？</span>
+              <button onClick={() => setChatInput("这道题应该从什么思路入手？")}>呐，这题怎么想？</button>
+              <button onClick={() => setChatInput("帮我检查当前代码可能存在的问题")}>帮我挑挑代码的刺</button>
+              <button onClick={() => setChatInput("请解释这道题需要注意的边界情况")}>边界情况会坑我吗？</button>
+            </> : <>
+              <strong>哪里不明白，直接问我</strong><span>我会结合当前题目和你的代码回答。</span>
+              <button onClick={() => setChatInput("这道题应该从什么思路入手？")}>提示解题思路</button>
+              <button onClick={() => setChatInput("帮我检查当前代码可能存在的问题")}>检查当前代码</button>
+              <button onClick={() => setChatInput("请解释这道题需要注意的边界情况")}>分析边界情况</button>
+            </>}
           </div>}
-          {aiStore.chatMessages.map((msg, i) => <div className={`chat-message ${msg.role}`} key={i}><span>{msg.role === "user" ? "我" : "AI"}</span><p>{msg.content}</p></div>)}
-          {chatBusy && <div className="chat-message assistant"><span>AI</span><p className="thinking">正在思考…</p></div>}
+          {aiStore.chatMessages.map((msg, i) => <div className={`chat-message ${msg.role}`} key={i}>
+            <span>{msg.role === "user" ? "我" : isTakagi ? <img src="/codenow/study-smile.jpg" alt="" aria-hidden="true" loading="lazy" decoding="async" /> : "AI"}</span>
+            <div className="chat-message-body">
+              {msg.role === "assistant" && msg.reasoning && <details className="chat-reasoning"><summary>{isTakagi ? "高木的小心思" : "思考过程"}</summary><p>{msg.reasoning}</p></details>}
+              <p>{msg.content}</p>
+            </div>
+          </div>)}
+          {chatBusy && <div className="chat-message assistant"><span>{isTakagi ? <img src="/codenow/study-smile.jpg" alt="" aria-hidden="true" /> : "AI"}</span><p className="thinking">{isTakagi ? "……让我想想。" : "正在思考…"}</p></div>}
         </div>
         <footer><textarea value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) handleSendChat(); }} placeholder="询问思路、复杂度、代码报错……（Ctrl + Enter 发送）" /><button disabled={chatBusy || !chatInput.trim()} onClick={handleSendChat}>发送</button></footer>
       </aside></div>}

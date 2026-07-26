@@ -19,7 +19,11 @@ export function AuthStatus({ onSignedOut }: { onSignedOut: () => void }) {
   const user = session.data?.user;
   if (!user) {
     const returnTo = pathname || "/";
-    return <Link className="header-login" href={`/login?returnTo=${encodeURIComponent(returnTo)}`}>登录</Link>;
+    return (
+      <Link className="header-login" aria-label="登录" href={`/login?returnTo=${encodeURIComponent(returnTo)}`}>
+        <span aria-hidden="true">✦</span>登录
+      </Link>
+    );
   }
 
   return (

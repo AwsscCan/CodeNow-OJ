@@ -4,6 +4,12 @@ import { useRouter, usePathname } from "next/navigation";
 import { useThemeStore } from "../stores/theme-store";
 import { AuthStatus } from "./auth-status";
 
+const THEME_OPTIONS = [
+  { value: "light", label: "亮色", icon: "☀" },
+  { value: "dark", label: "暗色", icon: "☾" },
+  { value: "girl", label: "少女", icon: "❀" },
+] as const;
+
 export function Topbar({ onToast, onSignedOut = () => {} }: { onToast: (msg: string) => void; onSignedOut?: () => void }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -33,18 +39,20 @@ export function Topbar({ onToast, onSignedOut = () => {} }: { onToast: (msg: str
         <button className={isActive("notes") ? "nav-active" : ""} onClick={() => router.push("/notes")}>讨论</button>
       </nav>
       <div className="header-actions">
-        <label className="theme-picker" title="切换网站主题">
-          <span aria-hidden="true">✦</span>
-          <select
-            aria-label="网站主题"
-            value={themeMode}
-            onChange={(event) => setThemeMode(event.target.value as "light" | "dark" | "girl")}
-          >
-            <option value="light">亮色</option>
-            <option value="dark">暗色</option>
-            <option value="girl">少女</option>
-          </select>
-        </label>
+        <div className="theme-switch" role="radiogroup" aria-label="网站主题" title="切换网站主题">
+          {THEME_OPTIONS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              role="radio"
+              aria-checked={themeMode === option.value}
+              className={themeMode === option.value ? "active" : ""}
+              onClick={() => setThemeMode(option.value)}
+            >
+              <span aria-hidden="true">{option.icon}</span>{option.label}
+            </button>
+          ))}
+        </div>
         <AuthStatus onSignedOut={onSignedOut} />
       </div>
     </header>

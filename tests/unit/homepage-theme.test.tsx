@@ -3,8 +3,8 @@
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
-vi.mock("../../app/stores/library-store", () => ({ loadAcwingCatalog: vi.fn() }));
+vi.mock("next/navigation", () => ({ usePathname: () => "/", useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
+vi.mock("../../app/stores/library-store", () => ({ loadAcwingCatalog: vi.fn(), getAcwingProblems: () => [] }));
 vi.mock("../../app/stores/theme-store", () => ({
   useThemeStore: () => ({ themeMode: "girl", setThemeMode: vi.fn(), editorTheme: "girl", setEditorTheme: vi.fn() }),
 }));

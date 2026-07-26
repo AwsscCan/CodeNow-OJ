@@ -3,8 +3,8 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
-vi.mock("../../app/stores/library-store", () => ({ loadAcwingCatalog: vi.fn() }));
+vi.mock("next/navigation", () => ({ usePathname: () => "/", useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
+vi.mock("../../app/stores/library-store", () => ({ loadAcwingCatalog: vi.fn(), getAcwingProblems: () => [] }));
 vi.mock("../../app/stores/theme-store", () => ({
   useThemeStore: () => ({ themeMode: "light", setThemeMode: vi.fn(), editorTheme: "light", setEditorTheme: vi.fn() }),
 }));
@@ -32,9 +32,14 @@ describe("首页无障碍", () => {
     expect(screen.getByRole("region", { name: /判题|OJ|CodeNow|编程/ })).toBeTruthy();
   });
 
-  it("回归:网站主题选择器与站点图标仍在", () => {
+  it("回归:网站主题切换器(radiogroup)与站点图标仍在", () => {
     render(<Home />);
-    expect(screen.getByRole("combobox", { name: "网站主题" })).toBeTruthy();
+    expect(screen.getByRole("radiogroup", { name: "网站主题" })).toBeTruthy();
     expect(screen.getByAltText("CodeNow 图标")).toBeTruthy();
+  });
+
+  it("非少女主题不渲染高木陪伴条装饰", () => {
+    const { container } = render(<Home />);
+    expect(container.querySelector(".quick-start-companion")).toBeNull();
   });
 });

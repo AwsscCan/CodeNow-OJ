@@ -93,7 +93,34 @@ describe("POST /api/mascot-line", () => {
     const system = sentBody.messages.find((m) => m.role === "system")?.content ?? "";
     const user = sentBody.messages.map((m) => m.content).join("\n");
     expect(system).toContain("高木");
+    // 升级后的沉浸式人设：口癖参考与"不跳出角色"约束
+    expect(system).toMatch(/勝負しよ|バレバレ|私の勝ち/);
+    expect(system).toContain("不跳出角色");
     expect(user).toContain("全过了…哼，这次算你有本事。");
+  });
+
+  it("取词 prompt 注入与 phase 匹配的原作台词参考", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(upstreamLine("哼，这次算你有本事。")));
+    await POST(makeRequest({
+      apiKey: "sk-x", endpoint: "https://api.deepseek.com", model: "m", event: { ...baseEvent, phase: "ac" },
+    }) as never);
+    const sentBody = JSON.parse(fetchMock.mock.calls[0][1].body as string) as { messages: { role: string; content: string }[] };
+    const user = sentBody.messages.find((m) => m.role === "user")?.content ?? "";
+    expect(user).toMatch(/类似场景/);
+    expect(user).toMatch(/禁止照抄|不要照抄/);
+  });
+
+  it("用户记忆注入取词 prompt，桌宠台词可玩记忆梗", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(upstreamLine("又是边界吧？バレバレだよ。")));
+    await POST(makeRequest({
+      apiKey: "sk-x", endpoint: "https://api.deepseek.com", model: "m",
+      event: baseEvent, memories: ["常在边界情况上没把握", "在「P1001」超时过"],
+    }) as never);
+    const sentBody = JSON.parse(fetchMock.mock.calls[0][1].body as string) as { messages: { role: string; content: string }[] };
+    const user = sentBody.messages.find((m) => m.role === "user")?.content ?? "";
+    expect(user).toContain("长期观察");
+    expect(user).toContain("边界情况上没把握");
+    expect(user).toContain("超时过");
   });
 
   it("上游失败时返回通用错误，不泄露上游细节", async () => {

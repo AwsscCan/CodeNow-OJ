@@ -34,6 +34,17 @@ export async function POST(request: NextRequest) {
       : { ok: false, message: "Fast generation mode: AI generates input and output directly." };
 
     problem.samples = (problem.samples as unknown[]).slice(0, 6);
+
+    // 默认只解析题面与官方样例快速入库；测试点批量生成耗时且易超时，仅在显式要求时联动
+    if (requestData.withTests !== true) {
+      problem.samples = (problem.samples as Array<{ input: string; output: string }>).map((test, index) => ({
+        id: index + 1, input: test.input, output: test.output,
+      }));
+      return NextResponse.json({
+        problem,
+        complexityReport: { generatedCount: 0, requestedCount: 0, batches: 0, qualityOk: true, skippedTests: true, referenceStatus },
+      });
+    }
     const generated = await generateComplexityAwareTests({
       apiKey: String(apiKey),
       endpoint: String(endpoint),

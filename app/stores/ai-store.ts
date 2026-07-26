@@ -5,7 +5,7 @@ import { persist } from "zustand/middleware";
 import type { ConversationMetadata } from "../lib/conversation-api";
 
 export type AiProvider = "deepseek" | "openai" | "custom";
-export type ChatMessage = { role: "user" | "assistant"; content: string };
+export type ChatMessage = { role: "user" | "assistant"; content: string; reasoning?: string };
 
 type ConversationCache = {
   conversationAccountId: string | null;

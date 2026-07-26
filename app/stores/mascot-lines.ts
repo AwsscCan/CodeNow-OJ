@@ -21,6 +21,7 @@ export const MASCOT_LINE_POOL: Record<MascotPhase, MascotLine[]> = {
     { text: "呆坐着干嘛，题目又不会自己解开，ね？", mood: "gentle", sprite: 0 },
     { text: "在发呆？被我盯着就慌神了吧，ふふ。", mood: "smug", sprite: 2 },
     { text: "手指头别停呀，我可等着看你出丑呢。", mood: "smile", sprite: 0 },
+    { text: "要不要打赌？十分钟内你连第一行都写不出。", mood: "laugh", sprite: 1 },
   ],
   coding: [
     { text: "唔，这段写得挺认真，我倒要看你撑到哪。", mood: "gentle", sprite: 0 },
@@ -28,6 +29,9 @@ export const MASCOT_LINE_POOL: Record<MascotPhase, MascotLine[]> = {
     { text: "慢慢写没关系，反正我很闲，陪你到底。", mood: "smile", sprite: 0 },
     { text: "手感不错嘛…别得意，坑还在后头等你。", mood: "smug", sprite: 2 },
     { text: "赌不赌？这题你一遍过不了，ふふ。", mood: "smug", sprite: 2 },
+    { text: "诶，这行写得有点意思…让我凑近看看。", mood: "surprised", sprite: 3 },
+    { text: "写这么起劲？ふふ，待会我可要挑刺的。", mood: "laugh", sprite: 1 },
+    { text: "变量名起成这样，もう，亏你想得出来。", mood: "annoyed", sprite: 4 },
   ],
   judging: [
     { text: "让我看看这次能不能惊艳到我…才怪。", mood: "surprised", sprite: 3 },
@@ -47,6 +51,8 @@ export const MASCOT_LINE_POOL: Record<MascotPhase, MascotLine[]> = {
     { text: "看吧看吧，第一个红点正冲你笑呢。", mood: "smug", sprite: 2 },
     { text: "もう，太天真啦，边界情况根本没想吧？", mood: "annoyed", sprite: 4 },
     { text: "输出对不上哦，要我偷偷提示你？…不给。", mood: "smug", sprite: 2 },
+    { text: "诶？这个点居然错了，我都替你意外呢。", mood: "surprised", sprite: 3 },
+    { text: "错成这样还嘴硬？だめだめ，重新想。", mood: "angry", sprite: 5 },
   ],
   ce: [
     { text: "编译都过不了还敢提交？だめだめ。", mood: "angry", sprite: 5 },
@@ -95,11 +101,18 @@ export function classifyResults(results: Result[]): {
 
 /**
  * 从本地台词池按情境挑一句，优先避开最近说过的，避免重复。
+ * 整池都说过时至少排除当前正显示的一句(recent 队尾)，保证点击换台词必出新句；
+ * 候选中存在不同 sprite 时优先换动作，避免"台词换了立绘却纹丝不动"。
  * rng 可注入以便测试确定性。
  */
 export function pickLocalLine(phase: MascotPhase, recent: string[], rng: () => number = Math.random): MascotLine {
   const pool = MASCOT_LINE_POOL[phase] ?? MASCOT_LINE_POOL.idle;
   const fresh = pool.filter((line) => !recent.includes(line.text));
-  const candidates = fresh.length ? fresh : pool;
-  return candidates[Math.floor(rng() * candidates.length)] ?? pool[0];
+  const current = recent[recent.length - 1];
+  const candidates = fresh.length ? fresh : pool.filter((line) => line.text !== current);
+  const usable = candidates.length ? candidates : pool;
+  const currentSprite = Object.values(MASCOT_LINE_POOL).flat().find((line) => line.text === current)?.sprite;
+  const moved = currentSprite === undefined ? usable : usable.filter((line) => line.sprite !== currentSprite);
+  const finalPool = moved.length ? moved : usable;
+  return finalPool[Math.floor(rng() * finalPool.length)] ?? pool[0];
 }

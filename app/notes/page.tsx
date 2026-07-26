@@ -86,7 +86,7 @@ export default function NotesPage() {
                 <div className="note-card-badges">
                   <span className={`note-badge ${card.visibility}`}>{card.visibility === "private" ? "私有" : "公开"}</span>
                   {card.source === "problem" ? <span className="note-badge problem">题目笔记</span> : null}
-                  {card.local ? <span className="note-badge">仅本地</span> : null}
+                  {card.local ? <span className="note-badge">本地草稿</span> : null}
                   {(card.tags ?? []).slice(0, 3).map((tag) => <span key={tag} className="note-badge tag">#{tag}</span>)}
                 </div>
                 <h3>{card.title || "未命名笔记"}</h3>

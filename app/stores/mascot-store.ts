@@ -49,7 +49,8 @@ export const useMascotStore = create<MascotState>((set, get) => ({
   line: INITIAL_LINE,
   context: INITIAL_CONTEXT,
   aiSolveRequestId: 0,
-  recentLines: [],
+  // 初始台词也计入去重窗口，保证首次点击换台词必出新句
+  recentLines: [INITIAL_LINE.text],
   setPhase: (phase) => set({ phase }),
   setContext: (patch) => set((s) => ({ context: { ...s.context, ...patch } })),
   setLine: (line) => set((s) => ({ line, recentLines: appendRecent(s.recentLines, line.text) })),
@@ -64,5 +65,5 @@ export const useMascotStore = create<MascotState>((set, get) => ({
     }));
   },
   requestAiSolve: () => set((s) => ({ aiSolveRequestId: s.aiSolveRequestId + 1 })),
-  reset: () => set({ phase: "idle", line: INITIAL_LINE, context: INITIAL_CONTEXT, aiSolveRequestId: 0, recentLines: [] }),
+  reset: () => set({ phase: "idle", line: INITIAL_LINE, context: INITIAL_CONTEXT, aiSolveRequestId: 0, recentLines: [INITIAL_LINE.text] }),
 }));

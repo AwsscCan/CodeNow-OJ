@@ -1,13 +1,9 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import { LocalDataMigration } from "./components/local-data-migration";
 import { InvitationPasswordGate } from "./components/invitation-password-gate";
 import { MascotWrapper } from "./components/mascot-wrapper";
 import { PreferenceSync } from "./components/preference-sync";
 import "./globals.css";
-
-const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
-const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "CodeNow OJ — 在线编程与 AI 解题平台",
@@ -16,5 +12,5 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="zh-CN"><body className={`${geistSans.variable} ${geistMono.variable}`}>{children}<InvitationPasswordGate /><PreferenceSync /><LocalDataMigration /><MascotWrapper /></body></html>;
+  return <html lang="zh-CN"><body>{children}<InvitationPasswordGate /><PreferenceSync /><LocalDataMigration /><MascotWrapper /></body></html>;
 }

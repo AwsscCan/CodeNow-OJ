@@ -17,7 +17,7 @@ export type NoteEditorValue = {
 };
 
 const SYNC_LABEL: Record<SyncStatus, string> = {
-  "local-only": "仅本地", saving: "正在保存…", synced: "已同步", failed: "保存失败", conflicted: "版本冲突",
+  "local-only": "本地保存", saving: "正在保存…", synced: "已同步", failed: "保存失败", conflicted: "版本冲突",
 };
 
 /**

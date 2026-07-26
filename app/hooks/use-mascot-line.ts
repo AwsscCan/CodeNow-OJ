@@ -5,7 +5,9 @@
 import { useCallback, useEffect, useRef } from "react";
 import { requestMascotLine } from "../lib/mascot-line-api";
 import { useAiStore } from "../stores/ai-store";
+import { pickLocalLine } from "../stores/mascot-lines";
 import { useMascotStore } from "../stores/mascot-store";
+import { useMemoryStore } from "../stores/memory-store";
 
 /**
  * 驱动桌宠台词：情境(phase)变化时自动取一句新台词写回 store，
@@ -19,12 +21,18 @@ export function useMascotLine() {
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
-    const mascot = useMascotStore.getState();
     const ai = useAiStore.getState();
+    // 配置了 AI Key 时上游往返有秒级延迟：先即时换一句本地台词反馈点击，AI 台词回来后再覆盖
+    if (ai.apiKeys[ai.provider]?.trim()) {
+      const current = useMascotStore.getState();
+      current.setLine(pickLocalLine(current.phase, current.recentLines));
+    }
+    const mascot = useMascotStore.getState();
     const line = await requestMascotLine({
       phase: mascot.phase,
       context: mascot.context,
       recentLines: mascot.recentLines,
+      memories: useMemoryStore.getState().recentMemories(3),
       ai: { apiKey: ai.apiKeys[ai.provider], endpoint: ai.endpoint, model: ai.model },
       signal: controller.signal,
     });

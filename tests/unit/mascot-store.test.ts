@@ -74,13 +74,13 @@ describe("useMascotStore 状态桥", () => {
     expect(recent).not.toContain("台词0");
   });
 
-  it("reset 恢复到 idle 初始态", () => {
+  it("reset 恢复到 idle 初始态，初始台词计入去重窗口(首次点击必换新句)", () => {
     useMascotStore.getState().reactToJudge([result("WA", 1)]);
     useMascotStore.getState().requestAiSolve();
     useMascotStore.getState().reset();
     const s = useMascotStore.getState();
     expect(s.phase).toBe("idle");
     expect(s.aiSolveRequestId).toBe(0);
-    expect(s.recentLines).toEqual([]);
+    expect(s.recentLines).toEqual([s.line.text]);
   });
 });

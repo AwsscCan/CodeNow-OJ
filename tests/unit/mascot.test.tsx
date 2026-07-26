@@ -92,4 +92,54 @@ describe("DesktopMascot 渲染", () => {
     fireEvent.click(screen.getByText("召回伙伴"));
     expect(onSetVisible).toHaveBeenCalledWith(true);
   });
+
+  it("换台词时人物节点重建，one-shot 动作动画得以重放", () => {
+    const { container, rerender } = render(<DesktopMascot {...baseProps} message="第一句" />);
+    const before = container.querySelector(".mascot-character");
+    rerender(<DesktopMascot {...baseProps} message="第二句" />);
+    const after = container.querySelector(".mascot-character");
+    expect(after, "换台词后应有新的人物节点以重放动画").not.toBe(before);
+    expect(after).toBeTruthy();
+  });
+});
+
+describe("DesktopMascot 拖拽状态机", () => {
+  const baseProps = {
+    visible: true,
+    message: "台词",
+    mood: "smile" as const,
+    sprite: 0,
+    onCycle: vi.fn(),
+    onSetVisible: vi.fn(),
+  };
+
+  it("按下后立刻抬起(未拖动)不残留 dragging 态", () => {
+    const { container } = render(<DesktopMascot {...baseProps} />);
+    const character = container.querySelector(".mascot-character")!;
+    fireEvent.pointerDown(character, { button: 0, clientX: 50, clientY: 50 });
+    fireEvent.pointerUp(window);
+    expect(container.querySelector(".desktop-mascot")!.classList.contains("dragging"), "dragging 态未复位").toBe(false);
+  });
+
+  it("未拖动的抬起上报 onDragDrop(false, false)，不误触发比试", () => {
+    const onDragDrop = vi.fn();
+    const { container } = render(<DesktopMascot {...baseProps} onDragDrop={onDragDrop} />);
+    fireEvent.pointerDown(container.querySelector(".mascot-character")!, { button: 0, clientX: 50, clientY: 50 });
+    fireEvent.pointerUp(window);
+    expect(onDragDrop).toHaveBeenCalledWith(false, false);
+  });
+
+  it("拖动后落在编辑区上报 onDragDrop(true, true)", () => {
+    const zone = document.createElement("div");
+    zone.setAttribute("data-mascot-drop-zone", "editor");
+    zone.getBoundingClientRect = () => ({ left: -500, top: -500, right: 1500, bottom: 1500, width: 2000, height: 2000, x: -500, y: -500, toJSON: () => ({}) } as DOMRect);
+    document.body.appendChild(zone);
+    const onDragDrop = vi.fn();
+    const { container } = render(<DesktopMascot {...baseProps} onDragDrop={onDragDrop} />);
+    fireEvent.pointerDown(container.querySelector(".mascot-character")!, { button: 0, clientX: 50, clientY: 50 });
+    fireEvent.pointerMove(window, { clientX: 150, clientY: 150 });
+    fireEvent.pointerUp(window);
+    expect(onDragDrop).toHaveBeenCalledWith(true, true);
+    document.body.removeChild(zone);
+  });
 });

@@ -41,6 +41,15 @@ export interface GenerationReport {
   warnings: string[];
 }
 
+/**
+ * 生成稳定性参数(有回归测试锁)：
+ * 预算过短会中途掐断多批次生成；单批超时过短在上游高峰期连环失败；
+ * 首批请求过大会撞 max_tokens 把 JSON 截断导致整批报废。
+ */
+export const GENERATION_BUDGET_MS = 90_000;
+export const PER_CALL_TIMEOUT_CAP_MS = 40_000;
+export const FIRST_BATCH_CAP = 12;
+
 const CATEGORIES: Category[] = ["boundary", "special", "ordinary", "adversarial", "performance"];
 const EMPTY_PROFILE: ProblemProfile = {
   family: "unknown",
@@ -290,7 +299,7 @@ export async function generateComplexityAwareTests(options: {
   validatedRef?: ValidatedReference;
 }) {
   const startedAt = Date.now();
-  const overallDeadline = startedAt + Math.max(AI_TIMEOUT_MS, 68_000);
+  const overallDeadline = startedAt + Math.max(AI_TIMEOUT_MS, GENERATION_BUDGET_MS);
   const target = Math.max(1, Math.min(50, Math.floor(options.count || 12)));
   const quota = buildCategoryQuota(target);
   const chatUrl = validateEndpoint(options.endpoint);
@@ -312,11 +321,11 @@ export async function generateComplexityAwareTests(options: {
   async function callAi(messages: Array<{ role: string; content: string }>, requested: number) {
     const remaining = overallDeadline - Date.now();
     if (remaining < 2_000) throw new Error("Generation time budget exhausted.");
-    const perCallTimeout = Math.max(1_500, Math.min(30_000, remaining));
+    const perCallTimeout = Math.max(1_500, Math.min(PER_CALL_TIMEOUT_CAP_MS, remaining));
     const body: Record<string, unknown> = {
       model: options.model,
       temperature: 0.04,
-      max_tokens: Math.min(8000, Math.max(1800, 900 + requested * 320)),
+      max_tokens: Math.min(8000, Math.max(1800, 900 + requested * 480)),
       stream: false,
       response_format: { type: "json_object" },
       messages,
@@ -425,12 +434,11 @@ export async function generateComplexityAwareTests(options: {
     const gaps = missingQuota(quota, candidates);
     const missingCategories = Object.values(gaps).reduce((sum, value) => sum + value, 0);
     const baseRequest = Math.max(remainingCount, missingCategories);
-    // Request the full outstanding quota up front (capped at 24) so the model
-    // can satisfy a large target in one round-trip instead of trickling out
-    // ~4 cases per batch. Subsequent batches over-ask slightly to absorb drops.
+    // First batch is capped small: a huge single request hits max_tokens and the
+    // truncated JSON wastes the whole round-trip. Later batches over-ask slightly.
     const requested = batches === 0
-      ? Math.min(24, Math.max(1, baseRequest))
-      : Math.min(20, Math.max(1, Math.ceil(baseRequest * 1.2)));
+      ? Math.min(FIRST_BATCH_CAP, Math.max(1, baseRequest))
+      : Math.min(FIRST_BATCH_CAP, Math.max(1, Math.ceil(baseRequest * 1.2)));
     await runBatch(requested, gaps);
   }
 

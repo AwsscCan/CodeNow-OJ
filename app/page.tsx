@@ -2,39 +2,35 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { AuthStatus } from "./components/auth-status";
 import { Toast } from "./components/toast";
+import { Topbar } from "./components/topbar";
 import { useToast } from "./hooks/use-toast";
-import { loadAcwingCatalog } from "./stores/library-store";
+import { getAcwingProblems, loadAcwingCatalog } from "./stores/library-store";
+import { INITIAL_PROBLEM, useProblemStore, type Problem } from "./stores/problem-store";
 import { useThemeStore } from "./stores/theme-store";
 
 export default function Home() {
   const router = useRouter();
   const theme = useThemeStore();
   const { notice, toast } = useToast();
+  const problem = useProblemStore((s) => s.problem);
+  const loadLocalProblem = useProblemStore((s) => s.loadLocalProblem);
 
   useEffect(() => { loadAcwingCatalog(); }, []);
 
+  const picks = getAcwingProblems().slice(0, 3);
+
+  /**
+   * 装载题目到工作区并进入做题页
+   */
+  function openProblem(item: Problem) {
+    loadLocalProblem(item);
+    router.push(`/problem/${item.id}`);
+  }
+
   return (
     <main className={`app-shell theme-${theme.themeMode}`}>
-      <header className="topbar">
-        <div className="brand"><img className="brand-mark" src="/codenow/icon.jpg" alt="CodeNow 图标" /><span>CodeNow</span><em>OJ</em></div>
-        <nav>
-          <button onClick={() => router.push("/library")}>题库</button>
-          <button className="nav-active">做题</button>
-          <button onClick={() => toast("比赛功能正在开发中，敬请期待")}>比赛</button>
-          <button onClick={() => router.push("/notes")}>讨论</button>
-        </nav>
-        <div className="header-actions">
-          <label className="theme-picker" title="切换网站主题">
-            <span aria-hidden="true">✦</span>
-            <select aria-label="网站主题" value={theme.themeMode} onChange={(e) => theme.setThemeMode(e.target.value as "light"|"dark"|"girl")}>
-              <option value="light">亮色</option><option value="dark">暗色</option><option value="girl">少女</option>
-            </select>
-          </label>
-          <AuthStatus onSignedOut={() => {}} />
-        </div>
-      </header>
+      <Topbar onToast={toast} />
 
       <section className="hero-section" aria-label="CodeNow 在线判题平台">
         <div className="hero-copy">
@@ -44,15 +40,45 @@ export default function Home() {
             GNU C++17 在线编程平台。<br />
             粘贴题面 AI 生成练习与测试点，在线编译提交判题。
           </p>
+          <div className="hero-cta-group">
+            <button className="hero-cta-primary" aria-label="开始做题" onClick={() => router.push(`/problem/${problem.id}`)}>
+              开始做题 <span className="hero-cta-arrow" aria-hidden="true">→</span>
+            </button>
+            <button className="hero-cta-secondary" aria-label="进入题库" onClick={() => router.push("/library")}>
+              进入题库 <span className="hero-cta-arrow" aria-hidden="true">▸</span>
+            </button>
+          </div>
+          <p className="hero-current">工作区当前题目 <code>{problem.id}</code> · {problem.title}，点「开始做题」直接继续</p>
         </div>
-        <div className="hero-cta-group">
-          <button className="hero-cta-primary" aria-label="进入题库" onClick={() => router.push("/library")}>
-            进入题库 <span className="hero-cta-arrow" aria-hidden="true">▸</span>
+
+        <aside className="quick-start" aria-label="快速开始做题">
+          {theme.themeMode === "girl" && (
+            <div className="quick-start-companion" aria-hidden="true">
+              <img src="/codenow/study-smile.jpg" alt="" loading="lazy" decoding="async" />
+              <span>一起刷题吧 · 一緒にやろ？</span>
+            </div>
+          )}
+          <header>
+            <span className="quick-start-kicker">QUICK START</span>
+            <h2>快速开始</h2>
+            <p>选一道题，立刻进入编程与判题工作区</p>
+          </header>
+          <button type="button" className="quick-start-item" onClick={() => openProblem(INITIAL_PROBLEM)}>
+            <code>{INITIAL_PROBLEM.id}</code>
+            <span><b>{INITIAL_PROBLEM.title}</b><small>经典入门 · 内置题目</small></span>
+            <i aria-hidden="true">→</i>
           </button>
-          <button className="hero-cta-secondary" aria-label="开始做题" onClick={() => router.push("/problem/P1001")}>
-            开始做题 <span className="hero-cta-arrow" aria-hidden="true">→</span>
+          {picks.map((item) => (
+            <button type="button" className="quick-start-item" key={item.id} onClick={() => openProblem(item)}>
+              <code>{item.id}</code>
+              <span><b>{item.title}</b><small>{item.difficulty} · AcWing 精选</small></span>
+              <i aria-hidden="true">→</i>
+            </button>
+          ))}
+          <button type="button" className="quick-start-more" onClick={() => router.push("/library")}>
+            浏览全部题目 <span aria-hidden="true">→</span>
           </button>
-        </div>
+        </aside>
       </section>
 
       <Toast message={notice} />

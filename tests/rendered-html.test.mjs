@@ -49,6 +49,7 @@ test("production HTML hydrates from reachable client assets on Windows", async (
     const html = await response.text();
     assert.match(html, /<title>CodeNow OJ/);
     assert.match(html, /测试点/);
+    assert.ok(!/file:\/\/\/|url\((?:['"])?[A-Za-z]:\//.test(html), "SSR HTML must not reference local filesystem paths (fonts/assets)");
 
     const assetPath = html.match(/\/assets\/index-[A-Za-z0-9_-]+\.js/)?.[0];
     assert.ok(assetPath, "SSR HTML must reference the hydration entry asset");

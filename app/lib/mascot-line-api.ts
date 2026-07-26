@@ -10,6 +10,7 @@ export type MascotLineRequest = {
   phase: MascotPhase;
   context: { problemTitle: string; codeExcerpt: string; passed: number; total: number; firstFailedIndex: number };
   recentLines: string[];
+  memories?: string[];
   ai: { apiKey: string; endpoint: string; model: string };
   signal?: AbortSignal;
 };
@@ -32,6 +33,7 @@ export async function requestMascotLine(req: MascotLineRequest): Promise<MascotL
         model: req.ai.model,
         event: { phase: req.phase, ...req.context },
         recentLines: req.recentLines,
+        memories: req.memories ?? [],
       }),
       signal: req.signal,
     });

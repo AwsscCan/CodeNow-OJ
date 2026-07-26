@@ -68,48 +68,14 @@ export function DesktopMascot({
     if (position) localStorage.setItem("codenow-mascot-position", JSON.stringify(position));
   }, [position]);
 
-  useEffect(() => {
-    if (!dragging) return;
-    const apply = () => {
-      dragFrame.current = null;
-      const next = nextPosition.current;
-      const node = mascotRef.current;
-      if (!next || !node) return;
-      node.style.left = `${next.x}px`;
-      node.style.top = `${next.y}px`;
-      node.style.right = "auto";
-      node.style.bottom = "auto";
-    };
-    const move = (event: PointerEvent) => {
-      const { width, height } = dragSize.current;
-      const x = Math.min(window.innerWidth - 16 - width, Math.max(16, event.clientX - dragOffset.current.x));
-      const y = Math.min(window.innerHeight - 16 - height, Math.max(16, event.clientY - dragOffset.current.y));
-      nextPosition.current = { x, y };
-      if (Math.abs(event.clientX - dragStart.current.x) > 3 || Math.abs(event.clientY - dragStart.current.y) > 3) {
-        dragged.current = true;
-      }
-      if (dragFrame.current === null) dragFrame.current = requestAnimationFrame(apply);
-    };
-    const stop = () => {
-      if (dragFrame.current !== null) { cancelAnimationFrame(dragFrame.current); dragFrame.current = null; }
-      apply();
-      setDragging(false);
-      if (nextPosition.current) setPosition(nextPosition.current);
-      // 落点碰撞检测：拖动过且落在编辑区投放区内，才视为"投喂"编辑器
-      const insideEditor = dragged.current && droppedInsideEditor(mascotRef.current);
-      if (onDragDrop) onDragDrop(dragged.current, insideEditor);
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", stop, { once: true });
-    return () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", stop);
-      if (dragFrame.current !== null) cancelAnimationFrame(dragFrame.current);
-    };
-  }, [dragging, onDragDrop]);
+  // 拖拽期间的 window 监听清理句柄；卸载时兜底移除，防止监听泄漏
+  const dragCleanup = useRef<(() => void) | null>(null);
+  useEffect(() => () => { dragCleanup.current?.(); dragCleanup.current = null; }, []);
 
+  // window 监听在 pointerdown 时同步挂载(而非 effect 提交后)，
+  // 消灭"快速按下抬起时 pointerup 落在渲染间隙被丢弃、dragging 卡死"的竞态
   const startDrag = useCallback((event: React.PointerEvent) => {
-    if (event.button !== 0) return;
+    if (event.button !== 0 || dragCleanup.current) return;
     const rect = mascotRef.current?.getBoundingClientRect();
     if (!rect) return;
     event.preventDefault();
@@ -121,7 +87,45 @@ export function DesktopMascot({
     nextPosition.current = { x: rect.left, y: rect.top };
     setPosition({ x: rect.left, y: rect.top });
     setDragging(true);
-  }, []);
+
+    const apply = () => {
+      dragFrame.current = null;
+      const next = nextPosition.current;
+      const node = mascotRef.current;
+      if (!next || !node) return;
+      node.style.left = `${next.x}px`;
+      node.style.top = `${next.y}px`;
+      node.style.right = "auto";
+      node.style.bottom = "auto";
+    };
+    const move = (e: PointerEvent) => {
+      const { width, height } = dragSize.current;
+      const x = Math.min(window.innerWidth - 16 - width, Math.max(16, e.clientX - dragOffset.current.x));
+      const y = Math.min(window.innerHeight - 16 - height, Math.max(16, e.clientY - dragOffset.current.y));
+      nextPosition.current = { x, y };
+      if (Math.abs(e.clientX - dragStart.current.x) > 3 || Math.abs(e.clientY - dragStart.current.y) > 3) {
+        dragged.current = true;
+      }
+      if (dragFrame.current === null) dragFrame.current = requestAnimationFrame(apply);
+    };
+    const stop = () => {
+      dragCleanup.current?.();
+      dragCleanup.current = null;
+      apply();
+      setDragging(false);
+      if (nextPosition.current) setPosition(nextPosition.current);
+      // 落点碰撞检测：拖动过且落在编辑区投放区内，才视为"投喂"编辑器
+      const insideEditor = dragged.current && droppedInsideEditor(mascotRef.current);
+      if (onDragDrop) onDragDrop(dragged.current, insideEditor);
+    };
+    dragCleanup.current = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+      if (dragFrame.current !== null) { cancelAnimationFrame(dragFrame.current); dragFrame.current = null; }
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop, { once: true });
+  }, [onDragDrop]);
 
   const clickCharacter = useCallback(() => {
     if (dragged.current) { dragged.current = false; return; }
@@ -148,7 +152,8 @@ export function DesktopMascot({
       <button className="mascot-bubble" onClick={onCycle} aria-live="polite" aria-atomic={true}>
         {message}<small>点击换台词，按住人物可拖动到编辑器</small>
       </button>
-      <button className={`mascot-character ${sprite === 6 ? "original-state" : ""}`} aria-label="和 CodeNow 编程伙伴互动" onPointerDown={startDrag} onClick={clickCharacter}>
+      {/* key 按台词重建节点，保证同 mood 连续两句也会重放 one-shot 动作动画 */}
+      <button key={message} className={`mascot-character ${sprite === 6 ? "original-state" : ""}`} aria-label="和 CodeNow 编程伙伴互动" onPointerDown={startDrag} onClick={clickCharacter}>
         {sprite === 6 ? (
           <img className="mascot-original" src="/codenow/mascot.png" alt="" aria-hidden="true" loading="lazy" decoding="async" />
         ) : (
