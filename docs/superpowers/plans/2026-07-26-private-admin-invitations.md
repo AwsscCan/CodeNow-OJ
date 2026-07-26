@@ -17,7 +17,7 @@
 - Create: `tests/unit/admin-schema.test.ts`
 - Create: generated `drizzle/0008_*.sql`
 
-- [ ] **Step 1: Write the failing schema test**
+- [x] **Step 1: Write the failing schema test**
 
 ```ts
 import { getTableColumns, getTableConfig } from "drizzle-orm/sqlite-core";
@@ -35,23 +35,23 @@ describe("administrator schema", () => {
 });
 ```
 
-- [ ] **Step 2: Run the test and verify RED**
+- [x] **Step 2: Run the test and verify RED**
 
 Run: `npm run test:unit -- tests/unit/admin-schema.test.ts`
 
 Expected: FAIL because `adminAuditLogs` and administrator columns do not exist.
 
-- [ ] **Step 3: Add the minimal schema**
+- [x] **Step 3: Add the minimal schema**
 
 Add `role`, `banned`, `banReason`, `banExpires`, and `mustChangePassword` to `users`; `impersonatedBy` to `sessions`; nullable `deletedAt` to `codeDrafts` and `aiConversations`; and an `admin_audit_logs` table with `id`, `adminUserId`, `action`, `targetType`, `targetId`, `requestId`, `metadataJson`, and `createdAt`. Add database CHECK constraints for `user|admin` and the fixed audit action set.
 
-- [ ] **Step 4: Generate and inspect migration**
+- [x] **Step 4: Generate and inspect migration**
 
 Run: `npm run db:generate`
 
 Expected: one new migration that defaults existing users to `user`, adds nullable moderation fields without data loss, and creates audit indexes.
 
-- [ ] **Step 5: Verify GREEN and commit**
+- [x] **Step 5: Verify GREEN and commit**
 
 Run: `npm run test:unit -- tests/unit/admin-schema.test.ts && npm run build`
 
