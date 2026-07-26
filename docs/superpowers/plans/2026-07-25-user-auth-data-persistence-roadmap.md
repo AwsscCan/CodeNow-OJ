@@ -22,8 +22,8 @@ Do not begin a later plan until the previous plan's phase gate passes. In partic
 ## Whole-program definition of done
 
 - [ ] Registration, verification, login, logout, forgot/reset password, and Session revocation pass automated and preview tests.
-- [ ] Every private API has anonymous, owner, and cross-user tests.
+- [x] Every private API has anonymous, owner, and cross-user tests.
 - [ ] Problems and test cases created on one device restore on a second device.
-- [ ] Guest migration is previewable, idempotent, conflict-aware, and never deletes data before server confirmation.
-- [ ] AI API keys never appear in cloud payloads, database schema, logs, or test artifacts.
-- [ ] `npm run lint`, `npm test`, `npm run test:e2e`, and `npm run build` all pass.
+- [x] Guest migration is previewable, idempotent, conflict-aware, and never deletes data before server confirmation.
+- [x] AI API keys never appear in cloud payloads, database schema, logs, or test artifacts.
+- [x] `npm run lint`, `npm test`, `npm run test:e2e`, and `npm run build` all pass.

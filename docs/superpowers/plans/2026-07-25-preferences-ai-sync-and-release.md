@@ -64,9 +64,11 @@
 
 **Files:** `tests/e2e/auth-data-sync.spec.ts`, `tests/e2e/helpers.ts`, `playwright.config.ts`, `package.json`, `docs/auth-operations.md`
 
-- [ ] Add an E2E script that creates users A/B through a test mail sink; verifies both; creates the same problem code in both accounts; saves different tests/drafts/preferences/conversations; reloads; asserts isolation; tests reset-password Session revocation; migrates guest data; triggers a version conflict; logs out and checks private UI removal.
-- [ ] Install and pin the browser runner with `npm install --save-dev --save-exact @playwright/test` and `npx playwright install chromium`. Add `test:e2e: "playwright test"` to `package.json` and create `playwright.config.ts` with Chromium, `baseURL: "http://127.0.0.1:3000"`, a vinext web server, trace-on-first-retry, and screenshot-only-on-failure.
-- [ ] Run `npm run test:e2e`; expect PASS with screenshots/traces retained only on failure and no secrets in artifacts.
-- [ ] Run final gates: `npm run lint`, `npm test`, `npm run test:e2e`, `npm run build`; all PASS.
+- [x] Add an E2E script that creates users A/B through a test mail sink; verifies both; creates the same problem code in both accounts; saves different tests/drafts/preferences/conversations; reloads; asserts isolation; tests reset-password Session revocation; migrates guest data; triggers a version conflict; logs out and checks private UI removal.
+- [x] Install and pin the browser runner with `npm install --save-dev --save-exact @playwright/test` and `npx playwright install chromium`. Add `test:e2e: "playwright test"` to `package.json` and create `playwright.config.ts` with Chromium, an isolated `baseURL: "http://127.0.0.1:3100"`, a vinext web server, trace-on-first-retry, and screenshot-only-on-failure.
+- [x] Run `npm run test:e2e`; expect PASS with screenshots/traces retained only on failure and no secrets in artifacts.
+- [x] Run final gates: `npm run lint`, `npm test`, `npm run test:e2e`, `npm run build`; all PASS.
 - [ ] Apply migrations to a disposable preview D1, deploy preview, repeat registration with Resend test recipient, and verify Cookie flags and no-store headers.
-- [ ] Commit with `git commit -m "test: verify end to end account data isolation"` and do not promote production until the preview checklist is signed off.
+- [x] Commit with `git commit -m "test: verify end to end account data isolation"` and do not promote production until the preview checklist is signed off.
+
+The local E2E server uses port 3100 so it cannot reuse or interfere with a developer server on the default port 3000. Preview D1, Cloudflare deployment, real Resend delivery, Cookie inspection, and the production promotion decision remain external release gates.

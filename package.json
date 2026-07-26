@@ -11,7 +11,8 @@
     "build": "vinext build",
     "start": "vinext start",
     "test": "npm run build && npm run test:unit && node --test tests/rendered-html.test.mjs",
-    "test:unit": "vitest run",
+    "test:e2e": "playwright test",
+    "test:unit": "vitest run --exclude tests/e2e/**",
     "test:watch": "vitest",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate"
@@ -31,6 +32,7 @@
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.37.1",
+    "@playwright/test": "1.62.0",
     "@tailwindcss/postcss": "4.2.1",
     "@testing-library/react": "16.3.2",
     "@types/better-sqlite3": "7.6.13",

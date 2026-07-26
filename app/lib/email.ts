@@ -14,6 +14,13 @@ type EmailConfig = {
 };
 
 export function createEmailSender(config: EmailConfig) {
+  if (process.env.E2E_TEST === "1") {
+    return async (message: EmailMessage) => {
+      const { recordTestEmail } = await import("./test-email-sink");
+      recordTestEmail(message);
+    };
+  }
+
   if (!config.apiKey) {
     if (config.environment === "production") {
       throw new Error("RESEND_API_KEY is required in production");
