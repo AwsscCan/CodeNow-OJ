@@ -46,10 +46,10 @@ export default function Home() {
           </p>
         </div>
         <div className="hero-cta-group">
-          <button className="hero-cta-primary" onClick={() => router.push("/library")}>
+          <button className="hero-cta-primary" aria-label="进入题库" onClick={() => router.push("/library")}>
             进入题库 <span className="hero-cta-arrow" aria-hidden="true">▸</span>
           </button>
-          <button className="hero-cta-secondary" onClick={() => router.push("/problem/P1001")}>
+          <button className="hero-cta-secondary" aria-label="开始做题" onClick={() => router.push("/problem/P1001")}>
             开始做题 <span className="hero-cta-arrow" aria-hidden="true">→</span>
           </button>
         </div>
