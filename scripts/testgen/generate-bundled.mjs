@@ -4,6 +4,7 @@ import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { CLASSIC_DEFS_1 } from "./classic-defs-1.mjs";
 import { CLASSIC_DEFS_2 } from "./classic-defs-2.mjs";
+import { CLASSIC_DEFS_3 } from "./classic-defs-3.mjs";
 import { CONTEST_DEFS } from "./contest-defs.mjs";
 import { buildProblem } from "./lib.mjs";
 
@@ -22,6 +23,6 @@ function build(defs, outFile) {
   return catalog.length;
 }
 
-const classicCount = build([...CLASSIC_DEFS_1, ...CLASSIC_DEFS_2], "classic-problems.json");
+const classicCount = build([...CLASSIC_DEFS_1, ...CLASSIC_DEFS_2, ...CLASSIC_DEFS_3], "classic-problems.json");
 const contestCount = build(CONTEST_DEFS, "contest-problems.json");
 console.log(`共 经典 ${classicCount} + 竞赛 ${contestCount} 题 (${((Date.now() - started) / 1000).toFixed(1)}s)`);

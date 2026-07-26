@@ -16,10 +16,10 @@ function loadCatalog(): Bundled[] {
 }
 
 describe("经典题库数据质量契约", () => {
-  it("产物存在且至少 16 道题，题号唯一", () => {
+  it("产物存在且至少 26 道题，题号唯一", () => {
     expect(existsSync(filePath), "缺少 public/classic-problems.json，先运行 node scripts/testgen/generate-bundled.mjs").toBe(true);
     const catalog = loadCatalog();
-    expect(catalog.length).toBeGreaterThanOrEqual(16);
+    expect(catalog.length).toBeGreaterThanOrEqual(26);
     expect(new Set(catalog.map((p) => p.id)).size).toBe(catalog.length);
   });
 
