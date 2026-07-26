@@ -1,5 +1,28 @@
 # CodeNow 认证运维说明
 
+## 邀请制与首个管理员
+
+私有部署设置 `INVITE_ONLY=1` 后，公开注册、重发验证邮件和密码重置入口返回 404。管理员在 `/admin` 创建好友账户，将一次性临时密码私下发送给好友；好友首次登录必须立即设置正式密码。系统只支持软删除用户内容，不提供永久删除。
+
+本地首次初始化：
+
+```powershell
+$env:CODEFORGE_LOCAL_DB_PATH='.data/codenow.db'
+npm run admin:bootstrap:local -- --email 700whitebird007@gmail.com --name 管理员
+```
+
+命令只允许在尚无管理员时成功一次。结构化结果写入标准输出，一次性临时密码仅写入标准错误；不要把输出重定向到仓库文件。生产远程初始化还必须提供 `--confirm-production`，并通过环境变量 `ADMIN_BOOTSTRAP_TOKEN` 传入令牌，禁止把令牌或密码放进命令行参数。
+
+远程示例：
+
+```powershell
+$env:ADMIN_BOOTSTRAP_TOKEN='<从密码管理器读取>'
+$env:ADMIN_BOOTSTRAP_URL_PREVIEW='https://<preview-worker>.workers.dev'
+node scripts/bootstrap-admin.mjs --target preview --email 700whitebird007@gmail.com --name 管理员
+```
+
+初始化成功后立即登录并更换临时密码。重复执行只返回 `alreadyExists: true`，不会再次显示凭据。
+
 ## 必需环境变量
 
 - `BETTER_AUTH_SECRET`：至少 32 个随机字符；生产环境缺失时服务拒绝启动认证。

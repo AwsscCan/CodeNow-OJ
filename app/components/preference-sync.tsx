@@ -24,6 +24,10 @@ export function PreferenceSync({ delay = 600 }: { delay?: number }) {
   const generation = useRef(0);
 
   useEffect(() => {
+    void useThemeStore.persist.rehydrate();
+  }, []);
+
+  useEffect(() => {
     const currentGeneration = ++generation.current;
     if (session.isPending || !userId) {
       hydratedUser.current = null;

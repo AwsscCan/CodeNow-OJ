@@ -1,11 +1,13 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { AuthForm } from "../auth-form";
 
+export function completeInvitationNavigation(location: { replace(url: string): void }) {
+  location.replace("/library");
+}
+
 export default function ChangeTemporaryPasswordPage() {
-  const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
 
@@ -37,7 +39,7 @@ export default function ChangeTemporaryPasswordPage() {
         setError(body.error?.message ?? "无法更新密码");
         return;
       }
-      router.replace("/library");
+      completeInvitationNavigation(window.location);
     }}
   >
     <label className="auth-field">临时密码<input name="currentPassword" type="password" autoComplete="current-password" minLength={10} maxLength={128} required /></label>
@@ -45,4 +47,3 @@ export default function ChangeTemporaryPasswordPage() {
     <label className="auth-field">确认新密码<input name="confirmPassword" type="password" autoComplete="new-password" minLength={10} maxLength={128} required /></label>
   </AuthForm>;
 }
-

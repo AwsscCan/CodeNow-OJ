@@ -18,6 +18,7 @@ vi.mock("../../app/lib/auth-client", () => ({ authClient: { useSession } }));
 vi.mock("next/navigation", () => ({ usePathname, useRouter: () => ({ replace }) }));
 
 import { createInvitationCompletionHandlers } from "../../app/api/account/complete-invitation/route";
+import { completeInvitationNavigation } from "../../app/(auth)/change-temporary-password/page";
 import { InvitationPasswordGate } from "../../app/components/invitation-password-gate";
 import { createMiddleware } from "../../app/middleware";
 import { users } from "../../db/schema";
@@ -29,6 +30,12 @@ afterEach(() => {
 });
 
 describe("temporary password completion", () => {
+  it("uses a full navigation so the forced-change session cache is discarded", () => {
+    const replaceLocation = vi.fn();
+    completeInvitationNavigation({ replace: replaceLocation });
+    expect(replaceLocation).toHaveBeenCalledWith("/library");
+  });
+
   it("changes the password, revokes other sessions, and clears the forced-change flag", async () => {
     const sqlite = new BetterSqlite3(":memory:");
     const db = drizzle(sqlite, { schema });
@@ -38,7 +45,9 @@ describe("temporary password completion", () => {
       id: "invited-user", name: "Friend", email: "friend@example.test", emailVerified: true,
       mustChangePassword: true, createdAt: now, updatedAt: now,
     }).run();
-    const changePassword = vi.fn(async () => ({ status: true }));
+    const changePassword = vi.fn(async () => new Response(JSON.stringify({ status: true }), {
+      headers: { "Set-Cookie": "better-auth.session_token=new-session; Path=/; HttpOnly" },
+    }));
     const handlers = createInvitationCompletionHandlers(async () => ({ userId: "invited-user", db, changePassword }));
 
     const response = await handlers.POST(new Request("http://localhost/api/account/complete-invitation", {
@@ -51,6 +60,7 @@ describe("temporary password completion", () => {
     expect(changePassword).toHaveBeenCalledWith({
       currentPassword: "temporary-password", newPassword: "permanent-password-123", revokeOtherSessions: true,
     });
+    expect(response.headers.get("set-cookie")).toContain("new-session");
     expect((await db.select().from(users).where(eq(users.id, "invited-user")))[0].mustChangePassword).toBe(false);
     sqlite.close();
   });

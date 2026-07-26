@@ -283,15 +283,15 @@ Commit: `git commit -m "feat: add private administrator console"`
 - Modify: `tests/e2e/helpers.ts`
 - Modify: `docs/auth-operations.md`
 
-- [ ] **Step 1: Write RED bootstrap tests**
+- [x] **Step 1: Write RED bootstrap tests**
 
 Run the bootstrap module against a temporary SQLite database. Assert first creation returns a temporary password, the user is verified/admin/forced-change, rerun returns `alreadyExists: true` without a password, and production requires `--confirm-production`.
 
-- [ ] **Step 2: Implement the guarded bootstrap endpoint and CLI**
+- [x] **Step 2: Implement the guarded bootstrap endpoint and CLI**
 
 The internal endpoint requires `Authorization: Bearer <ADMIN_BOOTSTRAP_TOKEN>`, refuses every request after an administrator exists, rate-limits failures, and never returns stored credentials. Add `admin:bootstrap:local` and make the CLI accept `--target local|preview|production`, `--email`, and `--confirm-production`; local mode calls the service directly and remote modes call the deployed guarded endpoint. Read the bootstrap token from protected standard input or environment, emit structured status to stdout, and emit the one-time password to stderr only after success. Never accept passwords or bootstrap tokens as command-line arguments.
 
-- [ ] **Step 3: Write and run browser E2E**
+- [x] **Step 3: Write and run browser E2E**
 
 Bootstrap `700whitebird007@gmail.com`, sign in with its temporary password, change it, invite a friend, complete the friend's first login, inspect their content, ban them, verify their Session is revoked, unban them, and soft-delete/restore a problem.
 
@@ -299,7 +299,7 @@ Run: `npm run test:e2e -- tests/e2e/admin-invitations.spec.ts`
 
 Expected: PASS with no real secrets in trace or screenshots.
 
-- [ ] **Step 4: Run final local gates and commit**
+- [x] **Step 4: Run final local gates and commit**
 
 Run: `npm run lint`, `npm test`, `npm run test:e2e`, `npm run build`, and `git diff --check`.
 

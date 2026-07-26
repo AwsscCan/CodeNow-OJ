@@ -1,9 +1,9 @@
+import { mkdirSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { betterAuth } from "better-auth";
 import { admin } from "better-auth/plugins";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
-import { mkdirSync } from "node:fs";
-import { dirname, resolve } from "node:path";
 import {
   createD1Db,
   createLocalDb,
@@ -98,6 +98,7 @@ type RuntimeBindings = {
   BETTER_AUTH_URL?: string;
   RESEND_API_KEY?: string;
   AUTH_EMAIL_FROM?: string;
+  ADMIN_BOOTSTRAP_TOKEN?: string;
 };
 
 type CloudflareRuntime = {
@@ -105,7 +106,7 @@ type CloudflareRuntime = {
   waitUntil?: (promise: Promise<unknown>) => void;
 };
 
-export type RuntimeServices = { auth: Auth; db: Database; rateLimitPepper: string };
+export type RuntimeServices = { auth: Auth; db: Database; rateLimitPepper: string; adminBootstrapToken?: string };
 
 let localServices: RuntimeServices | null = null;
 
@@ -146,7 +147,7 @@ export function createLocalRuntimeServices(request: Request, filename: string): 
   const db = createLocalDb(absolutePath);
   migrate(db, { migrationsFolder: "drizzle" });
   const env = authEnvironment(request, {});
-  return { db, rateLimitPepper: env.secret, auth: createAuth({ db, env }) };
+  return { db, rateLimitPepper: env.secret, adminBootstrapToken: process.env.ADMIN_BOOTSTRAP_TOKEN, auth: createAuth({ db, env }) };
 }
 
 export async function getRuntimeServices(request: Request): Promise<RuntimeServices> {
@@ -156,7 +157,7 @@ export async function getRuntimeServices(request: Request): Promise<RuntimeServi
 
   if (bindings.DB) {
     const db = createD1Db(bindings.DB);
-    return { db, rateLimitPepper: env.secret, auth: createAuth({
+    return { db, rateLimitPepper: env.secret, adminBootstrapToken: bindings.ADMIN_BOOTSTRAP_TOKEN, auth: createAuth({
       db,
       env,
       waitUntil: runtime?.waitUntil,

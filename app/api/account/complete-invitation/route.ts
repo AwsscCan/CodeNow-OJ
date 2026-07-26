@@ -1,14 +1,14 @@
 import { eq } from "drizzle-orm";
-import { getRuntimeServices } from "../../../lib/auth";
 import { createLocalDb, type Database } from "../../../../db/client";
 import { users } from "../../../../db/schema";
+import { getRuntimeServices } from "../../../lib/auth";
 
 type RepositoryDb = ReturnType<typeof createLocalDb>;
 type PasswordChange = { currentPassword: string; newPassword: string; revokeOtherSessions: true };
 type CompletionContext = {
   userId: string;
   db: Database;
-  changePassword(input: PasswordChange): Promise<unknown>;
+  changePassword(input: PasswordChange): Promise<Response>;
 };
 type ResolveContext = (request: Request) => Promise<CompletionContext | null>;
 
@@ -19,12 +19,19 @@ async function resolveContext(request: Request): Promise<CompletionContext | nul
   return {
     userId: session.user.id,
     db: services.db,
-    changePassword: (body) => services.auth.api.changePassword({ headers: request.headers, body }),
+    changePassword: (body) => services.auth.api.changePassword({ headers: request.headers, body, asResponse: true }),
   };
 }
 
-function response(body: unknown, status = 200) {
-  return Response.json(body, { status, headers: { "Cache-Control": "private, no-store" } });
+function response(body: unknown, status = 200, cookies: string[] = []) {
+  const headers = new Headers({ "Cache-Control": "private, no-store" });
+  for (const cookie of cookies) headers.append("Set-Cookie", cookie);
+  return Response.json(body, { status, headers });
+}
+
+function setCookies(headers: Headers) {
+  const enhanced = headers as Headers & { getSetCookie?: () => string[] };
+  return enhanced.getSetCookie?.() ?? (headers.get("set-cookie") ? [headers.get("set-cookie")!] : []);
 }
 
 export function createInvitationCompletionHandlers(resolve: ResolveContext = resolveContext) {
@@ -50,20 +57,20 @@ export function createInvitationCompletionHandlers(resolve: ResolveContext = res
         .where(eq(users.id, context.userId)).limit(1);
       if (!user?.mustChangePassword) return response({ error: { code: "INVITATION_ALREADY_COMPLETED", message: "Invitation already completed" } }, 409);
       try {
-        await context.changePassword({
+        const passwordResponse = await context.changePassword({
           currentPassword: body.currentPassword,
           newPassword: body.newPassword,
           revokeOtherSessions: true,
         });
+        const cookies = setCookies(passwordResponse.headers);
+        await database.update(users).set({ mustChangePassword: false, updatedAt: new Date() })
+          .where(eq(users.id, context.userId));
+        return response({ success: true }, 200, cookies);
       } catch {
         return response({ error: { code: "PASSWORD_CHANGE_FAILED", message: "Current password is invalid" } }, 400);
       }
-      await database.update(users).set({ mustChangePassword: false, updatedAt: new Date() })
-        .where(eq(users.id, context.userId));
-      return response({ success: true });
     },
   };
 }
 
 export const { POST } = createInvitationCompletionHandlers();
-

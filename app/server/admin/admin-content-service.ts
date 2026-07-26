@@ -1,4 +1,4 @@
-import { and, eq, gt, isNull } from "drizzle-orm";
+import { and, eq, gt } from "drizzle-orm";
 import { createLocalDb, type Database } from "../../../db/client";
 import { adminAuditLogs, aiConversations, codeDrafts, problems, users } from "../../../db/schema";
 import { adminAuditRow } from "./admin-audit";
@@ -98,4 +98,3 @@ export function createAdminContentService(db: Database) {
     },
   };
 }
-
