@@ -60,11 +60,11 @@ export type LocalDataParseResult =
 
 **Files:** `app/components/local-data-migration.tsx`, `app/layout.tsx`, `app/globals.css`, `tests/unit/local-data-migration.test.tsx`
 
-- [ ] Write component tests: not shown to guests; shown once after login when valid local data exists; displays counts/warnings; requires a decision for each collision; cancellation preserves data; success marks but does not immediately delete source keys.
-- [ ] Run focused tests; expect missing component.
-- [ ] Implement three states: scan, preview, commit. Offer “导入并合并” and “暂不导入”; place destructive “放弃本地数据” behind a typed confirmation. For conflicts offer overwrite, keep both, or skip.
-- [ ] Store `{ fingerprint, importedAt, cleanupAfter }` under `codenow-local-migration-state`. Cleanup may run only after seven days and only when its fingerprint still matches the source payload.
-- [ ] Run tests and build; manually retry the same commit twice. Commit with `git commit -m "feat: add local data migration wizard"`.
+- [x] Write component tests: not shown to guests; shown once after login when valid local data exists; displays counts/warnings; requires a decision for each collision; cancellation preserves data; success marks but does not immediately delete source keys.
+- [x] Run focused tests; expect missing component.
+- [x] Implement three states: scan, preview, commit. Offer “导入并合并” and “暂不导入”; place destructive “放弃本地数据” behind a typed confirmation. For conflicts offer overwrite, keep both, or skip.
+- [x] Store `{ fingerprint, importedAt, cleanupAfter }` under `codenow-local-migration-state`. Cleanup may run only after seven days and only when its fingerprint still matches the source payload.
+- [x] Run tests and build; manually retry the same commit twice. Commit with `git commit -m "feat: add local data migration wizard"`.
 
 ### Task 5: Persist failed writes and resume after login
 

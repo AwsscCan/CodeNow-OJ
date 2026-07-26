@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { LocalDataMigration } from "./components/local-data-migration";
 import { MascotWrapper } from "./components/mascot-wrapper";
 import "./globals.css";
 
@@ -13,5 +14,5 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="zh-CN"><body className={`${geistSans.variable} ${geistMono.variable}`}>{children}<MascotWrapper /></body></html>;
+  return <html lang="zh-CN"><body className={`${geistSans.variable} ${geistMono.variable}`}>{children}<LocalDataMigration /><MascotWrapper /></body></html>;
 }
