@@ -3,9 +3,10 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-// Lazy-loaded AcWing catalog reference
+// Lazy-loaded bundled catalogs (AcWing 基础课 + 经典题库等静态题源)
 let _acwingCatalog: BundledProblem[] | null = null;
 let _acwingLoadAttempted = false;
+const BUNDLED_CATALOG_URLS = ["/acwing-course.json", "/classic-problems.json", "/contest-problems.json"];
 
 type TestCase = { id: number; input: string; output: string; category?: string; scale?: number; targets?: string; reason?: string };
 type Problem = {
@@ -64,12 +65,21 @@ function getAcwingCatalog(): BundledProblem[] {
 export async function loadAcwingCatalog() {
   if (_acwingLoadAttempted) return;
   _acwingLoadAttempted = true;
-  try {
-    const res = await fetch("/acwing-course.json");
-    if (res.ok) _acwingCatalog = await res.json() as BundledProblem[];
-  } catch {
-    _acwingCatalog = [];
-  }
+  const results = await Promise.all(BUNDLED_CATALOG_URLS.map(async (url) => {
+    try {
+      const res = await fetch(url);
+      return res.ok ? await res.json() as BundledProblem[] : [];
+    } catch {
+      return [];
+    }
+  }));
+  _acwingCatalog = results.flat();
+}
+
+/** Test-only: reset the bundled catalog cache so fetch stubs take effect. */
+export function __resetBundledCatalogForTests() {
+  _acwingCatalog = null;
+  _acwingLoadAttempted = false;
 }
 
 export function getAcwingFolders(): string[] {
