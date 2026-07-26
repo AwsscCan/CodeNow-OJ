@@ -2,6 +2,8 @@ import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { betterAuth } from "better-auth";
 import { admin } from "better-auth/plugins";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
+import { mkdirSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import {
   createD1Db,
   createLocalDb,
@@ -54,6 +56,11 @@ export function createAuth({ db, env, waitUntil }: AuthFactoryOptions) {
         verification: schema.verifications,
       },
     }),
+    user: {
+      additionalFields: {
+        mustChangePassword: { type: "boolean", input: false, defaultValue: false },
+      },
+    },
     trustedOrigins: [env.baseURL],
     plugins: [admin({
       defaultRole: "user",
@@ -133,6 +140,15 @@ function authEnvironment(request: Request, bindings: RuntimeBindings): AuthEnvir
   };
 }
 
+export function createLocalRuntimeServices(request: Request, filename: string): RuntimeServices {
+  const absolutePath = resolve(filename);
+  mkdirSync(dirname(absolutePath), { recursive: true });
+  const db = createLocalDb(absolutePath);
+  migrate(db, { migrationsFolder: "drizzle" });
+  const env = authEnvironment(request, {});
+  return { db, rateLimitPepper: env.secret, auth: createAuth({ db, env }) };
+}
+
 export async function getRuntimeServices(request: Request): Promise<RuntimeServices> {
   const runtime = await loadCloudflareRuntime();
   const bindings = runtime?.env ?? {};
@@ -148,9 +164,8 @@ export async function getRuntimeServices(request: Request): Promise<RuntimeServi
   }
 
   if (!localServices) {
-    const db = createLocalDb(":memory:");
-    migrate(db, { migrationsFolder: "drizzle" });
-    localServices = { db, rateLimitPepper: env.secret, auth: createAuth({ db, env }) };
+    const filename = process.env.CODEFORGE_LOCAL_DB_PATH ?? resolve(process.cwd(), ".data", "codenow.db");
+    localServices = createLocalRuntimeServices(request, filename);
   }
   return localServices;
 }

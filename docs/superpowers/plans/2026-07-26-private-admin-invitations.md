@@ -197,19 +197,19 @@ Commit: `git commit -m "feat: expose private administrator APIs"`
 - Create: `tests/unit/temporary-password.test.tsx`
 - Create: `tests/unit/local-auth-persistence.test.ts`
 
-- [ ] **Step 1: Write RED tests**
+- [x] **Step 1: Write RED tests**
 
 Test that a user with `mustChangePassword` is redirected from private pages, the completion route requires the current password, clears the flag, and revokes other Sessions. Open the same configured SQLite filename twice and assert the created user remains visible.
 
-- [ ] **Step 2: Run focused tests and confirm failure**
+- [x] **Step 2: Run focused tests and confirm failure**
 
 Run: `npm run test:unit -- tests/unit/temporary-password.test.tsx tests/unit/local-auth-persistence.test.ts`
 
-- [ ] **Step 3: Implement persistence and completion**
+- [x] **Step 3: Implement persistence and completion**
 
 Use `CODEFORGE_LOCAL_DB_PATH` or `.data/codenow.db`, create `.data/` when absent, migrate once per process, and ignore `.data/`. The completion route calls Better Auth change-password, clears `mustChangePassword`, revokes other Sessions, and returns no-store. The page never stores the temporary password.
 
-- [ ] **Step 4: Verify GREEN and commit**
+- [x] **Step 4: Verify GREEN and commit**
 
 Run: `npm run test:unit -- tests/unit/temporary-password.test.tsx tests/unit/local-auth-persistence.test.ts && npm run build`
 

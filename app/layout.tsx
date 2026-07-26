@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { LocalDataMigration } from "./components/local-data-migration";
+import { InvitationPasswordGate } from "./components/invitation-password-gate";
 import { MascotWrapper } from "./components/mascot-wrapper";
 import { PreferenceSync } from "./components/preference-sync";
 import "./globals.css";
@@ -15,5 +16,5 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="zh-CN"><body className={`${geistSans.variable} ${geistMono.variable}`}>{children}<PreferenceSync /><LocalDataMigration /><MascotWrapper /></body></html>;
+  return <html lang="zh-CN"><body className={`${geistSans.variable} ${geistMono.variable}`}>{children}<InvitationPasswordGate /><PreferenceSync /><LocalDataMigration /><MascotWrapper /></body></html>;
 }
