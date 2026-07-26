@@ -50,11 +50,11 @@ export type SaveResult<T> =
 
 **Files:** `app/api/problems/route.ts`, `app/api/problems/[id]/route.ts`, `app/api/problems/[id]/test-cases/route.ts`, `app/api/folders/route.ts`, `tests/unit/problems-api.test.ts`
 
-- [ ] Write route tests with injected user/repository dependencies. Cover anonymous `401`, user A success, user B `404`, invalid payload `400`, stale version `409`, oversize `413`, and list responses that omit `input`/`expectedOutput`.
-- [ ] Run `npm run test:unit -- tests/unit/problems-api.test.ts`; expect missing routes.
-- [ ] Implement handlers that call `requireUser`, reject client `userId`, map repository results to `{ error: { code, message, field? } }`, set `Cache-Control: private, no-store`, and return `version`/`updatedAt` after writes.
-- [ ] Implement folders with create/rename/move/delete. Validate that parent folders belong to the same user; deleting a folder moves its problems to its parent or the user's root folder and never deletes problems.
-- [ ] Run focused tests, `npm test`, and `npm run build`; expect PASS. Commit with `git commit -m "feat: add private problem APIs"`.
+- [x] Write route tests with injected user/repository dependencies. Cover anonymous `401`, user A success, user B `404`, invalid payload `400`, stale version `409`, oversize `413`, and list responses that omit `input`/`expectedOutput`.
+- [x] Run `npm run test:unit -- tests/unit/problems-api.test.ts`; expect missing routes.
+- [x] Implement handlers that call `requireUser`, reject client `userId`, map repository results to `{ error: { code, message, field? } }`, set `Cache-Control: private, no-store`, and return `version`/`updatedAt` after writes.
+- [x] Implement folders with create/rename/move/delete. Validate that parent folders belong to the same user; deleting a folder moves its problems to its parent or the user's root folder and never deletes problems.
+- [x] Run focused tests, `npm test`, and `npm run build`; expect PASS. Commit with `git commit -m "feat: add private problem APIs"`.
 
 ### Task 4: Persist code drafts with optimistic concurrency
 

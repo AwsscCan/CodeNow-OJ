@@ -15,6 +15,7 @@ type RepositoryDb = ReturnType<typeof createLocalDb>;
 type D1Db = ReturnType<typeof createD1Db>;
 type ProblemRow = typeof problems.$inferSelect;
 type TestCaseRow = typeof testCases.$inferSelect;
+type FolderRow = typeof folders.$inferSelect;
 type PublicProblem = Omit<ProblemRow, "userId" | "createdAt" | "updatedAt" | "deletedAt"> & {
   createdAt: string;
   updatedAt: string;
@@ -24,6 +25,7 @@ type PublicTestCase = Omit<TestCaseRow, "userId" | "createdAt" | "updatedAt"> & 
   createdAt: string;
   updatedAt: string;
 };
+type PublicFolder = Omit<FolderRow, "userId" | "createdAt" | "updatedAt"> & { createdAt: string; updatedAt: string };
 
 export type SaveResult<T> =
   | { ok: true; value: T; version: number; updatedAt: string }
@@ -48,6 +50,12 @@ function publicProblem(row: ProblemRow): PublicProblem {
 }
 
 function publicTestCase(row: TestCaseRow): PublicTestCase {
+  const value = { ...row };
+  Reflect.deleteProperty(value, "userId");
+  return { ...value, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
+}
+
+function publicFolder(row: FolderRow): PublicFolder {
   const value = { ...row };
   Reflect.deleteProperty(value, "userId");
   return { ...value, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
@@ -86,6 +94,58 @@ export function createProblemRepository(db: Database) {
   }
 
   return {
+    async listFolders(userId: string) {
+      const rows = await database.select().from(folders).where(eq(folders.userId, userId)).orderBy(folders.sortOrder, folders.name);
+      return rows.map(publicFolder);
+    },
+
+    async createFolder(userId: string, input: { name?: unknown; parentId?: unknown; sortOrder?: unknown }) {
+      const name = typeof input.name === "string" ? input.name.trim() : "";
+      if (!name || name.length > 100) return { ok: false as const, status: 400 as const, code: "INVALID_FOLDER", message: "Folder name is required" };
+      const parentId = typeof input.parentId === "string" && input.parentId ? input.parentId : null;
+      if (!(await validFolder(userId, parentId))) return { ok: false as const, status: 404 as const, code: "PARENT_FOLDER_NOT_FOUND", message: "Parent folder not found" };
+      const now = new Date();
+      const [row] = await database.insert(folders).values({
+        id: crypto.randomUUID(), userId, parentId, name,
+        sortOrder: typeof input.sortOrder === "number" ? Math.trunc(input.sortOrder) : 0,
+        createdAt: now, updatedAt: now,
+      }).returning();
+      return { ok: true as const, value: publicFolder(row) };
+    },
+
+    async updateFolder(userId: string, id: string, input: { name?: unknown; parentId?: unknown; sortOrder?: unknown }) {
+      const [current] = await database.select().from(folders).where(and(eq(folders.userId, userId), eq(folders.id, id))).limit(1);
+      if (!current) return { ok: false as const, status: 404 as const, code: "FOLDER_NOT_FOUND", message: "Folder not found" };
+      const name = input.name === undefined ? current.name : typeof input.name === "string" ? input.name.trim() : "";
+      if (!name || name.length > 100) return { ok: false as const, status: 400 as const, code: "INVALID_FOLDER", message: "Folder name is required" };
+      const parentId = input.parentId === undefined ? current.parentId : typeof input.parentId === "string" && input.parentId ? input.parentId : null;
+      if (parentId === id || !(await validFolder(userId, parentId))) return { ok: false as const, status: 400 as const, code: "INVALID_PARENT_FOLDER", message: "Invalid parent folder" };
+      let ancestorId = parentId;
+      while (ancestorId) {
+        const [ancestor] = await database.select({ parentId: folders.parentId }).from(folders)
+          .where(and(eq(folders.userId, userId), eq(folders.id, ancestorId))).limit(1);
+        if (!ancestor || ancestor.parentId === id) return { ok: false as const, status: 400 as const, code: "FOLDER_CYCLE", message: "Folder hierarchy cannot contain a cycle" };
+        ancestorId = ancestor.parentId;
+      }
+      const [row] = await database.update(folders).set({
+        name, parentId,
+        sortOrder: typeof input.sortOrder === "number" ? Math.trunc(input.sortOrder) : current.sortOrder,
+        updatedAt: new Date(),
+      }).where(and(eq(folders.userId, userId), eq(folders.id, id))).returning();
+      return { ok: true as const, value: publicFolder(row) };
+    },
+
+    async deleteFolder(userId: string, id: string) {
+      const [current] = await database.select().from(folders).where(and(eq(folders.userId, userId), eq(folders.id, id))).limit(1);
+      if (!current) return { ok: false as const, status: 404 as const, code: "FOLDER_NOT_FOUND", message: "Folder not found" };
+      await database.update(problems).set({ folderId: current.parentId, updatedAt: new Date() })
+        .where(and(eq(problems.userId, userId), eq(problems.folderId, id)));
+      await database.update(folders).set({ parentId: current.parentId, updatedAt: new Date() })
+        .where(and(eq(folders.userId, userId), eq(folders.parentId, id)));
+      await database.delete(folders).where(and(eq(folders.userId, userId), eq(folders.id, id)));
+      return { ok: true as const, value: { id } };
+    },
+
     async listProblems(userId: string, cursor?: string) {
       const parsedCursor = cursor ? new Date(cursor) : null;
       const filter = parsedCursor && !Number.isNaN(parsedCursor.getTime())
