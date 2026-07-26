@@ -1,0 +1,206 @@
+/* CodeNow OJ · 数据迁移弹窗 · Bamzc */
+
+.migration-backdrop {
+  position: fixed;
+  z-index: var(--z-migration);
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--space-5);
+  background: var(--color-overlay);
+  backdrop-filter: blur(5px);
+}
+
+.migration-dialog {
+  width: min(560px, 100%);
+  max-height: calc(100vh - var(--space-10));
+  overflow: auto;
+  padding: var(--space-6);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-2xl);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-xl);
+}
+
+.migration-kicker {
+  color: var(--color-primary);
+  font-size: var(--text-sm);
+  font-weight: 850;
+  letter-spacing: .08em;
+}
+
+.migration-dialog h2 {
+  margin: var(--space-2) 0 var(--space-2);
+  font-size: var(--text-4xl);
+}
+
+.migration-dialog > p {
+  margin: 0 0 var(--space-4);
+  color: var(--color-muted);
+  font-size: var(--text-md);
+  line-height: 1.6;
+}
+
+.migration-counts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+  margin: var(--space-4) 0;
+}
+
+.migration-counts > * {
+  padding: var(--space-3);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-lg);
+  color: var(--color-muted);
+  background: var(--color-surface-raised);
+  font-size: var(--text-base);
+}
+
+.migration-counts b {
+  color: var(--color-heading);
+}
+
+.migration-warnings {
+  margin: var(--space-3) 0;
+  padding: var(--space-3) var(--space-3);
+  border: 1px solid var(--color-warning-border);
+  border-radius: var(--radius-lg);
+  color: var(--color-warning);
+  background: var(--color-warning-bg);
+  font-size: var(--text-sm);
+}
+
+.migration-warnings summary {
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.migration-warnings p {
+  margin: var(--space-2) 0 0;
+  overflow-wrap: anywhere;
+}
+
+.migration-conflict {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin: var(--space-2) 0;
+  padding: var(--space-3) var(--space-3);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-base);
+}
+
+.migration-conflict select {
+  min-width: 126px;
+  padding: var(--space-2);
+  border: 1px solid var(--color-border-input);
+  border-radius: var(--radius-base);
+  background: var(--color-input-bg);
+}
+
+.migration-discard {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-danger-bg);
+  border-radius: var(--radius-lg);
+  color: var(--color-danger);
+  background: var(--color-danger-bg);
+  font-size: var(--text-sm);
+}
+
+.migration-discard label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.migration-discard input {
+  height: 34px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-danger-bg);
+  border-radius: var(--radius-md);
+}
+
+.migration-discard button {
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-md);
+  color: var(--color-surface);
+  background: var(--color-danger);
+}
+
+.migration-discard button:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.migration-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-5);
+}
+
+.migration-actions button {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border-input);
+  border-radius: var(--radius-base);
+  color: var(--color-muted);
+  background: var(--color-surface);
+  font-size: var(--text-sm);
+  font-weight: 750;
+}
+
+.migration-actions .primary {
+  color: var(--color-surface);
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+}
+
+.migration-actions .primary:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.migration-actions .danger-link {
+  margin-right: auto;
+  color: var(--color-danger);
+  border-color: transparent;
+  background: transparent;
+}
+
+.migration-error {
+  padding: var(--space-3);
+  border-radius: var(--radius-base);
+  color: var(--color-danger);
+  background: var(--color-danger-bg);
+}
+
+@media (max-width: 560px) {
+  .migration-dialog {
+    padding: var(--space-5);
+  }
+
+  .migration-actions {
+    flex-wrap: wrap;
+  }
+
+  .migration-actions .danger-link {
+    width: 100%;
+    margin-right: 0;
+    text-align: left;
+  }
+
+  .migration-conflict {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .migration-conflict select {
+    width: 100%;
+  }
+}

@@ -12,6 +12,7 @@ export function Topbar({ onToast, onSignedOut = () => {} }: { onToast: (msg: str
   const isActive = (page: string) => {
     if (page === "library") return pathname === "/library" || pathname.startsWith("/library");
     if (page === "workspace") return pathname === "/" || pathname.startsWith("/problem");
+    if (page === "notes") return pathname === "/notes" || pathname.startsWith("/notes");
     return false;
   };
 
@@ -29,7 +30,7 @@ export function Topbar({ onToast, onSignedOut = () => {} }: { onToast: (msg: str
           做题
         </button>
         <button onClick={() => onToast("比赛功能正在开发中，敬请期待")}>比赛</button>
-        <button onClick={() => onToast("讨论区正在开发中，敬请期待")}>讨论</button>
+        <button className={isActive("notes") ? "nav-active" : ""} onClick={() => router.push("/notes")}>讨论</button>
       </nav>
       <div className="header-actions">
         <label className="theme-picker" title="切换网站主题">

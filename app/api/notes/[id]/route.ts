@@ -1,13 +1,24 @@
-import { apiError, privateNoStore, readJson, resolveNoteContext, type ResolveNoteContext } from "../../../server/notes/note-api-context";
+import {
+  apiError, privateNoStore, publicNoStore, readJson,
+  resolveNoteContext, resolvePublicRepository,
+  type ResolveNoteContext, type ResolvePublicRepository,
+} from "../../../server/notes/note-api-context";
 
-export function createNoteDetailHandlers(resolveContext: ResolveNoteContext = resolveNoteContext) {
+export function createNoteDetailHandlers(
+  resolveContext: ResolveNoteContext = resolveNoteContext,
+  resolvePublicRepo: ResolvePublicRepository = resolvePublicRepository,
+) {
   return {
     GET: async (request: Request, id: string) => {
       const context = await resolveContext(request);
-      if (!context) return apiError(401, "AUTH_REQUIRED", "请先登录");
-      const result = await context.repository.get(context.userId, id);
-      if (!result.ok) return apiError(result.status, result.code, result.message);
-      return Response.json({ note: result.value }, { headers: privateNoStore });
+      if (context) {
+        const result = await context.repository.get(context.userId, id);
+        if (result.ok) return Response.json({ note: result.value }, { headers: privateNoStore });
+      }
+      // 非作者或游客：回退到公开读，仅命中已发布可见的公开笔记，否则统一 404。
+      const publicRepository = await resolvePublicRepo(request);
+      const note = await publicRepository.readPublic(id);
+      return note ? Response.json({ note }, { headers: publicNoStore }) : apiError(404, "NOTE_NOT_FOUND", "笔记不存在");
     },
     PATCH: async (request: Request, id: string) => {
       const context = await resolveContext(request);

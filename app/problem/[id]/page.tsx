@@ -4,6 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { AuthStatus } from "../../components/auth-status";
+import { ProblemNotesPanel } from "../../components/notes/problem-notes-panel";
 import { SyncConflictDialog } from "../../components/sync-conflict-dialog";
 import { Toast } from "../../components/toast";
 import { useCloudSave, type CloudSaveResult, type SyncStatus } from "../../hooks/use-cloud-save";
@@ -15,7 +16,6 @@ import { formatCppCode } from "../../lib/format-cpp";
 import { ProblemApi, ProblemApiError, type CloudProblem } from "../../lib/problem-api";
 import { useAiStore } from "../../stores/ai-store";
 import { useLibraryStore } from "../../stores/library-store";
-import { ProblemNotesPanel } from "../../components/notes/problem-notes-panel";
 import { useProblemStore } from "../../stores/problem-store";
 import type { Problem, SubmissionRecord } from "../../stores/problem-store";
 import { useThemeStore } from "../../stores/theme-store";
@@ -405,7 +405,7 @@ export default function ProblemPage() {
           <button onClick={() => router.push("/library")}>题库</button>
           <button className="nav-active">做题</button>
           <button onClick={() => toast("比赛功能正在开发中，敬请期待")}>比赛</button>
-          <button onClick={() => toast("讨论区正在开发中，敬请期待")}>讨论</button>
+          <button onClick={() => router.push("/notes")}>讨论</button>
         </nav>
         <div className="header-actions">
           <label className="theme-picker" title="切换网站主题">

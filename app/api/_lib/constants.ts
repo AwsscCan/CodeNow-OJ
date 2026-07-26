@@ -9,8 +9,16 @@ export const WALL_TIME_LIMIT_SECONDS = 6;
 export const MEMORY_LIMIT_KB = 262_144;
 export const JUDGE_POLL_INTERVAL_MS = 260;
 export const JUDGE_FIRST_POLL_MS = 90;
-export const JUDGE_MAX_POLLS = 24;
+export const JUDGE_MAX_POLLS = 40;
 export const JUDGE_CONCURRENCY = 8;
+// Judge0 batch API: hard upstream cap is 20 submissions per batch (create & poll both).
+export const JUDGE_BATCH_SIZE = 20;
+// Poll budget decoupled from the 6s wall clock so a legitimately slow job that
+// runs the full wall time (plus queue delay) is not misjudged as timed out.
+export const JUDGE_POLL_BUDGET_MS = 13_000;
+// Adaptive backoff between polls: tight at first (fast jobs finish quickly),
+// widening for slow ones. Values past the last are capped at the last entry.
+export const JUDGE_BACKOFF_MS = [60, 60, 100, 150, 220, 320, 460, 650, 900] as const;
 
 // ── AI / LLM ──
 export const ALLOWED_AI_HOSTS = [

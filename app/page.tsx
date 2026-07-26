@@ -23,7 +23,7 @@ export default function Home() {
           <button onClick={() => router.push("/library")}>题库</button>
           <button className="nav-active">做题</button>
           <button onClick={() => toast("比赛功能正在开发中，敬请期待")}>比赛</button>
-          <button onClick={() => toast("讨论区正在开发中，敬请期待")}>讨论</button>
+          <button onClick={() => router.push("/notes")}>讨论</button>
         </nav>
         <div className="header-actions">
           <label className="theme-picker" title="切换网站主题">
@@ -36,21 +36,21 @@ export default function Home() {
         </div>
       </header>
 
-      <section style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "calc(100vh - 58px)", gap: "24px", padding: "40px 24px" }}>
-        <div style={{ textAlign: "center", maxWidth: "520px" }}>
-          <span style={{ color: "#3478f6", fontSize: "10px", fontWeight: 800, letterSpacing: "1.4px" }}>CODENOW ONLINE JUDGE</span>
-          <h1 style={{ fontSize: "36px", margin: "12px 0 8px", letterSpacing: "-0.8px" }}>CodeNow OJ</h1>
-          <p style={{ color: "#7f8999", fontSize: "14px", lineHeight: 1.8 }}>
+      <section className="hero-section" aria-label="CodeNow 在线判题平台">
+        <div className="hero-copy">
+          <span className="hero-eyebrow">CODENOW ONLINE JUDGE</span>
+          <h1 className="hero-title">CodeNow OJ</h1>
+          <p className="hero-tagline">
             GNU C++17 在线编程平台。<br />
             粘贴题面 AI 生成练习与测试点，在线编译提交判题。
           </p>
         </div>
-        <div style={{ display: "flex", gap: "12px" }}>
-          <button onClick={() => router.push("/library")} style={{ border: "0", borderRadius: "10px", padding: "14px 28px", color: "#fff", background: "linear-gradient(100deg,#6b46d9,#8a58df)", fontSize: "13px", fontWeight: 700, cursor: "pointer", boxShadow: "0 5px 16px #7045d747" }}>
-            进入题库 ▸
+        <div className="hero-cta-group">
+          <button className="hero-cta-primary" onClick={() => router.push("/library")}>
+            进入题库 <span className="hero-cta-arrow" aria-hidden="true">▸</span>
           </button>
-          <button onClick={() => router.push("/problem/P1001")} style={{ border: "1px solid #dfe3ea", borderRadius: "10px", padding: "14px 28px", color: "#3478f6", background: "#fff", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}>
-            开始做题 →
+          <button className="hero-cta-secondary" onClick={() => router.push("/problem/P1001")}>
+            开始做题 <span className="hero-cta-arrow" aria-hidden="true">→</span>
           </button>
         </div>
       </section>

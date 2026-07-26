@@ -71,6 +71,20 @@
       "when": 1785057824435,
       "tag": "0009_magical_deathbird",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1785059503485,
+      "tag": "0010_brainy_black_bird",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1785059985978,
+      "tag": "0011_equal_caretaker",
+      "breakpoints": true
     }
   ]
 }

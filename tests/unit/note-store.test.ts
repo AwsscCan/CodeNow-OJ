@@ -7,7 +7,7 @@ function entry(id: string, version = 1): NoteListEntry {
   return {
     id, title: id, summary: null, coverUrl: null, visibility: "private", status: "draft",
     moderationState: "visible", source: "standalone", problemKind: null, problemRef: null,
-    likeCount: 0, favoriteCount: 0, commentCount: 0, publishedAt: null, version,
+    likeCount: 0, favoriteCount: 0, commentCount: 0, publishedAt: null, version, tags: [],
     createdAt: "2026-07-26T00:00:00.000Z", updatedAt: "2026-07-26T00:00:00.000Z",
   };
 }

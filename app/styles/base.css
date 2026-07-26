@@ -1,0 +1,106 @@
+/* CodeNow OJ · 基础层 · Bamzc */
+
+/* ── Reset ── */
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+}
+
+body {
+  font-family: Arial, "Microsoft YaHei", sans-serif;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+/* ── 应用外壳 ── */
+.app-shell {
+  min-height: 100vh;
+  min-width: 1040px;
+  background: var(--color-canvas);
+}
+
+/* ── 无障碍隐藏(视觉隐藏但屏读可达) ── */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ── 全局主题切换过渡 ── */
+.topbar,
+.workspace-bar,
+.problem-panel,
+.code-panel,
+.modal,
+.sample-card,
+.test-editor,
+.console-panel,
+.editor-toolbar {
+  transition:
+    background-color var(--motion-base),
+    border-color var(--motion-base),
+    color var(--motion-base);
+}
+
+/* ── 全局键盘焦点环兜底 ── */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* ── 非桌宠入场动画 ── */
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: scale(.96) translateY(8px);
+  }
+}
+
+@keyframes drawer-in {
+  from {
+    opacity: 0;
+    transform: translateX(28px);
+  }
+}
+
+@keyframes toast {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 8px);
+  }
+}
+
+/* ── 减弱动效偏好:入场动画降级 ── */
+@media (prefers-reduced-motion: reduce) {
+  .modal,
+  .chat-drawer,
+  .toast {
+    animation: none;
+  }
+}

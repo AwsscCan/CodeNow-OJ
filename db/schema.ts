@@ -244,3 +244,67 @@ export const noteProblemRefs = sqliteTable("note_problem_refs", {
   uniqueIndex("note_problem_refs_note_id_sort_order_unique").on(table.noteId, table.sortOrder),
   index("note_problem_refs_user_id_note_id_sort_order_idx").on(table.userId, table.noteId, table.sortOrder),
 ]);
+
+export const noteComments = sqliteTable("note_comments", {
+  id: text("id").primaryKey(),
+  noteId: text("note_id").notNull().references(() => notes.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  parentId: text("parent_id").references((): AnySQLiteColumn => noteComments.id, { onDelete: "cascade" }),
+  content: text("content").notNull(),
+  idempotencyKey: text("idempotency_key").notNull(),
+  version: integer("version").notNull().default(1),
+  deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+}, (table) => [
+  uniqueIndex("note_comments_user_note_idempotency_unique").on(table.userId, table.noteId, table.idempotencyKey),
+  index("note_comments_note_id_deleted_at_created_at_idx").on(table.noteId, table.deletedAt, table.createdAt),
+  index("note_comments_user_id_created_at_idx").on(table.userId, table.createdAt),
+  index("note_comments_note_id_parent_id_created_at_idx").on(table.noteId, table.parentId, table.createdAt),
+]);
+
+export const noteReactions = sqliteTable("note_reactions", {
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  noteId: text("note_id").notNull().references(() => notes.id, { onDelete: "cascade" }),
+  kind: text("kind", { enum: ["like", "favorite"] }).notNull(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.userId, table.noteId, table.kind] }),
+  check("note_reactions_kind_check", sql`${table.kind} in ('like', 'favorite')`),
+  index("note_reactions_note_id_kind_idx").on(table.noteId, table.kind),
+]);
+
+export const tags = sqliteTable("tags", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+}, (table) => [
+  uniqueIndex("tags_user_id_name_unique").on(table.userId, table.name),
+]);
+
+export const noteTags = sqliteTable("note_tags", {
+  noteId: text("note_id").notNull().references(() => notes.id, { onDelete: "cascade" }),
+  tagId: text("tag_id").notNull().references(() => tags.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+}, (table) => [
+  primaryKey({ columns: [table.noteId, table.tagId] }),
+  index("note_tags_tag_id_idx").on(table.tagId),
+  index("note_tags_user_id_note_id_idx").on(table.userId, table.noteId),
+]);
+
+export const reports = sqliteTable("reports", {
+  id: text("id").primaryKey(),
+  reporterUserId: text("reporter_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  targetKind: text("target_kind", { enum: ["note", "comment"] }).notNull(),
+  targetId: text("target_id").notNull(),
+  reason: text("reason").notNull(),
+  status: text("status", { enum: ["open", "reviewed", "dismissed", "actioned"] }).notNull().default("open"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+}, (table) => [
+  check("reports_target_kind_check", sql`${table.targetKind} in ('note', 'comment')`),
+  check("reports_status_check", sql`${table.status} in ('open', 'reviewed', 'dismissed', 'actioned')`),
+  uniqueIndex("reports_reporter_target_unique").on(table.reporterUserId, table.targetKind, table.targetId),
+  index("reports_status_created_at_idx").on(table.status, table.createdAt),
+]);

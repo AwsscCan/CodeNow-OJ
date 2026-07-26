@@ -46,7 +46,9 @@ function NewNoteInner() {
           content: value.content,
           summary: deriveSummary(value.content),
           visibility: value.visibility,
+          status: value.visibility === "public" ? "published" : "draft",
           source,
+          ...(value.tags.length ? { tags: value.tags } : {}),
           ...(value.problemRefs.length ? { problemRefs: value.problemRefs } : {}),
           ...(source === "problem" ? { problemKind: problemKind ?? existingDraft?.problemKind ?? "public", problemRef: problemRef ?? existingDraft?.problemRef ?? undefined } : {}),
         });

@@ -1,13 +1,15 @@
-import { and, asc, desc, eq, isNull, lt, or } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lt, or } from "drizzle-orm";
 import type { Database } from "../../../db/client";
 import { createD1Db, createLocalDb } from "../../../db/client";
-import { noteProblemRefs, notes, problems } from "../../../db/schema";
+import { noteProblemRefs, noteTags, notes, problems, tags, users } from "../../../db/schema";
 import {
   MAX_NOTE_CONTENT_BYTES,
   MAX_NOTE_COVER_URL_LENGTH,
   MAX_NOTE_PROBLEM_REF_LENGTH,
   MAX_NOTE_PROBLEM_REFS,
   MAX_NOTE_SUMMARY_LENGTH,
+  MAX_NOTE_TAG_LENGTH,
+  MAX_NOTE_TAGS,
   MAX_NOTE_TITLE_LENGTH,
 } from "../../api/_lib/constants";
 
@@ -22,8 +24,9 @@ export type NoteResult<T> = { ok: true; value: T } | ErrorResult;
 const encoder = new TextEncoder();
 const sensitiveKey = /(apikey|token|secret|password|credential)/i;
 
-const CREATE_KEYS = new Set(["title", "content", "summary", "coverUrl", "visibility", "status", "source", "problemKind", "problemRef", "problemRefs"]);
+const CREATE_KEYS = new Set(["title", "content", "summary", "coverUrl", "visibility", "status", "source", "problemKind", "problemRef", "problemRefs", "tags"]);
 const UPDATE_KEYS = new Set([...CREATE_KEYS, "version", "id"]);
+const TAG_PATTERN = /^[\p{Script=Han}\w-]+$/u;
 
 function record(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
@@ -77,6 +80,27 @@ export function noteListItem(row: NoteRow) {
     source: full.source, problemKind: full.problemKind, problemRef: full.problemRef,
     likeCount: full.likeCount, favoriteCount: full.favoriteCount, commentCount: full.commentCount,
     publishedAt: full.publishedAt, version: full.version, createdAt: full.createdAt, updatedAt: full.updatedAt,
+  };
+}
+
+/** 公开视角出仓：剥掉 user_id、version 等内部列，只暴露作者展示名与头像。 */
+export function publicNote(row: NoteRow, author: { name: string; image: string | null }) {
+  return {
+    id: row.id, title: row.title, content: row.content, summary: row.summary, coverUrl: row.coverUrl,
+    visibility: row.visibility, status: row.status, source: row.source, problemKind: row.problemKind, problemRef: row.problemRef,
+    likeCount: row.likeCount, favoriteCount: row.favoriteCount, commentCount: row.commentCount,
+    publishedAt: row.publishedAt?.toISOString() ?? null, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString(),
+    author: { name: author.name, image: author.image },
+  };
+}
+
+export function publicListItem(row: NoteRow, author: { name: string; image: string | null }) {
+  const full = publicNote(row, author);
+  return {
+    id: full.id, title: full.title, summary: full.summary, coverUrl: full.coverUrl,
+    visibility: full.visibility, status: full.status, source: full.source, problemKind: full.problemKind, problemRef: full.problemRef,
+    likeCount: full.likeCount, favoriteCount: full.favoriteCount, commentCount: full.commentCount,
+    publishedAt: full.publishedAt, createdAt: full.createdAt, updatedAt: full.updatedAt, author: full.author,
   };
 }
 
@@ -198,8 +222,51 @@ export function createNoteRepository(db: Database) {
     return refs.map((ref, sortOrder) => ({ id: crypto.randomUUID(), noteId, userId, problemKind: ref.problemKind, problemRef: ref.problemRef, sortOrder }));
   }
 
+  /** 校验标签数组：≤10 个，去重，单个 ≤32 字符且仅中英文数字连字符下划线。 */
+  function normalizeTags(value: unknown): string[] | ErrorResult {
+    if (!Array.isArray(value)) return invalid("INVALID_TAGS", "标签必须是数组", "tags");
+    const seen = new Set<string>();
+    for (const raw of value) {
+      const name = typeof raw === "string" ? raw.trim() : "";
+      if (!name || !TAG_PATTERN.test(name)) return invalid("INVALID_TAG", "标签含有非法字符", "tags");
+      if (name.length > MAX_NOTE_TAG_LENGTH) return tooLarge("TAG_TOO_LARGE", "标签过长", "tags");
+      seen.add(name);
+    }
+    if (seen.size > MAX_NOTE_TAGS) return tooLarge("TAGS_TOO_MANY", "标签数量过多", "tags");
+    return [...seen];
+  }
+
+  /** 每用户私有标签 upsert + 整体替换 note_tags 关联。 */
+  async function syncTags(userId: string, noteId: string, tagNames: string[]) {
+    const now = new Date();
+    const ids: string[] = [];
+    for (const name of tagNames) {
+      const [existing] = await database.select({ id: tags.id }).from(tags).where(and(eq(tags.userId, userId), eq(tags.name, name))).limit(1);
+      if (existing) { ids.push(existing.id); continue; }
+      await database.insert(tags).values({ id: crypto.randomUUID(), userId, name, createdAt: now }).onConflictDoNothing();
+      const [row] = await database.select({ id: tags.id }).from(tags).where(and(eq(tags.userId, userId), eq(tags.name, name))).limit(1);
+      if (row) ids.push(row.id);
+    }
+    await database.delete(noteTags).where(eq(noteTags.noteId, noteId));
+    if (ids.length) await database.insert(noteTags).values(ids.map((tagId) => ({ noteId, tagId, userId })));
+  }
+
+  async function tagsOfNote(noteId: string) {
+    const rows = await database.select({ name: tags.name }).from(noteTags).innerJoin(tags, eq(noteTags.tagId, tags.id)).where(eq(noteTags.noteId, noteId));
+    return rows.map((row) => row.name);
+  }
+
+  async function tagsForNotes(noteIds: string[]) {
+    const map = new Map<string, string[]>();
+    if (!noteIds.length) return map;
+    const rows = await database.select({ noteId: noteTags.noteId, name: tags.name }).from(noteTags)
+      .innerJoin(tags, eq(noteTags.tagId, tags.id)).where(inArray(noteTags.noteId, noteIds));
+    for (const row of rows) map.set(row.noteId, [...(map.get(row.noteId) ?? []), row.name]);
+    return map;
+  }
+
   return {
-    async list(userId: string, options: { cursor?: string | null; problemRef?: string | null; problemKind?: string | null; visibility?: string | null; requestedLimit?: number } = {}) {
+    async list(userId: string, options: { cursor?: string | null; problemRef?: string | null; problemKind?: string | null; visibility?: string | null; tag?: string | null; requestedLimit?: number } = {}) {
       const limit = Math.min(50, Math.max(1, Math.trunc(options.requestedLimit ?? 50) || 50));
       const separator = options.cursor?.lastIndexOf("|") ?? -1;
       const cursorDate = separator > 0 ? new Date(options.cursor!.slice(0, separator)) : null;
@@ -209,18 +276,31 @@ export function createNoteRepository(db: Database) {
       if (options.problemRef) conditions.push(eq(notes.problemRef, options.problemRef));
       if (options.problemKind === "private" || options.problemKind === "public") conditions.push(eq(notes.problemKind, options.problemKind));
       if (options.visibility === "private" || options.visibility === "public") conditions.push(eq(notes.visibility, options.visibility));
+      if (options.tag) {
+        const [tagRow] = await database.select({ id: tags.id }).from(tags).where(and(eq(tags.userId, userId), eq(tags.name, options.tag))).limit(1);
+        const tagged = tagRow ? (await database.select({ noteId: noteTags.noteId }).from(noteTags).where(eq(noteTags.tagId, tagRow.id))).map((row) => row.noteId) : [];
+        if (!tagged.length) return { items: [], nextCursor: null };
+        conditions.push(inArray(notes.id, tagged));
+      }
       if (validCursor) conditions.push(or(lt(notes.updatedAt, cursorDate!), and(eq(notes.updatedAt, cursorDate!), lt(notes.id, cursorId)))!);
       const rows = await database.select().from(notes).where(and(...conditions))
         .orderBy(desc(notes.updatedAt), desc(notes.id)).limit(limit + 1);
-      const items = rows.slice(0, limit).map(noteListItem);
+      const page = rows.slice(0, limit);
+      const tagMap = await tagsForNotes(page.map((row) => row.id));
+      const items = page.map((row) => ({ ...noteListItem(row), tags: tagMap.get(row.id) ?? [] }));
       const last = rows.length > limit ? rows[limit - 1] : null;
       return { items, nextCursor: last ? `${last.updatedAt.toISOString()}|${last.id}` : null };
     },
 
-    async get(userId: string, id: string): Promise<NoteResult<ReturnType<typeof ownerNote> & { problemRefs: ReturnType<typeof publicRef>[] }>> {
+    async get(userId: string, id: string): Promise<NoteResult<ReturnType<typeof ownerNote> & { problemRefs: ReturnType<typeof publicRef>[]; tags: string[] }>> {
       const row = await ownedNote(userId, id);
       if (!row) return { ok: false, status: 404, code: "NOTE_NOT_FOUND", message: "笔记不存在" };
-      return { ok: true, value: { ...ownerNote(row), problemRefs: await listRefs(userId, id) } };
+      return { ok: true, value: { ...ownerNote(row), problemRefs: await listRefs(userId, id), tags: await tagsOfNote(id) } };
+    },
+
+    async listTags(userId: string) {
+      const rows = await database.select({ name: tags.name }).from(tags).where(eq(tags.userId, userId)).orderBy(asc(tags.name));
+      return rows.map((row) => row.name);
     },
 
     async create(userId: string, input: unknown): Promise<NoteSaveResult<ReturnType<typeof ownerNote>>> {
@@ -232,6 +312,8 @@ export function createNoteRepository(db: Database) {
       if (isError(normalized)) return normalized;
       const refs = body.problemRefs === undefined ? [] : await normalizeRefs(userId, body.problemRefs);
       if (isError(refs)) return refs;
+      const tagNames = body.tags === undefined ? null : normalizeTags(body.tags);
+      if (tagNames && isError(tagNames)) return tagNames;
 
       const now = new Date();
       const noteId = crypto.randomUUID();
@@ -255,6 +337,7 @@ export function createNoteRepository(db: Database) {
           return inserted;
         });
       }
+      if (tagNames) await syncTags(userId, row.id, tagNames as string[]);
       return { ok: true, value: ownerNote(row), version: row.version, updatedAt: row.updatedAt.toISOString() };
     },
 
@@ -272,6 +355,8 @@ export function createNoteRepository(db: Database) {
       const replaceRefs = body.problemRefs !== undefined;
       const refs = replaceRefs ? await normalizeRefs(userId, body.problemRefs) : [];
       if (isError(refs)) return refs;
+      const tagNames = body.tags === undefined ? null : normalizeTags(body.tags);
+      if (tagNames && isError(tagNames)) return tagNames;
 
       const now = new Date();
       const publishedAt = normalized.visibility === "public" && normalized.status === "published" ? (current.publishedAt ?? now) : current.publishedAt;
@@ -301,6 +386,7 @@ export function createNoteRepository(db: Database) {
         const latest = await ownedNote(userId, id);
         return latest ? conflict(latest) : { ok: false, status: 404, code: "NOTE_NOT_FOUND", message: "笔记不存在" };
       }
+      if (tagNames) await syncTags(userId, row.id, tagNames as string[]);
       return { ok: true, value: ownerNote(row), version: row.version, updatedAt: row.updatedAt.toISOString() };
     },
 
@@ -317,6 +403,36 @@ export function createNoteRepository(db: Database) {
         return latest ? conflict(latest) : { ok: false, status: 404, code: "NOTE_NOT_FOUND", message: "笔记不存在" };
       }
       return { ok: true, value: { id: row.id }, version: row.version, updatedAt: row.updatedAt.toISOString() };
+    },
+
+    /** 公开广场列表：不带 user_id 过滤，仅命中已发布可见的公开笔记，出仓剥所有者列。 */
+    async listPublic(options: { cursor?: string | null; problemRef?: string | null; requestedLimit?: number } = {}) {
+      const limit = Math.min(50, Math.max(1, Math.trunc(options.requestedLimit ?? 50) || 50));
+      const separator = options.cursor?.lastIndexOf("|") ?? -1;
+      const cursorDate = separator > 0 ? new Date(options.cursor!.slice(0, separator)) : null;
+      const cursorId = separator > 0 ? options.cursor!.slice(separator + 1) : "";
+      const validCursor = cursorDate && !Number.isNaN(cursorDate.getTime());
+      const conditions = [eq(notes.visibility, "public"), eq(notes.status, "published"), eq(notes.moderationState, "visible"), isNull(notes.deletedAt)];
+      if (options.problemRef) conditions.push(eq(notes.problemRef, options.problemRef));
+      if (validCursor) conditions.push(or(lt(notes.publishedAt, cursorDate!), and(eq(notes.publishedAt, cursorDate!), lt(notes.id, cursorId)))!);
+      const rows = await database.select({ note: notes, name: users.name, image: users.image }).from(notes)
+        .innerJoin(users, eq(notes.userId, users.id)).where(and(...conditions))
+        .orderBy(desc(notes.publishedAt), desc(notes.id)).limit(limit + 1);
+      const items = rows.slice(0, limit).map((row) => publicListItem(row.note, { name: row.name, image: row.image }));
+      const last = rows.length > limit ? rows[limit - 1] : null;
+      return { items, nextCursor: last ? `${last.note.publishedAt?.toISOString() ?? ""}|${last.note.id}` : null };
+    },
+
+    /** 公开读单篇：仅公开已发布可见的笔记，出仓只暴露作者展示名，公开引用只含公共题。 */
+    async readPublic(id: string) {
+      const [row] = await database.select({ note: notes, name: users.name, image: users.image }).from(notes)
+        .innerJoin(users, eq(notes.userId, users.id))
+        .where(and(eq(notes.id, id), eq(notes.visibility, "public"), eq(notes.status, "published"), eq(notes.moderationState, "visible"), isNull(notes.deletedAt))).limit(1);
+      if (!row) return null;
+      const refs = (await database.select().from(noteProblemRefs)
+        .where(and(eq(noteProblemRefs.noteId, id), eq(noteProblemRefs.problemKind, "public")))
+        .orderBy(asc(noteProblemRefs.sortOrder))).map(publicRef);
+      return { ...publicNote(row.note, { name: row.name, image: row.image }), problemRefs: refs };
     },
   };
 }

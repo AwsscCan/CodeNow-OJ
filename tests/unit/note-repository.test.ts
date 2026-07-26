@@ -92,4 +92,21 @@ describe("note repository (private CRUD)", () => {
     const second = await repository.list("user-a", { requestedLimit: 2, cursor: first.nextCursor });
     expect(second.items).toHaveLength(1);
   });
+
+  it("stores per-user tags, returns them and filters by tag", async () => {
+    const a = await repository.create("user-a", { title: "n1", content: "x", tags: ["DP", "贪心"] });
+    await repository.create("user-a", { title: "n2", content: "y", tags: ["DP"] });
+    if (!a.ok) throw new Error("setup failed");
+    const detail = await repository.get("user-a", a.value.id);
+    if (!detail.ok) throw new Error("get failed");
+    expect([...detail.value.tags].sort()).toEqual(["DP", "贪心"]);
+    expect([...(await repository.listTags("user-a"))].sort()).toEqual(["DP", "贪心"]);
+    expect((await repository.list("user-a", { tag: "贪心" })).items.map((item) => item.id)).toEqual([a.value.id]);
+    expect((await repository.list("user-a", { tag: "DP" })).items).toHaveLength(2);
+  });
+
+  it("rejects illegal or overly numerous tags", async () => {
+    expect(await repository.create("user-a", { title: "t", content: "x", tags: ["a<b>"] })).toMatchObject({ status: 400, code: "INVALID_TAG" });
+    expect(await repository.create("user-a", { title: "t", content: "x", tags: Array.from({ length: 11 }, (_, i) => `t${i}`) })).toMatchObject({ status: 413, code: "TAGS_TOO_MANY" });
+  });
 });

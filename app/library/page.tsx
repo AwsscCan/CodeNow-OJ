@@ -291,7 +291,7 @@ export default function LibraryPage() {
           <button className="nav-active">题库</button>
           <button onClick={() => router.push("/")}>做题</button>
           <button onClick={() => toast("比赛功能正在开发中，敬请期待")}>比赛</button>
-          <button onClick={() => toast("讨论区正在开发中，敬请期待")}>讨论</button>
+          <button onClick={() => router.push("/notes")}>讨论</button>
         </nav>
         <div className="header-actions">
           <label className="theme-picker" title="切换网站主题">

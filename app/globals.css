@@ -215,3 +215,22 @@ button { cursor:pointer; }
 .theme-girl .note-view-switch button,.theme-girl .note-toolbar label,.theme-girl .note-card,.theme-girl .note-title-input,.theme-girl .note-tag-input,.theme-girl .note-visibility-toggle,.theme-girl .note-editor-split textarea,.theme-girl .note-actions button { color:#5f463f; background:#fffaf5; border-color:#ead2c7; }
 .theme-girl .note-view-switch button.active { color:#a84539; background:#fbe3da; border-color:#e2b8aa; }
 .theme-girl .note-card h3 { color:#50342f; } .theme-girl .note-preview { background:#fff5efb8; border-color:#ead5cb; } .theme-girl .note-actions button.primary { color:#fff; background:linear-gradient(135deg,#c75c4b,#df8460); border-color:#c75c4b; }
+.note-interactions { margin-top:20px; padding-top:18px; border-top:1px solid #e9ecf1; }
+.note-comments h2 { margin:18px 0 12px; font-size:16px; }
+.note-comment-composer { display:flex; flex-direction:column; gap:8px; margin-bottom:16px; }
+.note-comment-composer textarea { width:100%; min-height:76px; resize:vertical; border:1px solid #dfe3ea; border-radius:9px; padding:10px 12px; color:#2b3346; background:#fff; outline:none; font-size:12px; line-height:1.6; }
+.note-comment-composer textarea:focus { border-color:#8b6de2; box-shadow:0 0 0 3px #f0ebff; }
+.note-comment-composer button { align-self:flex-end; border:0; border-radius:8px; padding:8px 16px; color:#fff; background:#3478f6; font-size:11px; font-weight:700; cursor:pointer; }
+.note-comment-composer button:disabled { opacity:.55; cursor:not-allowed; }
+.note-comment-item { padding:12px 0; border-bottom:1px solid #edf0f4; }
+.note-comment-head { display:flex; align-items:center; gap:10px; margin-bottom:5px; font-size:10px; }
+.note-comment-head b { color:#354052; font-size:12px; } .note-comment-head span { color:#9aa3b1; }
+.note-comment-del { margin-left:auto; border:0; padding:2px 6px; color:#9aa3b1; background:transparent; font-size:9px; cursor:pointer; }
+.note-comment-del:hover { color:#d84255; }
+.note-comment-item p { margin:0; color:#4a5568; font-size:13px; line-height:1.7; white-space:pre-wrap; word-break:break-word; }
+.theme-dark .note-interactions,.theme-dark .note-comment-item { border-color:#293241; }
+.theme-dark .note-comments h2,.theme-dark .note-comment-head b { color:#e2e8f1; } .theme-dark .note-comment-item p { color:#c8d1dd; }
+.theme-dark .note-comment-composer textarea { color:#d5dce7; background:#151b25; border-color:#293241; }
+.theme-girl .note-interactions,.theme-girl .note-comment-item { border-color:#ead5cb; }
+.theme-girl .note-comments h2,.theme-girl .note-comment-head b { color:#50342f; } .theme-girl .note-comment-item p { color:#674f49; }
+.theme-girl .note-comment-composer textarea { color:#5f463f; background:#fffaf5; border-color:#ead2c7; } .theme-girl .note-comment-composer button { background:linear-gradient(135deg,#c75c4b,#df8460); }

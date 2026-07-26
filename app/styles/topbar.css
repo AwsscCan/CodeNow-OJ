@@ -275,6 +275,11 @@
   background: linear-gradient(90deg, #c75c4b, #dd9a61);
 }
 
+/* 主题选择器暖色玻璃浮起(独有极淡暖阴影,基础层无此属性) */
+.theme-girl .theme-picker {
+  box-shadow: 0 2px 8px #8a55421a;
+}
+
 /* 主题选择器暖色图标(独有装饰色) */
 .theme-girl .theme-picker > span {
   color: var(--color-primary);

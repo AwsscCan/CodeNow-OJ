@@ -140,7 +140,6 @@ export function DesktopMascot({
       style={position ? { left: position.x, top: position.y, right: "auto", bottom: "auto" } : undefined}
     >
       <button className="mascot-close" aria-label="暂时隐藏桌宠" onClick={() => onSetVisible(false)}>×</button>
-      <button className="mascot-drag-handle" aria-label="拖动桌宠位置" onPointerDown={startDrag}>↕</button>
       <button className="mascot-bubble" onClick={onCycle}>
         {state.message}<small>点击换表情，按住人物可拖动</small>
       </button>

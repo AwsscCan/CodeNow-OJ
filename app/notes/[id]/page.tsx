@@ -3,15 +3,21 @@
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { NoteEditor, type NoteEditorValue } from "../../components/notes/note-editor";
+import { NoteInteractions } from "../../components/notes/note-interactions";
 import { SafeMarkdown } from "../../components/notes/safe-markdown";
 import { Toast } from "../../components/toast";
 import { Topbar } from "../../components/topbar";
 import type { SyncStatus } from "../../hooks/use-cloud-save";
 import { useToast } from "../../hooks/use-toast";
 import { authClient } from "../../lib/auth-client";
-import { NoteApi, NoteApiError, type CloudNote } from "../../lib/note-api";
+import { NoteApi, NoteApiError, type NoteDetail, type NotePublicDetail } from "../../lib/note-api";
 import { useNoteStore } from "../../stores/note-store";
 import { useThemeStore } from "../../stores/theme-store";
+
+type LoadedNote = NoteDetail | NotePublicDetail;
+function isOwnerNote(note: LoadedNote): note is NoteDetail {
+  return !("author" in note);
+}
 
 export default function NoteDetailPage() {
   const router = useRouter();
@@ -20,36 +26,37 @@ export default function NoteDetailPage() {
   const session = authClient.useSession();
   const store = useNoteStore();
   const { id } = useParams<{ id: string }>();
-  const userId = session.data?.user?.id ?? null;
 
-  const [note, setNote] = useState<CloudNote | null | undefined>(undefined);
+  const [note, setNote] = useState<LoadedNote | null | undefined>(undefined);
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState<NoteEditorValue>({ title: "", content: "", summary: "", tags: [], visibility: "private", problemRefs: [] });
   const [status, setStatus] = useState<SyncStatus>("synced");
-  const loading = userId != null && note === undefined;
+  const loading = note === undefined;
+  const owner = note != null && isOwnerNote(note);
 
   useEffect(() => {
-    if (!userId) return;
     let active = true;
     NoteApi.get(id)
       .then((result) => {
         if (!active) return;
         setNote(result.note);
-        setValue({
-          title: result.note.title, content: result.note.content, summary: result.note.summary ?? "", tags: [], visibility: result.note.visibility,
-          problemRefs: result.note.problemRefs.map((ref) => ({ problemKind: ref.problemKind, problemRef: ref.problemRef })),
-        });
+        if (isOwnerNote(result.note)) {
+          setValue({
+            title: result.note.title, content: result.note.content, summary: result.note.summary ?? "", tags: result.note.tags, visibility: result.note.visibility,
+            problemRefs: result.note.problemRefs.map((ref) => ({ problemKind: ref.problemKind, problemRef: ref.problemRef })),
+          });
+        }
       })
       .catch(() => { if (active) setNote(null); });
     return () => { active = false; };
-  }, [id, userId]);
+  }, [id, session.data?.user?.id]);
 
   async function save() {
-    if (!note) return;
+    if (!note || !isOwnerNote(note)) return;
     setStatus("saving");
     try {
-      const result = await NoteApi.update(note.id, note.version, { title: value.title.trim(), content: value.content, summary: value.content ? value.content.slice(0, 120) : null, visibility: value.visibility, problemRefs: value.problemRefs });
-      setNote(result.note);
+      const result = await NoteApi.update(note.id, note.version, { title: value.title.trim(), content: value.content, summary: value.content ? value.content.slice(0, 120) : null, visibility: value.visibility, status: value.visibility === "public" ? "published" : "draft", tags: value.tags, problemRefs: value.problemRefs });
+      setNote({ ...result.note, problemRefs: value.problemRefs.map((ref, sortOrder) => ({ ...ref, sortOrder })), tags: value.tags });
       store.setNoteVersion(result.note.id, result.version);
       setStatus("synced");
       setEditing(false);
@@ -60,7 +67,7 @@ export default function NoteDetailPage() {
   }
 
   async function remove() {
-    if (!note || !window.confirm("确定删除这篇笔记？")) return;
+    if (!note || !isOwnerNote(note) || !window.confirm("确定删除这篇笔记？")) return;
     try {
       await NoteApi.remove(note.id, note.version);
       store.setCloudNotes(store.cloudNotes.filter((item) => item.id !== note.id));
@@ -78,18 +85,16 @@ export default function NoteDetailPage() {
           <div>
             <span>CODENOW 讨论</span>
             <h1>{editing ? "编辑笔记" : (note?.title ?? "笔记")}</h1>
-            <p>{note ? `更新于 ${new Date(note.updatedAt).toLocaleString("zh-CN")}` : ""}</p>
+            <p>{note && !isOwnerNote(note) ? `作者 ${note.author.name} · ` : ""}{note ? `更新于 ${new Date(note.updatedAt).toLocaleString("zh-CN")}` : ""}</p>
           </div>
           <button onClick={() => router.push("/notes")}>← 返回列表</button>
         </div>
 
-        {!userId ? (
-          <div className="note-empty"><b>请先登录</b><span>登录后即可查看你的笔记</span></div>
-        ) : loading ? (
+        {loading ? (
           <div className="note-empty"><span>加载中…</span></div>
         ) : !note ? (
-          <div className="note-empty"><b>笔记不存在</b><span>它可能已被删除或不属于你</span></div>
-        ) : editing ? (
+          <div className="note-empty"><b>笔记不存在</b><span>它可能已被删除、设为私有或不属于你</span></div>
+        ) : owner && editing ? (
           <NoteEditor value={value} onChange={setValue} onSubmit={save} submitLabel="保存修改" status={status} onDelete={remove} />
         ) : (
           <>
@@ -98,10 +103,22 @@ export default function NoteDetailPage() {
               {note.source === "problem" ? <span className="note-badge problem">题目笔记</span> : null}
             </div>
             <SafeMarkdown className="note-md note-preview" value={note.content} />
-            <div className="note-actions">
-              <button className="primary" onClick={() => setEditing(true)}>编辑</button>
-              <button className="danger" onClick={remove}>删除</button>
-            </div>
+            {owner ? (
+              <div className="note-actions">
+                <button className="primary" onClick={() => setEditing(true)}>编辑</button>
+                <button className="danger" onClick={remove}>删除</button>
+              </div>
+            ) : null}
+            {note.visibility === "public" ? (
+              <NoteInteractions
+                noteId={note.id}
+                likeCount={note.likeCount}
+                favoriteCount={note.favoriteCount}
+                loggedIn={Boolean(session.data?.user)}
+                isNoteOwner={owner}
+                onToast={toast}
+              />
+            ) : null}
           </>
         )}
       </div>
