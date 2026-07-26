@@ -6,7 +6,6 @@ function deterministicJson(value: unknown): string {
   const record = value as Record<string, unknown>;
   return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${deterministicJson(record[key])}`).join(",")}}`;
 }
-
 export async function fingerprintManifest(manifest: LocalDataManifestV1) {
   const bytes = new TextEncoder().encode(deterministicJson(manifest));
   const digest = await crypto.subtle.digest("SHA-256", bytes);
@@ -14,4 +13,3 @@ export async function fingerprintManifest(manifest: LocalDataManifestV1) {
 }
 
 export { deterministicJson };
-

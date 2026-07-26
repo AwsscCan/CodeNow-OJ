@@ -21,4 +21,3 @@ export function SyncConflictDialog({ conflict, onUseCloud, onOverwrite }: Props)
     </section>
   </div>;
 }
-

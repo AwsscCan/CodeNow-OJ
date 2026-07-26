@@ -26,7 +26,6 @@ export class ConversationApiError extends Error {
     this.name = "ConversationApiError";
   }
 }
-
 async function json<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
   const body = await response.json().catch(() => ({})) as { error?: { message?: string; currentVersion?: number } } & T;
@@ -79,4 +78,3 @@ export async function queueConversationMessage(queue: SyncQueue, input: {
     throw error;
   }
 }
-

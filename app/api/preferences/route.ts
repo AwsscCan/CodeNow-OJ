@@ -32,8 +32,6 @@ export function createPreferenceHandlers(resolveContext: ResolvePreferenceContex
     },
   };
 }
-
 const handlers = createPreferenceHandlers();
 export const GET = handlers.GET;
 export const PATCH = handlers.PATCH;
-

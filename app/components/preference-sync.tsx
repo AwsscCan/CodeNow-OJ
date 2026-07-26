@@ -13,7 +13,6 @@ type PreferenceResponse = {
 function preferenceKey(preferences: PreferenceResponse["preferences"]) {
   return `${preferences.themeMode}:${preferences.editorTheme}`;
 }
-
 export function PreferenceSync({ delay = 600 }: { delay?: number }) {
   const session = authClient.useSession();
   const userId = session.data?.user.id ?? null;
@@ -82,4 +81,3 @@ export function PreferenceSync({ delay = 600 }: { delay?: number }) {
 
   return null;
 }
-

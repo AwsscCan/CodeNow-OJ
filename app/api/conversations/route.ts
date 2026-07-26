@@ -14,7 +14,6 @@ export const resolveConversationContext: ResolveConversationContext = async (req
 function failure(result: { status: number; code: string; message: string; currentVersion?: number; updatedAt?: string }) {
   return apiError(result.status, result.code, result.message, undefined, { currentVersion: result.currentVersion, updatedAt: result.updatedAt });
 }
-
 export function createConversationHandlers(resolveContext: ResolveConversationContext = resolveConversationContext) {
   return {
     GET: async (request: Request) => {
@@ -57,4 +56,3 @@ export const GET = handlers.GET;
 export const POST = handlers.POST;
 export const PATCH = handlers.PATCH;
 export const DELETE = handlers.DELETE;
-

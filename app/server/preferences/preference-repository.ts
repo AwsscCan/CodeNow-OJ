@@ -16,7 +16,6 @@ const sensitiveKey = /(apikey|token|secret|password|credential)/i;
 function record(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
-
 function containsSensitiveField(value: unknown): boolean {
   if (Array.isArray(value)) return value.some(containsSensitiveField);
   const object = record(value);
@@ -94,4 +93,3 @@ export function createPreferenceRepository(db: Database) {
 }
 
 export type PreferenceRepository = ReturnType<typeof createPreferenceRepository>;
-
