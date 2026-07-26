@@ -57,6 +57,20 @@
       "when": 1785049487394,
       "tag": "0007_wet_shadow_king",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1785056699701,
+      "tag": "0008_pink_phil_sheldon",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1785057824435,
+      "tag": "0009_magical_deathbird",
+      "breakpoints": true
     }
   ]
 }

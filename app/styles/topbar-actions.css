@@ -1,0 +1,196 @@
+/* CodeNow OJ · 工作区顶栏与操作 · Bamzc */
+
+/* ===== 工作区操作条骨架 ===== */
+.workspace-bar {
+  height: var(--workspacebar-height);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-5);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-line);
+}
+
+/* ===== 右侧操作按钮组 ===== */
+.workspace-actions {
+  margin-left: auto;
+  display: flex;
+  gap: var(--space-2);
+}
+
+.workspace-actions button {
+  height: 34px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-base);
+  color: var(--color-nav-text);
+  background: var(--color-surface);
+  font-size: var(--text-md);
+  font-weight: 650;
+}
+
+.workspace-actions button:disabled {
+  opacity: .55;
+  cursor: wait;
+}
+
+.workspace-actions .ai-button {
+  color: var(--color-ai);
+  border-color: var(--color-ai-border);
+  background: var(--color-ai-bg);
+}
+
+.workspace-actions .run-button {
+  color: var(--color-primary);
+  border-color: var(--color-primary-border);
+  background: var(--color-primary-bg);
+}
+
+.workspace-actions .submit-button {
+  min-width: 68px;
+  color: #fff;
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  box-shadow: 0 2px 6px #3478f638;
+}
+
+.workspace-actions .ask-button {
+  color: var(--color-ask);
+  border-color: var(--color-ask-border, var(--color-line));
+  background: var(--color-ask-bg);
+}
+
+/* ===== 分屏工作区骨架 ===== */
+.split-workspace {
+  display: grid;
+  grid-template-columns: var(--problem-ratio, 46%) 9px minmax(0, 1fr);
+  height: calc(100vh - var(--topbar-height) - var(--workspacebar-height));
+  min-height: 580px;
+}
+
+/* ===== 拖拽分隔条(含伪元素与 resizing 态) ===== */
+.resize-handle {
+  position: relative;
+  padding: 0;
+  border: 0;
+  background: var(--color-line);
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+  z-index: var(--z-resize);
+}
+
+.resize-handle:before {
+  content: "";
+  position: absolute;
+  inset: 0 -8px;
+}
+
+.resize-handle:after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 3px;
+  height: 34px;
+  border-left: 1px solid var(--color-muted-2);
+  border-right: 1px solid var(--color-muted-2);
+  transform: translate(-50%, -50%);
+}
+
+.resize-handle span {
+  position: absolute;
+  z-index: var(--z-raised);
+  top: calc(50% + 26px);
+  left: 50%;
+  padding: 2px var(--space-1);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-pill);
+  color: var(--color-muted);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+  font-size: var(--text-2xs);
+  font-weight: 800;
+  transform: translateX(-50%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--motion-fast);
+}
+
+.resize-handle:hover span,
+.resize-handle:focus-visible span,
+.split-workspace.resizing .resize-handle span {
+  opacity: 1;
+}
+
+.split-workspace.resizing,
+.workspace-is-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+
+.workspace-is-resizing * {
+  cursor: col-resize !important;
+}
+
+/* ===== 少女主题:操作条与分隔条独有玻璃/背景结构 ===== */
+.theme-girl .workspace-bar {
+  backdrop-filter: var(--backdrop-blur);
+}
+
+.theme-girl .resize-handle {
+  background: var(--color-border-strong);
+}
+
+/* 少女主题提交按钮:纯色→珊瑚渐变(结构性差异,保留并 token 化) */
+.theme-girl .workspace-actions .submit-button {
+  border-color: var(--color-primary);
+  background: var(--color-primary-gradient);
+}
+
+/* ===== 交互精修:悬停抬升、按压反馈、键盘焦点环 ===== */
+.workspace-actions button {
+  transition: transform .12s ease, box-shadow .12s ease, filter .12s ease;
+}
+
+.workspace-actions button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px #3478f622;
+}
+
+.workspace-actions button:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: none;
+  filter: brightness(.96);
+}
+
+.workspace-actions button:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-md);
+}
+
+.resize-handle:hover,
+.resize-handle:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--color-primary);
+}
+
+@media (max-width: 1100px) {
+  .workspace-actions button {
+    padding: 0 var(--space-2);
+  }
+
+  .workspace-actions button:first-child {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace-actions button {
+    transition: none;
+  }
+
+  .workspace-actions button:hover:not(:disabled) {
+    transform: none;
+  }
+}

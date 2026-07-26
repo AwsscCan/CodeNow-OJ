@@ -293,7 +293,7 @@ export async function generateComplexityAwareTests(options: {
     const body: Record<string, unknown> = {
       model: options.model,
       temperature: 0.04,
-      max_tokens: Math.min(7800, Math.max(1800, 900 + requested * 520)),
+      max_tokens: Math.min(8000, Math.max(1800, 900 + requested * 320)),
       stream: false,
       response_format: { type: "json_object" },
       messages,
@@ -331,7 +331,7 @@ export async function generateComplexityAwareTests(options: {
   let batches = 0;
   let stagnant = 0;
   const auditedCases = new Set<string>();
-  const maxAttempts = Math.min(8, Math.max(3, Math.ceil(target / 8) + 2));
+  const maxAttempts = Math.min(10, Math.max(4, Math.ceil(target / 6) + 2));
 
   // Run a single AI generation batch: prompt, parse, dedupe, append. Returns
   // how many brand-new candidates were accepted. Shared by the main generation
@@ -402,7 +402,12 @@ export async function generateComplexityAwareTests(options: {
     const gaps = missingQuota(quota, candidates);
     const missingCategories = Object.values(gaps).reduce((sum, value) => sum + value, 0);
     const baseRequest = Math.max(remainingCount, missingCategories);
-    const requested = batches === 0 && target > 6 ? Math.min(4, baseRequest) : Math.min(12, Math.max(1, Math.ceil(baseRequest * 1.2)));
+    // Request the full outstanding quota up front (capped at 24) so the model
+    // can satisfy a large target in one round-trip instead of trickling out
+    // ~4 cases per batch. Subsequent batches over-ask slightly to absorb drops.
+    const requested = batches === 0
+      ? Math.min(24, Math.max(1, baseRequest))
+      : Math.min(20, Math.max(1, Math.ceil(baseRequest * 1.2)));
     await runBatch(requested, gaps);
   }
 

@@ -46,6 +46,22 @@ export const MAX_PROBLEM_SOURCE_LENGTH = 60_000;
 export const MAX_FOLDER_NAME_LENGTH = 80;
 export const MAX_FOLDER_DEPTH = 5;
 
+// ── Notes / Discussion ──
+export const MAX_NOTE_TITLE_LENGTH = 200;
+export const MAX_NOTE_CONTENT_BYTES = 512 * 1024;
+export const MAX_NOTE_SUMMARY_LENGTH = 500;
+export const MAX_NOTE_COVER_URL_LENGTH = 2048;
+export const MAX_NOTE_PROBLEM_REF_LENGTH = 128;
+export const MAX_NOTE_TAGS = 10;
+export const MAX_NOTE_TAG_LENGTH = 32;
+export const MAX_NOTE_PROBLEM_REFS = 50;
+export const MAX_COMMENT_CONTENT_BYTES = 64 * 1024;
+export const MAX_REPORT_REASON_LENGTH = 500;
+export const NOTE_WRITE_LIMIT = 60;        // 新建/编辑笔记 60 次/小时
+export const COMMENT_WRITE_LIMIT = 100;    // 发评论 100 条/小时
+export const REACTION_WRITE_LIMIT = 300;   // 点赞收藏 300 次/小时
+export const REPORT_WRITE_LIMIT = 30;      // 举报 30 次/小时
+
 // ── UI ──
 export const TOAST_DURATION_MS = 2600;
 export const WORKSPACE_SAVE_DEBOUNCE_MS = 450;

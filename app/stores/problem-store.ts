@@ -57,7 +57,7 @@ type ProblemStore = {
   code: string;
   results: Result[];
   compilerDiagnostic: string;
-  tab: "problem" | "tests";
+  tab: "problem" | "tests" | "notes";
   consoleTab: "results" | "history";
   history: SubmissionRecord[];
   historyLoading: boolean;
@@ -74,7 +74,7 @@ type ProblemStore = {
   setCode: (code: string) => void;
   setResults: (results: Result[]) => void;
   setCompilerDiagnostic: (d: string) => void;
-  setTab: (tab: "problem" | "tests") => void;
+  setTab: (tab: "problem" | "tests" | "notes") => void;
   setConsoleTab: (tab: "results" | "history") => void;
   setHistory: (history: SubmissionRecord[]) => void;
   setHistoryLoading: (v: boolean) => void;

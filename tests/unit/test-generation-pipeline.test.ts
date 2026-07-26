@@ -45,6 +45,33 @@ function aiResponse(tests: ReturnType<typeof test>[], audits: Array<Record<strin
 afterEach(() => vi.unstubAllGlobals());
 beforeEach(() => __resetLanguageCacheForTests());
 
+// Fetch stub that models a real model: it obeys "generate exactly N" and fills
+// by the requested category mix, so report.batches reflects the round-trip
+// strategy (fewer requested-per-batch => more batches => slower + often short).
+function obedientFetch() {
+  let uid = 0;
+  const makeCase = (category: string) => {
+    const id = uid++;
+    return test(`${id + 2}\n${id + 1}\n`, `${id + 1}\n`, category, category === "performance" ? 100000 : 1);
+  };
+  return vi.fn(async (url: string | URL, init?: RequestInit) => {
+    if (String(url).includes("/languages")) {
+      return new Response(JSON.stringify([{ id: 54, name: "C++ (GCC 9.2.0)" }]), { status: 200 });
+    }
+    const body = JSON.parse(String(init?.body)) as { messages: Array<{ content: string }> };
+    const prompt = body.messages.map((m) => m.content).join("\n");
+    const requested = Number(prompt.match(/generate exactly (\d+)/i)?.[1] || 4);
+    const mix = JSON.parse(prompt.match(/Required remaining category mix: (\{[^}]*\})/)?.[1] || "{}") as Record<string, number>;
+    const cases: ReturnType<typeof test>[] = [];
+    let budget = requested;
+    for (const [category, count] of Object.entries(mix)) {
+      for (let k = 0; k < count && budget > 0; k++) { cases.push(makeCase(category)); budget -= 1; }
+    }
+    while (budget-- > 0) cases.push(makeCase("ordinary"));
+    return aiResponse(cases);
+  });
+}
+
 describe("test generation pipeline", () => {
   it("builds an exact quota whose sum matches every supported target", () => {
     for (let count = 1; count <= 50; count += 1) {
@@ -52,6 +79,23 @@ describe("test generation pipeline", () => {
       expect(Object.values(quota).reduce((sum, value) => sum + value, 0)).toBe(count);
       expect(Object.values(quota).every((value) => value >= 0)).toBe(true);
     }
+  });
+
+  it("reaches a large target in very few AI round-trips", async () => {
+    vi.stubGlobal("fetch", obedientFetch());
+    const result = await generateComplexityAwareTests({
+      apiKey: "test-key",
+      endpoint: "https://api.deepseek.com",
+      model: "deepseek-chat",
+      problem,
+      count: 18,
+    });
+    expect(result.tests).toHaveLength(18);
+    expect(result.report.qualityOk).toBe(true);
+    // A model that honors the requested batch size should satisfy an 18-case
+    // quota in at most 2 round-trips (previously took ~4-5 because the first
+    // batch only ever asked for 4 cases).
+    expect(result.report.batches).toBeLessThanOrEqual(2);
   });
 
   it("continues from the first batch, fills the requested amount, and meets coverage quotas", async () => {

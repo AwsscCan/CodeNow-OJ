@@ -15,6 +15,7 @@ import { formatCppCode } from "../../lib/format-cpp";
 import { ProblemApi, ProblemApiError, type CloudProblem } from "../../lib/problem-api";
 import { useAiStore } from "../../stores/ai-store";
 import { useLibraryStore } from "../../stores/library-store";
+import { ProblemNotesPanel } from "../../components/notes/problem-notes-panel";
 import { useProblemStore } from "../../stores/problem-store";
 import type { Problem, SubmissionRecord } from "../../stores/problem-store";
 import { useThemeStore } from "../../stores/theme-store";
@@ -442,6 +443,7 @@ export default function ProblemPage() {
           <div className="panel-tabs">
             <button className={store.tab === "problem" ? "active" : ""} onClick={() => store.setTab("problem")}>题目描述</button>
             <button className={store.tab === "tests" ? "active" : ""} onClick={() => store.setTab("tests")}>测试点 <span>{store.problem.samples.length}</span></button>
+            <button className={store.tab === "notes" ? "active" : ""} onClick={() => store.setTab("notes")}>笔记</button>
           </div>
           {store.tab === "problem" ? (
             <div className="problem-content">
@@ -472,7 +474,7 @@ export default function ProblemPage() {
               </section>
               <aside className="hint"><b>C++ 提示</b><span>整数范围不确定时建议使用 <code>long long</code>。</span></aside>
             </div>
-          ) : (
+          ) : store.tab === "tests" ? (
             <div className="tests-content">
               <div className="tests-heading">
                 <div><h2>测试点管理</h2><p>{generatingTests && testGenStatus ? testGenStatus : "AI 会分批生成测试点，先拿到小批可用数据再逐步补足边界、反例与性能点。"}</p></div>
@@ -505,6 +507,13 @@ export default function ProblemPage() {
                 </div>
               ))}
             </div>
+          ) : (
+            <ProblemNotesPanel
+              problemKind={cloudId ? "private" : "public"}
+              problemRef={cloudId ?? store.problem.id}
+              problemCode={store.problem.id}
+              loggedIn={Boolean(session.data?.user)}
+            />
           )}
         </article>
 

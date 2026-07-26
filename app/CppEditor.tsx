@@ -3,6 +3,7 @@
 import Editor, { loader, type Monaco, type OnMount } from "@monaco-editor/react";
 import type { editor as MonacoEditor, languages as MonacoLanguages, Position, Range } from "monaco-editor";
 import { memo, useEffect, useRef } from "react";
+import { computeLocalDiagnostics, parseCompilerLog, type Diagnostic } from "./lib/cpp-diagnostics";
 import { formatCppCode } from "./lib/format-cpp";
 
 loader.config({ paths: { vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.56.0/min/vs" } });
@@ -452,52 +453,25 @@ function configureCpp(monaco: Monaco) {
   });
 }
 
-function getLocalMarkers(value: string, monaco: Monaco): MonacoEditor.IMarkerData[] {
-  const markers: MonacoEditor.IMarkerData[] = [];
-  const stack: { char: string; line: number; column: number }[] = [];
-  const pairs: Record<string, string> = { ")": "(", "]": "[", "}": "{" };
-  const lines = value.split("\n");
-  let blockComment = false;
-  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
-    const line = lines[lineIndex];
-    let quote = "";
-    for (let i = 0; i < line.length; i += 1) {
-      const char = line[i];
-      const next = line[i + 1];
-      if (blockComment) { if (char === "*" && next === "/") { blockComment = false; i += 1; } continue; }
-      if (!quote && char === "/" && next === "*") { blockComment = true; i += 1; continue; }
-      if (!quote && char === "/" && next === "/") break;
-      if ((char === '"' || char === "'") && line[i - 1] !== "\\") { quote = quote === char ? "" : quote || char; continue; }
-      if (quote) continue;
-      if ("([{ ".includes(char) && char !== " ") stack.push({ char, line: lineIndex + 1, column: i + 1 });
-      if (pairs[char]) {
-        const opening = stack.pop();
-        if (!opening || opening.char !== pairs[char]) markers.push({ severity: monaco.MarkerSeverity.Error, message: `不匹配的闭合符号 ${char}`, startLineNumber: lineIndex + 1, endLineNumber: lineIndex + 1, startColumn: i + 1, endColumn: i + 2 });
-      }
-    }
-    const typo = line.indexOf("std:");
-    if (typo >= 0 && line[typo + 4] !== ":") markers.push({ severity: monaco.MarkerSeverity.Error, message: "命名空间应写为 std::", startLineNumber: lineIndex + 1, endLineNumber: lineIndex + 1, startColumn: typo + 1, endColumn: typo + 5 });
-  }
-  for (const opening of stack) markers.push({ severity: monaco.MarkerSeverity.Error, message: `缺少与 ${opening.char} 对应的闭合符号`, startLineNumber: opening.line, endLineNumber: opening.line, startColumn: opening.column, endColumn: opening.column + 1 });
-  if (!/\bint\s+main\s*\(/.test(value)) markers.push({ severity: monaco.MarkerSeverity.Warning, message: "提交程序需要 int main() 入口函数", startLineNumber: 1, endLineNumber: 1, startColumn: 1, endColumn: Math.max(2, lines[0]?.length + 1 || 2) });
-  return markers;
+function toMarkers(diagnostics: Diagnostic[], monaco: Monaco): MonacoEditor.IMarkerData[] {
+  const severityMap = {
+    error: monaco.MarkerSeverity.Error,
+    warning: monaco.MarkerSeverity.Warning,
+    info: monaco.MarkerSeverity.Info,
+  } as const;
+  return diagnostics.map((d) => ({
+    severity: severityMap[d.severity],
+    message: d.message,
+    source: d.source,
+    startLineNumber: d.startLine,
+    endLineNumber: d.endLine,
+    startColumn: d.startColumn,
+    endColumn: d.endColumn,
+  }));
 }
 
-function getCompilerMarkers(value: string, diagnostic: string, monaco: Monaco): MonacoEditor.IMarkerData[] {
-  if (!diagnostic.trim()) return [];
-  const markers: MonacoEditor.IMarkerData[] = [];
-  const expression = /(?:^|\n)[^:\n]+:(\d+):(\d+):\s*(fatal error|error|warning|note):\s*([^\n]+)/g;
-  let match: RegExpExecArray | null;
-  const lineCount = value.split("\n").length;
-  while ((match = expression.exec(diagnostic))) {
-    const line = Math.min(lineCount, Math.max(1, Number(match[1])));
-    const column = Math.max(1, Number(match[2]));
-    const severity = match[3].includes("error") ? monaco.MarkerSeverity.Error : match[3] === "warning" ? monaco.MarkerSeverity.Warning : monaco.MarkerSeverity.Info;
-    markers.push({ severity, message: `GCC: ${match[4].trim()}`, source: "GNU C++", startLineNumber: line, endLineNumber: line, startColumn: column, endColumn: column + 1 });
-  }
-  if (!markers.length) markers.push({ severity: monaco.MarkerSeverity.Error, message: diagnostic.trim().slice(0, 800), source: "GNU C++", startLineNumber: 1, endLineNumber: 1, startColumn: 1, endColumn: 2 });
-  return markers;
-}
+const getLocalMarkers = (value: string, monaco: Monaco) => toMarkers(computeLocalDiagnostics(value), monaco);
+const getCompilerMarkers = (value: string, diagnostic: string, monaco: Monaco) => toMarkers(parseCompilerLog(value, diagnostic), monaco);
 
 type Props = {
   value: string;
@@ -576,23 +550,37 @@ export const CppEditor = memo(function CppEditor({ value, themeMode, compilerDia
       minimap: { enabled: false },
       quickSuggestions: { other: true, comments: false, strings: false },
       suggestOnTriggerCharacters: true,
+      suggest: { showStatusBar: true, preview: true, insertMode: "replace" },
+      tabCompletion: "on",
       inlineSuggest: { enabled: true, showToolbar: "onHover" },
       inlayHints: { enabled: "on" },
       parameterHints: { enabled: true },
       bracketPairColorization: { enabled: true, independentColorPoolPerBracketType: true },
-      guides: { bracketPairs: true, indentation: true },
+      guides: { bracketPairs: true, indentation: true, highlightActiveIndentation: true, bracketPairsHorizontal: true },
+      matchBrackets: "always",
       autoClosingBrackets: "always",
       autoClosingQuotes: "always",
       autoIndent: "full",
+      linkedEditing: true,
       formatOnPaste: true,
       folding: true,
+      foldingHighlight: true,
+      showFoldingControls: "always",
+      stickyScroll: { enabled: true, maxLineCount: 3 },
       glyphMargin: true,
       renderValidationDecorations: "on",
+      renderLineHighlight: "all",
       renderWhitespace: "selection",
+      occurrencesHighlight: "singleFile",
+      unicodeHighlight: { ambiguousCharacters: true, invisibleCharacters: true },
+      scrollbar: { verticalScrollbarSize: 12, horizontalScrollbarSize: 12, useShadows: true },
       scrollBeyondLastLine: false,
-      smoothScrolling: false,
-      cursorSmoothCaretAnimation: "off",
-      cursorBlinking: "blink",
+      cursorSurroundingLines: 4,
+      roundedSelection: true,
+      mouseWheelZoom: true,
+      smoothScrolling: true,
+      cursorSmoothCaretAnimation: "on",
+      cursorBlinking: "smooth",
       padding: { top: 12, bottom: 12 },
       wordWrap: "off",
     }}

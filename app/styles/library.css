@@ -1,0 +1,959 @@
+/* CodeNow OJ · 题库页 · Bamzc */
+
+/* ============================================================
+ * 题库页外壳
+ * ============================================================ */
+.library-page {
+  min-height: calc(100vh - var(--topbar-height));
+  padding: var(--space-8) max(var(--space-8), calc((100vw - 1260px) / 2));
+  background: var(--color-canvas);
+}
+
+/* ============================================================
+ * 题库 Hero 头图
+ * ============================================================ */
+.library-hero {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: var(--space-6);
+}
+.library-hero span {
+  color: var(--color-primary);
+  font-size: var(--text-xs);
+  font-weight: 800;
+  letter-spacing: 1.4px;
+}
+.library-hero h1 {
+  margin: var(--space-2) 0 5px;
+  font-size: 28px;
+  letter-spacing: -.7px;
+  color: var(--color-heading);
+}
+.library-hero p {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--text-md);
+}
+.library-hero > button {
+  position: relative;
+  z-index: var(--z-raised);
+  border: 0;
+  border-radius: var(--radius-base);
+  padding: var(--space-3) var(--space-4);
+  color: #fff;
+  background: var(--color-primary);
+  box-shadow: 0 5px 15px #3478f637;
+  font-size: var(--text-base);
+  font-weight: 700;
+}
+
+/* 少女立绘堆叠(硬约束美术,base 隐藏,仅 girl 主题展示) */
+.girl-portrait-stack {
+  display: none;
+}
+
+/* ============================================================
+ * 题库主体布局:侧栏 + 目录
+ * ============================================================ */
+.library-page-body {
+  display: grid;
+  grid-template-columns: 245px minmax(0, 1fr);
+  gap: var(--space-5);
+  align-items: start;
+}
+
+.library-page-sidebar {
+  padding: var(--space-4) var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+.library-page-sidebar h3 {
+  margin: 2px var(--space-2) var(--space-3);
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+  letter-spacing: .7px;
+  text-transform: uppercase;
+}
+.library-page-sidebar > button,
+.folder-select {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 0;
+  border-radius: var(--radius-base);
+  padding: var(--space-3);
+  margin-bottom: 3px;
+  color: var(--color-nav-text);
+  background: transparent;
+  font-size: var(--text-sm);
+  text-align: left;
+}
+.library-page-sidebar > button.active,
+.folder-select.active {
+  color: var(--color-primary-nav);
+  background: var(--color-primary-bg);
+}
+.library-page-sidebar > button b,
+.folder-select b {
+  color: var(--color-muted-2);
+  font-size: var(--text-2xs);
+}
+.folder-select span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ============================================================
+ * 文件夹条目(可拖拽/展开/操作)
+ * ============================================================ */
+.folder-entry {
+  display: grid;
+  grid-template-columns: 14px 18px minmax(0, 1fr) 22px 22px;
+  align-items: center;
+  gap: 2px;
+  margin-bottom: 3px;
+  border-radius: var(--radius-base);
+}
+.folder-entry.drag-over {
+  box-shadow: inset 0 0 0 1px var(--color-primary-border);
+  background: var(--color-primary-bg);
+}
+.folder-entry .folder-select {
+  margin-bottom: 0;
+  padding: var(--space-2) var(--space-1);
+}
+.folder-entry > .folder-select:last-child {
+  grid-column: 3 / 6;
+}
+
+.folder-drag {
+  width: 14px;
+  height: 24px;
+  border: 0;
+  padding: 0;
+  color: var(--color-muted-2);
+  background: transparent;
+  font-size: var(--text-xl);
+  line-height: 1;
+  cursor: grab;
+}
+.folder-drag:active {
+  cursor: grabbing;
+}
+
+.folder-expand {
+  width: 18px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-sm);
+  padding: 0;
+  color: var(--color-muted);
+  background: transparent;
+  font-size: var(--text-2xl);
+  line-height: 1;
+  cursor: pointer;
+}
+.folder-expand:hover {
+  color: var(--color-primary);
+  background: var(--color-primary-bg);
+}
+
+.folder-spacer {
+  width: 18px;
+}
+
+.folder-action {
+  width: 22px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--color-muted-2);
+  background: transparent;
+  font-size: var(--text-2xs);
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--motion-fast), color var(--motion-fast), background var(--motion-fast);
+}
+.folder-entry:hover .folder-action,
+.folder-action:focus-visible {
+  opacity: 1;
+}
+.folder-action.dissolve:hover {
+  color: var(--color-warning);
+  background: var(--color-warning-bg);
+}
+.folder-action.destructive:hover {
+  color: var(--color-danger);
+  background: var(--color-danger-bg);
+}
+
+.page-folder {
+  margin: var(--space-3) 5px 3px;
+}
+
+/* ============================================================
+ * 题库目录容器
+ * ============================================================ */
+.library-catalog {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.catalog-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--color-line);
+}
+.catalog-toolbar h2 {
+  margin: 0 0 var(--space-1);
+  font-size: 18px;
+}
+.catalog-toolbar > div > span {
+  color: var(--color-muted-2);
+  font-size: var(--text-xs);
+}
+.catalog-toolbar label {
+  width: 250px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-base);
+  padding: 0 var(--space-3);
+  background: var(--color-surface-raised);
+}
+.catalog-toolbar label span {
+  color: var(--color-muted);
+}
+.catalog-toolbar input {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  padding: var(--space-2) 0;
+  color: var(--color-ink);
+  background: transparent;
+  font-size: var(--text-sm);
+}
+
+.catalog-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.catalog-tools > button {
+  flex: 0 0 auto;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-base);
+  padding: var(--space-2) var(--space-3);
+  color: var(--color-nav-text);
+  background: var(--color-surface);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+.catalog-tools > button.active {
+  color: var(--color-primary-nav);
+  border-color: var(--color-primary-border);
+  background: var(--color-primary-bg);
+}
+
+/* ============================================================
+ * 题库目录行
+ * ============================================================ */
+.catalog-header,
+.catalog-row {
+  display: grid;
+  grid-template-columns: minmax(300px, 1fr) 85px 80px 135px 90px;
+  align-items: center;
+  column-gap: var(--space-2);
+}
+.catalog-header {
+  padding: var(--space-3) var(--space-4);
+  color: var(--color-muted-2);
+  background: var(--color-surface-raised);
+  border-bottom: 1px solid var(--color-line);
+  font-size: var(--text-2xs);
+  font-weight: 700;
+}
+.catalog-row {
+  min-height: 69px;
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--color-line);
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+  transition: background var(--motion-fast);
+}
+.catalog-row:hover {
+  background: var(--color-hover);
+}
+.catalog-row > button {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  border: 0;
+  color: var(--color-ink);
+  background: transparent;
+  text-align: left;
+}
+.catalog-row > button code {
+  flex: 0 0 auto;
+  color: var(--color-primary);
+  font-weight: 800;
+  font-size: var(--text-sm);
+}
+.catalog-row > button div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.catalog-row > button b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-md);
+}
+.catalog-row > button small {
+  color: var(--color-muted-2);
+  font-size: var(--text-2xs);
+}
+.catalog-row .difficulty {
+  justify-self: start;
+  border-radius: var(--radius-lg);
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-2xs);
+  font-weight: 700;
+}
+.catalog-row select {
+  max-width: 125px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  padding: var(--space-2);
+  color: var(--color-nav-text);
+  background: var(--color-surface);
+  font-size: var(--text-2xs);
+}
+.catalog-row > i {
+  color: var(--color-primary);
+  font-style: normal;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.difficulty.beginner {
+  color: var(--color-success);
+  background: var(--color-success-bg);
+}
+.difficulty.normal {
+  color: var(--color-warning);
+  background: var(--color-warning-bg);
+}
+.difficulty.advanced {
+  color: var(--color-danger);
+  background: var(--color-danger-bg);
+}
+
+.catalog-empty {
+  min-height: 260px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  color: var(--color-muted-2);
+  font-size: var(--text-sm);
+}
+.catalog-empty b {
+  color: var(--color-nav-text);
+  font-size: var(--text-md);
+}
+.catalog-empty.has-subfolders {
+  min-height: 125px;
+}
+
+/* ============================================================
+ * 目录内子文件夹卡片
+ * ============================================================ */
+.catalog-subfolders {
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  border-bottom: 1px solid var(--color-line);
+  background: var(--color-surface-raised);
+}
+.catalog-subfolders > header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  color: var(--color-nav-text);
+  font-size: var(--text-xs);
+}
+.catalog-subfolders > header span {
+  color: var(--color-muted-2);
+}
+.catalog-subfolders > div {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: var(--space-2);
+}
+.catalog-subfolders button {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3);
+  color: var(--color-ink);
+  background: var(--color-surface);
+  text-align: left;
+  transition: border-color var(--motion-fast), box-shadow var(--motion-fast), transform var(--motion-fast);
+}
+.catalog-subfolders button:hover {
+  border-color: var(--color-primary-border);
+  box-shadow: 0 5px 14px #3478f614;
+  transform: translateY(-1px);
+}
+.catalog-subfolders button > span:nth-child(2) {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.catalog-subfolders button b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-sm);
+}
+.catalog-subfolders button small {
+  color: var(--color-muted-2);
+  font-size: var(--text-2xs);
+}
+.catalog-subfolders button i {
+  color: var(--color-primary);
+  font-size: var(--text-2xs);
+  font-style: normal;
+  font-weight: 700;
+}
+
+.subfolder-icon {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-base);
+  color: var(--color-primary);
+  background: var(--color-primary-bg);
+  font-size: var(--text-xl);
+}
+
+/* ============================================================
+ * 文件夹面包屑 / 说明文案 / 操作提示
+ * ============================================================ */
+.folder-create-caption {
+  margin: var(--space-3) var(--space-2) 0;
+  color: var(--color-muted-2);
+  font-size: var(--text-2xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.folder-breadcrumb {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.folder-breadcrumb span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.folder-breadcrumb i {
+  color: var(--color-muted-2);
+  font-style: normal;
+  font-weight: 400;
+}
+
+.folder-operation-hint {
+  margin: var(--space-3) 5px 0;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-line);
+  color: var(--color-muted-2);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+
+/* ============================================================
+ * 行操作 & 重命名弹层(题库页专属)
+ * ============================================================ */
+.row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+.row-actions button {
+  border: 0;
+  padding: var(--space-1);
+  color: var(--color-nav-text);
+  background: transparent;
+  font-size: var(--text-2xs);
+}
+.row-actions .danger-action:hover {
+  color: var(--color-danger);
+}
+.row-actions i {
+  color: var(--color-primary);
+  font-style: normal;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.row-actions a {
+  color: var(--color-nav-text);
+  text-decoration: none;
+  font-size: var(--text-2xs);
+}
+
+.rename-modal {
+  width: 390px;
+}
+.rename-modal label {
+  display: block;
+  margin: var(--space-4) 0 5px;
+  color: var(--color-ink);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+.rename-modal input {
+  display: block;
+  width: 100%;
+  margin-top: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-base);
+  outline: none;
+  color: var(--color-ink);
+  background: var(--color-input-bg);
+  font: var(--text-base) var(--font-geist-mono), monospace;
+}
+.rename-modal input:focus {
+  border-color: var(--color-ai-border);
+  box-shadow: var(--shadow-focus);
+}
+.rename-modal > small {
+  display: block;
+  margin-bottom: var(--space-4);
+  color: var(--color-muted-2);
+  font-size: var(--text-2xs);
+}
+
+/* ============================================================
+ * 目录题目链接 / 可编辑题号 / 可点标题
+ * ============================================================ */
+.catalog-problem-link {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.catalog-problem-link button {
+  border: 0;
+  background: transparent;
+}
+
+.catalog-id-edit {
+  flex: 0 0 auto;
+  min-width: 58px;
+  min-height: 32px;
+  display: grid;
+  place-items: center;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-base);
+  cursor: text;
+  transition: background var(--motion-fast), box-shadow var(--motion-fast);
+}
+.catalog-id-edit code {
+  color: var(--color-primary);
+  font-size: var(--text-sm);
+  font-weight: 800;
+  text-decoration: underline dotted transparent;
+  text-underline-offset: 3px;
+  transition: text-decoration-color var(--motion-fast), color var(--motion-fast);
+}
+.catalog-id-edit.editable:hover,
+.catalog-id-edit.editable:focus-visible {
+  background: var(--color-primary-bg);
+  box-shadow: inset 0 0 0 1px var(--color-primary-border);
+}
+.catalog-id-edit.locked {
+  cursor: help;
+  opacity: .78;
+}
+.catalog-id-edit.locked:hover,
+.catalog-id-edit.locked:focus-visible {
+  background: var(--color-surface-2);
+  box-shadow: inset 0 0 0 1px var(--color-border-strong);
+}
+.catalog-id-edit:hover code,
+.catalog-id-edit:focus-visible code {
+  color: var(--color-primary-deep);
+  text-decoration-color: currentColor;
+}
+
+.catalog-title-open {
+  min-width: 0;
+  flex: 1;
+  padding: 0;
+  color: var(--color-ink);
+  text-align: left;
+  cursor: pointer;
+}
+.catalog-title-open > span {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.catalog-title-open b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-md);
+}
+.catalog-title-open small {
+  color: var(--color-muted-2);
+  font-size: var(--text-2xs);
+}
+
+/* ============================================================
+ * 暗色主题
+ * 规则:dark 值 == 对应 token 的 dark 取值且 base 同 token → 已删(var 自动跟随);
+ *      base 与 dark 跨 token(如 base 用 border-strong、dark 用 line)→ 保留并 token 化。
+ * 已删除的纯跟随覆盖:
+ *   .library-page{background}         (== --color-canvas)
+ *   .catalog-row:hover{background}     (== --color-hover)
+ * ============================================================ */
+
+/* 侧栏/目录:base 边框用 border-strong,dark 设计改用更暗的 line;color 显式对齐 ink */
+.theme-dark .library-page-sidebar,
+.theme-dark .library-catalog {
+  color: var(--color-ink);
+  background: var(--color-surface);
+  border-color: var(--color-line);
+}
+/* 侧栏按钮 base=nav-text,dark 设计改用 muted(跨 token,保留) */
+.theme-dark .library-page-sidebar > button,
+.theme-dark .folder-select {
+  color: var(--color-muted);
+}
+.theme-dark .library-page-sidebar > button.active,
+.theme-dark .folder-select.active {
+  color: var(--color-primary-nav);
+  background: var(--color-primary-bg);
+}
+.theme-dark .folder-entry.drag-over {
+  background: #182841;
+  box-shadow: inset 0 0 0 1px #4f7fc8;
+}
+.theme-dark .folder-drag {
+  color: var(--color-muted-2);
+}
+.theme-dark .folder-expand {
+  color: var(--color-muted);
+}
+.theme-dark .folder-expand:hover {
+  color: var(--color-primary-nav);
+  background: var(--color-primary-bg);
+}
+.theme-dark .folder-action {
+  color: #748094;
+}
+.theme-dark .folder-action.dissolve:hover {
+  color: #e6bd68;
+  background: #382f1d;
+}
+.theme-dark .folder-action.destructive:hover {
+  color: #ff8795;
+  background: #3a2028;
+}
+
+/* 目录边框:base border-strong → dark line(保留);表头底 base surface-raised → dark surface-2 */
+.theme-dark .catalog-toolbar,
+.theme-dark .catalog-header,
+.theme-dark .catalog-row {
+  border-color: var(--color-line);
+}
+.theme-dark .catalog-header {
+  background: var(--color-surface-2);
+}
+.theme-dark .catalog-toolbar label,
+.theme-dark .catalog-tools > button {
+  color: var(--color-nav-text);
+  background: var(--color-surface-2);
+  border-color: var(--color-border-strong);
+}
+.theme-dark .catalog-tools > button.active {
+  color: var(--color-primary-nav);
+  background: var(--color-primary-bg);
+  border-color: #3c5a84;
+}
+.theme-dark .catalog-toolbar input,
+.theme-dark .catalog-row > button {
+  color: var(--color-ink);
+}
+.theme-dark .catalog-row select {
+  color: var(--color-ink);
+  background: var(--color-surface-2);
+  border-color: var(--color-border-input);
+}
+
+/* 子文件夹区:base border-strong → dark line,底 base surface-raised → dark surface-2 */
+.theme-dark .catalog-subfolders {
+  border-color: var(--color-line);
+  background: var(--color-surface-2);
+}
+.theme-dark .catalog-subfolders > header {
+  color: #aab5c4;
+}
+.theme-dark .catalog-subfolders button {
+  color: var(--color-ink);
+  border-color: var(--color-border-input);
+  background: var(--color-hover);
+}
+.theme-dark .catalog-subfolders button:hover {
+  border-color: #4c71a7;
+  box-shadow: none;
+}
+.theme-dark .catalog-subfolders button small {
+  color: var(--color-muted-2);
+}
+.theme-dark .subfolder-icon {
+  color: var(--color-primary-nav);
+  background: var(--color-primary-bg);
+}
+
+/* 面包屑说明 / 操作提示 */
+.theme-dark .folder-create-caption {
+  color: #748094;
+}
+.theme-dark .folder-breadcrumb i {
+  color: #687588;
+}
+.theme-dark .folder-operation-hint {
+  color: #6f7b8e;
+  border-color: var(--color-line);
+}
+
+/* 行操作 / 重命名弹层 */
+.theme-dark .row-actions button {
+  color: #9ca8b9;
+}
+.theme-dark .row-actions .danger-action:hover {
+  color: var(--color-danger);
+}
+.theme-dark .row-actions a {
+  color: #9ca8b9;
+}
+.theme-dark .rename-modal label {
+  color: #bdc6d3;
+}
+.theme-dark .rename-modal input {
+  color: var(--color-ink);
+  background: var(--color-surface-2);
+  border-color: var(--color-border-strong);
+}
+.theme-dark .rename-modal > small {
+  color: var(--color-muted-2);
+}
+
+/* 可编辑题号 / 可点标题 */
+.theme-dark .catalog-title-open {
+  color: var(--color-ink);
+}
+.theme-dark .catalog-id-edit.editable:hover,
+.theme-dark .catalog-id-edit.editable:focus-visible {
+  background: var(--color-primary-bg);
+  box-shadow: inset 0 0 0 1px #3c5a84;
+}
+.theme-dark .catalog-id-edit.locked:hover,
+.theme-dark .catalog-id-edit.locked:focus-visible {
+  background: #202733;
+  box-shadow: inset 0 0 0 1px var(--color-border-strong);
+}
+.theme-dark .catalog-id-edit:hover code,
+.theme-dark .catalog-id-edit:focus-visible code {
+  color: var(--color-primary-nav);
+}
+
+/* ============================================================
+ * 少女主题(硬约束美术:秋日玻璃质感 + 珊瑚红)
+ * 规则:girl 值 == 对应 token 的 girl 取值 → 已删(base 的 var 自动跟随);
+ *      girl 独有珊瑚偏色/结构性差异 → 保留原 hex,只 token 化能对齐的部分。
+ * ============================================================ */
+
+/* 秋日 bg-image + 独有渐叠(结构性差异,保留) */
+.theme-girl .library-page {
+  min-height: calc(100vh - var(--topbar-height));
+  background: linear-gradient(105deg, #fff8f1c9 0%, #fff8f1a6 52%, #fff4e982 100%),
+    var(--bg-autumn);
+}
+
+/* Hero:独有 border/圆角/渐变背景/暖阴影(结构性,保留) */
+.theme-girl .library-hero {
+  min-height: 118px;
+  padding: var(--space-5) var(--space-6);
+  overflow: hidden;
+  border: 1px solid #efd9cd;
+  border-radius: var(--radius-2xl);
+  background: linear-gradient(105deg, #fffaf5f2 0%, #fff7efe0 58%, #f6d7c9b8 100%);
+  box-shadow: 0 14px 36px #6d35251c;
+}
+.theme-girl .library-hero > div:first-child {
+  position: relative;
+  z-index: var(--z-raised);
+}
+/* kicker 珊瑚偏色 #b95143(≠任一 token 取值,保留原值) */
+.theme-girl .library-hero span {
+  color: #b95143;
+}
+.theme-girl .library-hero > button {
+  background: var(--color-primary-gradient);
+  box-shadow: var(--shadow-md);
+}
+/* h1/p 的 girl 覆盖已删:#50342f==heading、#876b63==muted,var 自动跟随 */
+
+/* 少女立绘堆叠:仅 girl 主题展示(硬约束,立绘尺寸/坐标/旋转原值保留) */
+.theme-girl .girl-portrait-stack {
+  position: absolute;
+  right: 145px;
+  bottom: -34px;
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  transform: rotate(-2deg);
+  opacity: .92;
+}
+.theme-girl .girl-portrait-stack img {
+  width: 82px;
+  height: 108px;
+  margin-left: -20px;
+  border: 3px solid #fffaf4;
+  border-radius: 13px;
+  object-fit: cover;
+  object-position: top;
+  box-shadow: 0 7px 18px #75453233;
+  transform: rotate(-5deg);
+}
+.theme-girl .girl-portrait-stack img:nth-child(2) {
+  transform: translateY(-8px) rotate(3deg);
+}
+.theme-girl .girl-portrait-stack img:nth-child(3) {
+  transform: translateY(2px) rotate(8deg);
+}
+
+/* 侧栏/目录卡片:girl 独有半透玻璃底 + 暖阴影(结构性差异,保留;模糊/阴影 token 化) */
+.theme-girl .library-page-sidebar,
+.theme-girl .library-catalog {
+  color: #513c36;
+  background: #fffaf5cc;
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: var(--backdrop-blur);
+}
+
+/* 侧栏/目录激活态:珊瑚偏色 #a84539(≈primary-deep 但独有,保留) */
+.theme-girl .library-page-sidebar > button.active,
+.theme-girl .folder-select.active,
+.theme-girl .catalog-tools > button.active {
+  color: #a84539;
+  border-color: var(--color-primary-border);
+  background: var(--color-primary-bg);
+}
+.theme-girl .folder-expand:hover {
+  color: #b54c3e;
+  background: var(--color-primary-bg);
+}
+/* 拖放高亮:girl 独有暖底/珊瑚描边(保留) */
+.theme-girl .folder-entry.drag-over {
+  background: #fff0e8;
+  box-shadow: inset 0 0 0 1px #d78a73;
+}
+
+/* 目录边框/表头:girl 独有暖调(保留) */
+.theme-girl .catalog-toolbar,
+.theme-girl .catalog-header,
+.theme-girl .catalog-row {
+  border-color: #eddcd4;
+}
+.theme-girl .catalog-header {
+  color: #9d7e74;
+  background: #f9eee8;
+}
+/* catalog-row:hover 覆盖已删:#fff2eb==hover token,var 自动跟随 */
+
+/* 正文/标题珊瑚偏色 #543e38(≈ink 但独有,保留) */
+.theme-girl .catalog-row > button,
+.theme-girl .catalog-title-open,
+.theme-girl .catalog-toolbar input {
+  color: #543e38;
+}
+/* 题号/题目 code、行内操作:珊瑚强调 #bb5243(≠primary,保留) */
+.theme-girl .catalog-row > button code,
+.theme-girl .catalog-id-edit code,
+.theme-girl .row-actions i {
+  color: #bb5243;
+}
+/* 工具区输入/按钮/下拉:珊瑚偏色文字 + 独有暖边(保留原值) */
+.theme-girl .catalog-toolbar label,
+.theme-girl .catalog-tools > button,
+.theme-girl .catalog-row select {
+  color: #735e58;
+  border-color: #e5d2ca;
+  background: var(--color-input-bg);
+}
+
+/* 子文件夹区:girl 独有半透暖底 + 珊瑚 hover(保留) */
+.theme-girl .catalog-subfolders {
+  border-color: var(--color-border-strong);
+  background: #fff5efb8;
+}
+.theme-girl .catalog-subfolders > header {
+  color: #80645c;
+}
+.theme-girl .catalog-subfolders button {
+  color: #5f463f;
+  border-color: var(--color-border-input);
+  background: #fffaf5;
+}
+.theme-girl .catalog-subfolders button:hover {
+  border-color: #d9927d;
+  box-shadow: 0 5px 14px #a34d3720;
+}
+.theme-girl .catalog-subfolders button i {
+  color: #b94f41;
+}
+.theme-girl .subfolder-icon {
+  color: #b94f41;
+  background: #f9e1d8;
+}

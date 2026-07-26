@@ -197,3 +197,50 @@ export const aiMessages = sqliteTable("ai_messages", {
   uniqueIndex("ai_messages_conversation_id_sort_order_unique").on(table.conversationId, table.sortOrder),
   index("ai_messages_user_id_conversation_id_sort_order_idx").on(table.userId, table.conversationId, table.sortOrder),
 ]);
+
+export const notes = sqliteTable("notes", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  content: text("content").notNull(),
+  summary: text("summary"),
+  coverUrl: text("cover_url"),
+  visibility: text("visibility", { enum: ["private", "public"] }).notNull().default("private"),
+  status: text("status", { enum: ["draft", "published"] }).notNull().default("draft"),
+  moderationState: text("moderation_state", { enum: ["visible", "hidden"] }).notNull().default("visible"),
+  hiddenReason: text("hidden_reason"),
+  source: text("source", { enum: ["standalone", "problem"] }).notNull().default("standalone"),
+  problemKind: text("problem_kind", { enum: ["private", "public"] }),
+  problemRef: text("problem_ref"),
+  likeCount: integer("like_count").notNull().default(0),
+  favoriteCount: integer("favorite_count").notNull().default(0),
+  commentCount: integer("comment_count").notNull().default(0),
+  publishedAt: integer("published_at", { mode: "timestamp_ms" }),
+  version: integer("version").notNull().default(1),
+  deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+}, (table) => [
+  check("notes_visibility_check", sql`${table.visibility} in ('private', 'public')`),
+  check("notes_status_check", sql`${table.status} in ('draft', 'published')`),
+  check("notes_moderation_state_check", sql`${table.moderationState} in ('visible', 'hidden')`),
+  check("notes_source_check", sql`${table.source} in ('standalone', 'problem')`),
+  check("notes_problem_kind_check", sql`${table.problemKind} is null or ${table.problemKind} in ('private', 'public')`),
+  index("notes_user_id_updated_at_idx").on(table.userId, table.updatedAt),
+  index("notes_user_id_deleted_at_idx").on(table.userId, table.deletedAt),
+  index("notes_user_id_problem_ref_idx").on(table.userId, table.problemKind, table.problemRef),
+  index("notes_visibility_status_moderation_published_at_idx").on(table.visibility, table.status, table.moderationState, table.publishedAt),
+]);
+
+export const noteProblemRefs = sqliteTable("note_problem_refs", {
+  id: text("id").primaryKey(),
+  noteId: text("note_id").notNull().references(() => notes.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  problemKind: text("problem_kind", { enum: ["private", "public"] }).notNull(),
+  problemRef: text("problem_ref").notNull(),
+  sortOrder: integer("sort_order").notNull(),
+}, (table) => [
+  check("note_problem_refs_kind_check", sql`${table.problemKind} in ('private', 'public')`),
+  uniqueIndex("note_problem_refs_note_id_sort_order_unique").on(table.noteId, table.sortOrder),
+  index("note_problem_refs_user_id_note_id_sort_order_idx").on(table.userId, table.noteId, table.sortOrder),
+]);

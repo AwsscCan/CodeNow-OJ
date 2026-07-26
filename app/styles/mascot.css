@@ -1,0 +1,531 @@
+/* CodeNow OJ · 桌宠(mascot) · Bamzc */
+
+/*
+ * 硬约束红线:桌宠立绘 / 精灵图坐标 / 7 个动画关键帧 / mood-* 情绪动画
+ * 一律 100% 原值保留,仅做两处 token 化:
+ *   - filter drop-shadow 阴影 → var(--shadow-mascot)
+ *   - z-index 层级 → var(--z-mascot)
+ *   - 纯几何圆形 border-radius:50% → var(--radius-circle)
+ * 少女珊瑚红美术资产(mascot-ai-modal 渐变/边框、气泡珊瑚系)为美术取向,
+ * 原值保留,不跟随页面主题 var,避免臆改视觉。
+ */
+
+/* ===== 桌宠 AI 弹窗(少女珊瑚美术资产) ===== */
+.mascot-ai-modal {
+  width: 430px;
+  background: linear-gradient(145deg, #fffaf5, #fff0e7);
+  border: 1px solid #efd5c8;
+}
+
+.mascot-ai-modal h2 {
+  color: #5f3933;
+}
+
+.mascot-ai-modal > p {
+  color: #7b5b53;
+}
+
+.mascot-ai-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.mascot-ai-actions button {
+  border: 1px solid #e3c5b8;
+  border-radius: var(--radius-base);
+  padding: 9px 13px;
+  color: #7b5b53;
+  background: #fffaf6;
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+.mascot-ai-actions button:last-child {
+  color: white;
+  border-color: #c75c4b;
+  background: linear-gradient(135deg, #c75c4b, #df8460);
+  box-shadow: 0 5px 15px #b8564133;
+}
+
+/* dark 覆盖:结构性回退(珊瑚渐变 → 深色 surface),保留 */
+.theme-dark .mascot-ai-modal {
+  background: #171e29;
+  border-color: #374254;
+}
+
+.theme-dark .mascot-ai-modal h2 {
+  color: #e2e8f1;
+}
+
+.theme-dark .mascot-ai-modal > p {
+  color: #aab5c4;
+}
+
+.theme-dark .mascot-ai-actions button {
+  color: #bdc6d3;
+  background: #202733;
+  border-color: #394457;
+}
+
+.theme-dark .mascot-ai-actions button:last-child {
+  color: white;
+  background: #3478f6;
+  border-color: #3478f6;
+}
+
+/* ===== 桌宠容器(立绘定位 100% 原值,仅阴影/层级 token 化) ===== */
+.desktop-mascot {
+  position: fixed;
+  z-index: var(--z-mascot);
+  right: 16px;
+  bottom: 6px;
+  width: 205px;
+  height: 255px;
+  pointer-events: none;
+  filter: drop-shadow(var(--shadow-mascot));
+  touch-action: none;
+}
+
+.desktop-mascot.dragging {
+  cursor: grabbing;
+  filter: drop-shadow(0 18px 20px #4e251f4a);
+}
+
+/* ===== 立绘主体(尺寸/动画/定位红线原值) ===== */
+.mascot-character {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 168px;
+  height: 194px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  pointer-events: auto;
+  cursor: grab;
+  animation: mascot-bob 3.6s ease-in-out infinite;
+  transform-origin: 60% 86%;
+}
+
+.desktop-mascot.dragging .mascot-character {
+  cursor: grabbing;
+  animation: none;
+}
+
+.mascot-character.original-state {
+  right: -2px;
+  bottom: -2px;
+  width: 184px;
+  height: 215px;
+}
+
+.mascot-character img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center bottom;
+}
+
+.mascot-original {
+  transform: translateY(4px) scale(1.08);
+  filter: saturate(1.05) drop-shadow(0 8px 14px #6c352326);
+}
+
+/* ===== 气泡(珊瑚美术造型,原值保留) ===== */
+.mascot-bubble {
+  position: absolute;
+  z-index: 2;
+  top: 2px;
+  right: 50px;
+  width: 154px;
+  min-height: 58px;
+  border: 1px solid #e9c9bb;
+  border-radius: 15px 15px 4px 15px;
+  padding: 10px 11px;
+  color: #694941;
+  background: #fffaf3e7;
+  box-shadow: 0 7px 20px #6c35232b;
+  pointer-events: auto;
+  font-size: var(--text-xs);
+  line-height: 1.42;
+  text-align: left;
+  backdrop-filter: blur(8px);
+}
+
+.mascot-bubble:after {
+  content: "";
+  position: absolute;
+  right: 12px;
+  bottom: -9px;
+  border-width: 9px 4px 0 10px;
+  border-style: solid;
+  border-color: #fffaf3 transparent transparent transparent;
+}
+
+.mascot-bubble small {
+  display: block;
+  margin-top: 5px;
+  color: #b27d6f;
+  font-size: var(--text-2xs);
+}
+
+/* ===== 关闭 / 拖拽把手(珊瑚系按钮) ===== */
+.mascot-close,
+.mascot-drag-handle {
+  position: absolute;
+  z-index: 4;
+  width: 22px;
+  height: 22px;
+  border: 1px solid #e4c7bb;
+  border-radius: var(--radius-circle);
+  color: #9c6658;
+  background: #fffaf2ef;
+  pointer-events: auto;
+}
+
+.mascot-close {
+  top: 1px;
+  right: 31px;
+}
+
+.mascot-drag-handle {
+  top: 27px;
+  right: 31px;
+  cursor: grab;
+  font-size: var(--text-base);
+  line-height: 1;
+  opacity: .78;
+}
+
+.mascot-drag-handle:hover {
+  opacity: 1;
+}
+
+.desktop-mascot.dragging .mascot-drag-handle {
+  cursor: grabbing;
+}
+
+/* ===== 表情精灵(sprite 坐标 100% 原值,红线) ===== */
+.mascot-expression {
+  position: absolute;
+  z-index: 3;
+  top: 76px;
+  right: 4px;
+  width: 64px;
+  height: 64px;
+  overflow: hidden;
+  border: 3px solid #fffaf3;
+  border-radius: var(--radius-circle);
+  background: #fff7ef;
+  box-shadow: 0 7px 17px #6c352338;
+  pointer-events: none;
+}
+
+.mascot-expression img {
+  position: absolute;
+  width: 190px;
+  max-width: none;
+  height: auto;
+}
+
+.face-0 img,
+.face-1 img,
+.face-2 img {
+  top: -36px;
+}
+
+.face-3 img,
+.face-4 img,
+.face-5 img {
+  top: -107px;
+}
+
+.face-6 img,
+.face-7 img,
+.face-8 img {
+  top: -176px;
+}
+
+.face-0 img,
+.face-3 img,
+.face-6 img {
+  left: -1px;
+}
+
+.face-1 img,
+.face-4 img,
+.face-7 img {
+  left: -63px;
+}
+
+.face-2 img,
+.face-5 img,
+.face-8 img {
+  left: -123px;
+}
+
+/* ===== 情绪动画(7 套 mood-*,红线原值) ===== */
+.mood-laugh .mascot-character {
+  animation: mascot-celebrate .7s ease both, mascot-bob 3.6s ease-in-out .7s infinite;
+}
+
+.mood-smug .mascot-character {
+  animation: mascot-tilt .7s ease both, mascot-bob 3.6s ease-in-out .7s infinite;
+}
+
+.mood-surprised .mascot-character {
+  animation: mascot-pop .55s ease both, mascot-bob 3.6s ease-in-out .55s infinite;
+}
+
+.mood-gentle .mascot-character {
+  animation: mascot-nod .75s ease both, mascot-bob 3.6s ease-in-out .75s infinite;
+}
+
+.mood-annoyed .mascot-character {
+  animation: mascot-sigh .8s ease both, mascot-bob 3.6s ease-in-out .8s infinite;
+}
+
+.mood-angry .mascot-character {
+  animation: mascot-angry-shake .48s ease both, mascot-bob 3.6s ease-in-out .48s infinite;
+}
+
+.mood-annoyed:before,
+.mood-angry:before,
+.mood-surprised:before {
+  position: absolute;
+  z-index: 4;
+  top: 78px;
+  right: 55px;
+  color: #b85043;
+  font-weight: 900;
+  pointer-events: none;
+  text-shadow: 0 2px 0 #fff6ef;
+}
+
+.mood-annoyed:before {
+  content: "...";
+  font-size: var(--text-2xl);
+}
+
+.mood-angry:before {
+  content: "!";
+  font-size: var(--text-4xl);
+}
+
+.mood-surprised:before {
+  content: "?";
+  font-size: var(--text-4xl);
+}
+
+/* ===== 收起后的重开胶囊(珊瑚系) ===== */
+.mascot-reopen {
+  position: fixed;
+  z-index: var(--z-mascot);
+  right: 17px;
+  bottom: 17px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid #e2bcae;
+  border-radius: 18px;
+  padding: 5px 11px 5px 5px;
+  color: #844d43;
+  background: #fff8f0ed;
+  box-shadow: 0 7px 20px #6c35232b;
+  font-size: var(--text-xs);
+  font-weight: 700;
+}
+
+.mascot-reopen img {
+  width: 25px;
+  height: 25px;
+  border-radius: var(--radius-circle);
+  object-fit: cover;
+  object-position: center 18%;
+}
+
+/* ===== 精灵帧(sprite sheet 坐标 100% 原值,红线) ===== */
+.mascot-sprite-frame {
+  position: absolute;
+  left: -12px;
+  bottom: 0;
+  display: block;
+  width: 192px;
+  height: 192px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.mascot-sprite-frame img {
+  position: absolute;
+  width: 576px;
+  height: 384px;
+  max-width: none;
+  object-fit: unset;
+  object-position: unset;
+}
+
+.sprite-0 img {
+  left: 0;
+  top: 0;
+}
+
+.sprite-1 img {
+  left: -192px;
+  top: 0;
+}
+
+.sprite-2 img {
+  left: -384px;
+  top: 0;
+}
+
+.sprite-3 img {
+  left: 0;
+  top: -192px;
+}
+
+.sprite-4 img {
+  left: -192px;
+  top: -192px;
+}
+
+.sprite-5 img {
+  left: -384px;
+  top: -192px;
+}
+
+/* 拖拽时强制停动画 */
+.desktop-mascot.dragging .mascot-character {
+  animation: none !important;
+}
+
+/* ===== 7 个动画关键帧(红线 100% 原值) ===== */
+@keyframes mascot-bob {
+  0%, 100% {
+    transform: translateY(0) rotate(-.5deg);
+  }
+  50% {
+    transform: translateY(-7px) rotate(.5deg);
+  }
+}
+
+@keyframes mascot-celebrate {
+  0%, 100% {
+    transform: translateY(0) rotate(0);
+  }
+  35% {
+    transform: translateY(-16px) rotate(-4deg);
+  }
+  70% {
+    transform: translateY(-5px) rotate(5deg);
+  }
+}
+
+@keyframes mascot-tilt {
+  0%, 100% {
+    transform: rotate(0);
+  }
+  45% {
+    transform: rotate(-7deg) translateX(-4px);
+  }
+}
+
+@keyframes mascot-pop {
+  0%, 100% {
+    transform: scale(1);
+  }
+  45% {
+    transform: scale(1.08) translateY(-8px);
+  }
+}
+
+@keyframes mascot-nod {
+  0%, 100% {
+    transform: rotate(0);
+  }
+  35% {
+    transform: rotate(4deg) translateY(4px);
+  }
+  70% {
+    transform: rotate(-2deg);
+  }
+}
+
+@keyframes mascot-sigh {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  35% {
+    transform: translateX(-7px) rotate(-2deg);
+  }
+  70% {
+    transform: translateX(4px) rotate(1deg);
+  }
+}
+
+@keyframes mascot-angry-shake {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-6px) rotate(-2deg);
+  }
+  40% {
+    transform: translateX(5px) rotate(2deg);
+  }
+  60% {
+    transform: translateX(-4px) rotate(-1deg);
+  }
+  80% {
+    transform: translateX(3px) rotate(1deg);
+  }
+}
+
+/* ===== 无障碍:减弱动效 ===== */
+@media (prefers-reduced-motion: reduce) {
+  .mascot-character {
+    animation: none;
+  }
+
+  .mood-laugh .mascot-character,
+  .mood-smug .mascot-character,
+  .mood-surprised .mascot-character,
+  .mood-gentle .mascot-character,
+  .mood-annoyed .mascot-character,
+  .mood-angry .mascot-character {
+    animation: none;
+  }
+}
+
+/* ===== 窄屏适配:桌宠缩放 ===== */
+@media (max-width: 1100px) {
+  .desktop-mascot {
+    right: 5px;
+    transform: scale(.88);
+    transform-origin: right bottom;
+  }
+}
+
+/* ===== 少女玻璃质感禁用气泡 backdrop-filter(性能) ===== */
+.mascot-bubble {
+  backdrop-filter: none !important;
+}
+
+/* ===== 性能优化:合成层隔离与拖拽重置 ===== */
+.desktop-mascot {
+  contain: layout paint style;
+  will-change: left, top;
+}
+
+.desktop-mascot.dragging,
+.desktop-mascot.dragging .mascot-character {
+  filter: none !important;
+  animation: none !important;
+}
+
+.mascot-character {
+  will-change: transform;
+}

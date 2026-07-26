@@ -1,0 +1,286 @@
+/* CodeNow OJ · 顶栏 · Bamzc */
+
+/* ============================================================
+   顶栏容器
+   ============================================================ */
+.topbar {
+  height: var(--topbar-height);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-5);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-line);
+  box-shadow: var(--shadow-xs);
+  transition:
+    background-color var(--motion-base),
+    border-color var(--motion-base),
+    color var(--motion-base);
+}
+
+/* ============================================================
+   品牌区
+   ============================================================ */
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-right: 44px;
+  color: var(--color-heading);
+  font-size: var(--text-2xl);
+  font-weight: 800;
+  letter-spacing: -.3px;
+}
+
+.brand-mark {
+  width: 31px;
+  height: 31px;
+  display: block;
+  border: 2px solid var(--color-surface);
+  border-radius: var(--radius-lg);
+  object-fit: cover;
+  object-position: center 18%;
+  box-shadow: var(--shadow-sm);
+}
+
+.brand em {
+  font-size: var(--text-xs);
+  font-style: normal;
+  color: var(--color-primary);
+  padding: 3px 5px;
+  border-radius: var(--radius-md);
+  background: var(--color-primary-bg);
+  letter-spacing: .4px;
+}
+
+/* ============================================================
+   主导航
+   ============================================================ */
+.topbar nav {
+  display: flex;
+  align-self: stretch;
+  gap: var(--space-2);
+}
+
+.topbar nav button {
+  position: relative;
+  border: 0;
+  background: transparent;
+  padding: 0 var(--space-4);
+  color: var(--color-nav-text);
+  font-size: var(--text-xl);
+  font-weight: 600;
+}
+
+.topbar nav button.nav-active {
+  color: var(--color-primary-nav);
+}
+
+.topbar nav button.nav-active:after {
+  content: "";
+  position: absolute;
+  height: 3px;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  background: var(--color-primary);
+  bottom: 0;
+  left: 15px;
+  right: 15px;
+}
+
+/* ============================================================
+   右侧操作区
+   ============================================================ */
+.header-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.icon-button {
+  border: 0;
+  background: var(--color-surface-2);
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-circle);
+  color: #667084;
+}
+
+.avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-base);
+  display: grid;
+  place-items: center;
+  color: white;
+  background: linear-gradient(135deg, #6b8afd, #7546bd);
+  font-size: var(--text-base);
+  font-weight: 700;
+}
+
+.user-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.user-copy b {
+  font-size: var(--text-md);
+}
+
+.user-copy small {
+  font-size: var(--text-xs);
+  color: var(--color-muted-2);
+}
+
+/* ============================================================
+   登录 / 认证状态
+   ============================================================ */
+.auth-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.auth-status > button,
+.header-login {
+  border: 1px solid var(--color-border-input);
+  border-radius: var(--radius-base);
+  padding: var(--space-2) var(--space-2);
+  color: var(--color-primary);
+  background: #f7faff;
+  text-decoration: none;
+  font-size: var(--text-sm);
+  font-weight: 750;
+}
+
+.auth-status-loading {
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+
+/* ============================================================
+   主题选择器
+   ============================================================ */
+.theme-picker {
+  height: 32px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  border: 1px solid var(--color-border-input);
+  border-radius: var(--radius-2xl);
+  padding: 0 var(--space-2) 0 var(--space-3);
+  color: var(--color-nav-text);
+  background: var(--color-surface-2);
+}
+
+.theme-picker > span {
+  color: #b57555;
+  font-size: var(--text-base);
+}
+
+.theme-picker select {
+  border: 0;
+  outline: 0;
+  color: inherit;
+  background: transparent;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* ============================================================
+   面包屑
+   ============================================================ */
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-lg);
+}
+
+.breadcrumb span,
+.breadcrumb i {
+  color: var(--color-muted-2);
+  font-style: normal;
+}
+
+.breadcrumb b {
+  color: #5c6575;
+  font-family: var(--font-geist-mono), monospace;
+  font-size: var(--text-md);
+}
+
+.breadcrumb strong {
+  color: var(--color-heading);
+  font-size: var(--text-xl);
+}
+
+.breadcrumb mark {
+  color: var(--color-success);
+  background: var(--color-success-bg);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-base);
+  padding: var(--space-1) 7px;
+}
+
+.breadcrumb > button {
+  border: 0;
+  padding: var(--space-1) 7px;
+  color: var(--color-primary-nav);
+  background: transparent;
+  font-size: var(--text-base);
+  font-weight: 700;
+}
+
+/* ============================================================
+   暗色主题 · 结构性 / 不对称覆盖(纯 token 跟随的已删除)
+   ============================================================ */
+/* icon-button 暗色为独有色阶(非 surface-2 token) */
+.theme-dark .icon-button {
+  color: #c6d0de;
+  background: #252e3c;
+}
+
+/* breadcrumb b 亮暗不对称:light 为暗灰、dark 提亮为标题色 */
+.theme-dark .breadcrumb b {
+  color: var(--color-heading);
+}
+
+/* ============================================================
+   少女主题 · 秋日玻璃质感美术资产(硬约束原值,仅 token 化可对应色)
+   ============================================================ */
+/* 顶栏玻璃:半透明 surface-2 底 + 高斯模糊 + 饱和度提升(独有 backdrop-filter) */
+.theme-girl .topbar {
+  position: relative;
+  z-index: var(--z-topbar);
+  background: var(--color-surface-2);
+  border-color: var(--color-line);
+  box-shadow: var(--shadow-xs);
+  backdrop-filter: blur(16px) saturate(1.15);
+}
+
+/* 立绘描边暖白(独有,非 surface) */
+.theme-girl .brand-mark {
+  border-color: #fff7ef;
+}
+
+/* 珊瑚徽章(独有色) */
+.theme-girl .brand em {
+  color: #a64338;
+  background: #f8ddd4;
+}
+
+/* 导航激活下划线珊瑚渐变(独有 gradient,替代基础纯色) */
+.theme-girl .topbar nav button.nav-active:after {
+  background: linear-gradient(90deg, #c75c4b, #dd9a61);
+}
+
+/* 主题选择器暖色图标(独有装饰色) */
+.theme-girl .theme-picker > span {
+  color: var(--color-primary);
+}
+
+/* 头像珊瑚渐变(独有 gradient,替代基础蓝紫) */
+.theme-girl .avatar {
+  background: linear-gradient(135deg, #ce6654, #e4a56e);
+}

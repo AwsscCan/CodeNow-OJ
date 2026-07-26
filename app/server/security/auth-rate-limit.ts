@@ -89,6 +89,10 @@ const USER_WRITE_LIMITS: Record<string, { action: string; limit: number }> = {
   preferences: { action: "preferences", limit: 120 },
   conversations: { action: "conversations", limit: 600 },
   imports: { action: "imports", limit: 20 },
+  notes: { action: "notes", limit: 60 },
+  comments: { action: "comments", limit: 100 },
+  reactions: { action: "reactions", limit: 300 },
+  reports: { action: "reports", limit: 30 },
 };
 
 export async function guardUserWriteRequest(db: Database, request: Request, userId: string, pepper: string) {
