@@ -16,6 +16,7 @@ export const ENHANCED_ACWING_IDS = [
   "AW282", "AW900", "AW338", "AW91", "AW1049", "AW901",
   "AW905", "AW908", "AW906", "AW907", "AW148", "AW913", "AW104", "AW125",
   "AW899", "AW291",
+  "AW791", "AW792", "AW793", "AW794", "AW795", "AW797", "AW2816", "AW154", "AW840", "AW850",
 ];
 
 type Bundled = {
@@ -33,7 +34,8 @@ describe("AcWing 增强题测试点质量契约", () => {
   });
 
   // 原题样例抓取残缺、无法作为锚点的题(弃用原样例，纯工厂数据)
-  const SKIP_ANCHOR_IDS = ["AW875", "AW338", "AW1049", "AW899", "AW291"];
+  const SKIP_ANCHOR_IDS = ["AW875", "AW338", "AW1049", "AW899", "AW291",
+    "AW791", "AW792", "AW793", "AW794", "AW795", "AW797", "AW2816", "AW154", "AW840", "AW850"];
 
   it("每题至少 12 个测试点，首个为原题样例锚点，输出无博客正文污染", () => {
     for (const problem of enhanced) {

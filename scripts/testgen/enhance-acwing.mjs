@@ -12,9 +12,11 @@ import { ACWING_SOLVERS_4B } from "./acwing-solvers-4b.mjs";
 import { ACWING_SOLVERS_5A } from "./acwing-solvers-5a.mjs";
 import { ACWING_SOLVERS_5B } from "./acwing-solvers-5b.mjs";
 import { ACWING_SOLVERS_6 } from "./acwing-solvers-6.mjs";
+import { ACWING_REVIEW_1 } from "./acwing-review-1.mjs";
+import { ACWING_REVIEW_2 } from "./acwing-review-2.mjs";
 import { buildSamples, verifyAnchor } from "./lib.mjs";
 
-const SOLVERS = { ...ACWING_SOLVERS_1, ...ACWING_SOLVERS_2A, ...ACWING_SOLVERS_2B, ...ACWING_SOLVERS_3A, ...ACWING_SOLVERS_3B, ...ACWING_SOLVERS_4A, ...ACWING_SOLVERS_4B, ...ACWING_SOLVERS_5A, ...ACWING_SOLVERS_5B, ...ACWING_SOLVERS_6 };
+const SOLVERS = { ...ACWING_SOLVERS_1, ...ACWING_SOLVERS_2A, ...ACWING_SOLVERS_2B, ...ACWING_SOLVERS_3A, ...ACWING_SOLVERS_3B, ...ACWING_SOLVERS_4A, ...ACWING_SOLVERS_4B, ...ACWING_SOLVERS_5A, ...ACWING_SOLVERS_5B, ...ACWING_SOLVERS_6, ...ACWING_REVIEW_1, ...ACWING_REVIEW_2 };
 
 const target = resolve(import.meta.dirname, "../../public/acwing-course.json");
 const catalog = JSON.parse(readFileSync(target, "utf8"));
@@ -47,6 +49,15 @@ for (const problem of catalog) {
 
   const generated = buildSamples(spec, 20260727, anchorSamples.length + 1);
   problem.samples = [...anchorSamples, ...generated];
+  // needs_review 题原题面为占位符：solver 提供 description/inputFormat/outputFormat 时覆盖并转 complete
+  if (solver.description) {
+    problem.description = solver.description;
+    problem.inputFormat = solver.inputFormat;
+    problem.outputFormat = solver.outputFormat;
+    if (solver.title) problem.title = solver.title;
+    if (solver.difficulty) problem.difficulty = solver.difficulty;
+    problem.extractionStatus = "complete";
+  }
   enhanced++;
   const categories = new Set(problem.samples.map((s) => s.category));
   console.log(`${problem.id} ${problem.title} · ${problem.samples.length} 点 · 类别[${[...categories].join(",")}]`);
