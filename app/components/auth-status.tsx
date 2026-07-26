@@ -26,6 +26,7 @@ export function AuthStatus({ onSignedOut }: { onSignedOut: () => void }) {
     <div className="auth-status">
       <span className="avatar">{avatarText(user.name, user.email)}</span>
       <div className="user-copy"><b>{user.name || user.email}</b><small>{user.email}</small></div>
+      {user.role === "admin" && <Link className="admin-link" href="/admin">管理控制台</Link>}
       <button type="button" onClick={async () => {
         await authClient.signOut();
         onSignedOut();

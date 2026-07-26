@@ -254,19 +254,19 @@ Commit: `git commit -m "feat: moderate private user content"`
 - Modify: `app/components/auth-status.tsx`
 - Create: `tests/unit/admin-ui.test.tsx`
 
-- [ ] **Step 1: Write RED component tests**
+- [x] **Step 1: Write RED component tests**
 
 Test non-admin invisibility, user pagination, invitation form, one-time password panel dismissal, confirmation for ban/soft-delete, restore, and audit rendering without sensitive payloads.
 
-- [ ] **Step 2: Run and verify RED**
+- [x] **Step 2: Run and verify RED**
 
 Run: `npm run test:unit -- tests/unit/admin-ui.test.tsx`
 
-- [ ] **Step 3: Implement focused UI components**
+- [x] **Step 3: Implement focused UI components**
 
 Keep API calls in `admin-api.ts`; show the admin navigation only when the Session role is `admin`; use accessible dialogs and explicit confirmation text; clear the temporary password from React state when dismissed or navigating away.
 
-- [ ] **Step 4: Verify GREEN and commit**
+- [x] **Step 4: Verify GREEN and commit**
 
 Run: `npm run test:unit -- tests/unit/admin-ui.test.tsx tests/unit/auth-status.test.tsx && npm run build`
 
