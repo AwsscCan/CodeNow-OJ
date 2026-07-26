@@ -24,6 +24,7 @@ export function createDraftRepository(db: Database) {
     const [row] = await database.select().from(codeDrafts).where(and(
       eq(codeDrafts.userId, userId), eq(codeDrafts.problemKind, problemKind),
       eq(codeDrafts.problemRef, problemRef), eq(codeDrafts.language, language),
+      isNull(codeDrafts.deletedAt),
     )).limit(1);
     return row ?? null;
   }

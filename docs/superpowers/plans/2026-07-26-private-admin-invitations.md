@@ -225,19 +225,19 @@ Commit: `git commit -m "feat: persist and complete invited accounts"`
 - Modify: `app/server/conversations/conversation-repository.ts`
 - Create: `tests/unit/admin-content.test.ts`
 
-- [ ] **Step 1: Write RED tests**
+- [x] **Step 1: Write RED tests**
 
 Create two users with private resources. Assert only an admin can list explicit content types, soft-delete and restore by opaque ID, normal repositories hide deleted records, another user cannot infer target existence, and audit rows contain IDs but not content.
 
-- [ ] **Step 2: Run and confirm failure**
+- [x] **Step 2: Run and confirm failure**
 
 Run: `npm run test:unit -- tests/unit/admin-content.test.ts`
 
-- [ ] **Step 3: Implement typed moderation**
+- [x] **Step 3: Implement typed moderation**
 
 Accept only `problem`, `draft`, and `conversation` initially. Paginate metadata, load details explicitly, update `deletedAt` rather than deleting rows, filter deleted drafts/conversations in normal repositories, and audit `content.soft_delete` or `content.restore`.
 
-- [ ] **Step 4: Verify GREEN and commit**
+- [x] **Step 4: Verify GREEN and commit**
 
 Run: `npm run test:unit -- tests/unit/admin-content.test.ts tests/unit/problems-api.test.ts tests/unit/conversations-api.test.ts`
 

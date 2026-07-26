@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, lt, or, sql } from "drizzle-orm";
 import type { Database } from "../../../db/client";
 import { createD1Db, createLocalDb } from "../../../db/client";
 import { aiConversations, aiMessages } from "../../../db/schema";
@@ -57,7 +57,7 @@ export function createConversationRepository(db: Database) {
 
   async function owned(userId: string, id: string) {
     const [row] = await database.select().from(aiConversations)
-      .where(and(eq(aiConversations.userId, userId), eq(aiConversations.id, id))).limit(1);
+      .where(and(eq(aiConversations.userId, userId), eq(aiConversations.id, id), isNull(aiConversations.deletedAt))).limit(1);
     return row ?? null;
   }
 
@@ -80,8 +80,9 @@ export function createConversationRepository(db: Database) {
           lt(aiConversations.updatedAt, cursorDate),
           and(eq(aiConversations.updatedAt, cursorDate), lt(aiConversations.id, cursorId)),
         ))
-        : eq(aiConversations.userId, userId);
-      const rows = await database.select().from(aiConversations).where(filter)
+        : and(eq(aiConversations.userId, userId), isNull(aiConversations.deletedAt));
+      const activeFilter = validCursor ? and(filter, isNull(aiConversations.deletedAt)) : filter;
+      const rows = await database.select().from(aiConversations).where(activeFilter)
         .orderBy(desc(aiConversations.updatedAt), desc(aiConversations.id)).limit(limit + 1);
       const items = rows.slice(0, limit).map(publicConversation);
       const last = rows.length > limit ? rows[limit - 1] : null;
