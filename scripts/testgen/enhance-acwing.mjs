@@ -11,9 +11,10 @@ import { ACWING_SOLVERS_4A } from "./acwing-solvers-4a.mjs";
 import { ACWING_SOLVERS_4B } from "./acwing-solvers-4b.mjs";
 import { ACWING_SOLVERS_5A } from "./acwing-solvers-5a.mjs";
 import { ACWING_SOLVERS_5B } from "./acwing-solvers-5b.mjs";
+import { ACWING_SOLVERS_6 } from "./acwing-solvers-6.mjs";
 import { buildSamples, verifyAnchor } from "./lib.mjs";
 
-const SOLVERS = { ...ACWING_SOLVERS_1, ...ACWING_SOLVERS_2A, ...ACWING_SOLVERS_2B, ...ACWING_SOLVERS_3A, ...ACWING_SOLVERS_3B, ...ACWING_SOLVERS_4A, ...ACWING_SOLVERS_4B, ...ACWING_SOLVERS_5A, ...ACWING_SOLVERS_5B };
+const SOLVERS = { ...ACWING_SOLVERS_1, ...ACWING_SOLVERS_2A, ...ACWING_SOLVERS_2B, ...ACWING_SOLVERS_3A, ...ACWING_SOLVERS_3B, ...ACWING_SOLVERS_4A, ...ACWING_SOLVERS_4B, ...ACWING_SOLVERS_5A, ...ACWING_SOLVERS_5B, ...ACWING_SOLVERS_6 };
 
 const target = resolve(import.meta.dirname, "../../public/acwing-course.json");
 const catalog = JSON.parse(readFileSync(target, "utf8"));
