@@ -22,9 +22,12 @@ export function useCloudSave<T = unknown>({ enabled, version, save, onConflict, 
   const [pending, setPending] = useState<{ payload: T; idempotencyKey: string } | null>(null);
   const [conflict, setConflict] = useState<CloudConflict | null>(null);
   const conflictCallback = useRef(onConflict);
+  const externalVersion = useRef(version);
 
   useEffect(() => { conflictCallback.current = onConflict; }, [onConflict]);
+  useEffect(() => { externalVersion.current = version; }, [version]);
   const queueSave = useCallback((payload: T) => {
+    setCurrentVersion(externalVersion.current);
     setPending({ payload, idempotencyKey: crypto.randomUUID() });
     setConflict(null);
     setStatus(enabled ? "saving" : "local-only");

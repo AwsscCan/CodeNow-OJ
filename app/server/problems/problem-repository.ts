@@ -215,15 +215,16 @@ export function createProblemRepository(db: Database) {
       let rows: TestCaseRow[] = [];
 
       if (isD1Database(db)) {
-        [parent] = await db.update(problems).set({ version: version + 1, updatedAt: now })
+        const saveParent = db.update(problems).set({ version: version + 1, updatedAt: now })
           .where(and(eq(problems.userId, userId), eq(problems.id, problemId), eq(problems.version, version), isNull(problems.deletedAt))).returning();
-        if (parent) {
-          const remove = db.delete(testCases).where(and(eq(testCases.userId, userId), eq(testCases.problemId, problemId)));
-          if (values.length) await db.batch([remove, db.insert(testCases).values(values)]);
-          else await db.batch([remove]);
-          rows = await db.select().from(testCases)
-            .where(and(eq(testCases.userId, userId), eq(testCases.problemId, problemId)))
-            .orderBy(testCases.sortOrder);
+        const remove = db.delete(testCases).where(and(eq(testCases.userId, userId), eq(testCases.problemId, problemId)));
+        if (values.length) {
+          const result = await db.batch([saveParent, remove, db.insert(testCases).values(values).returning()]);
+          parent = result[0][0] ?? null;
+          rows = result[2];
+        } else {
+          const result = await db.batch([saveParent, remove]);
+          parent = result[0][0] ?? null;
         }
       } else {
         const result = database.transaction((tx) => {

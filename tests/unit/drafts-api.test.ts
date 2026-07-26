@@ -47,6 +47,7 @@ describe("code draft API", () => {
     expect(await updated.json()).toMatchObject({ version: 2, draft: { sourceCode: "v2" } });
     const stale = await handlers.PUT(request("P1001", "PUT", { problemKind: "public", language: "cpp", sourceCode: "stale", expectedVersion: 1 }), "P1001");
     expect(stale.status).toBe(409);
+    expect(await stale.json()).toMatchObject({ error: { currentVersion: 2, updatedAt: expect.any(String) } });
   });
 
   it("keeps languages and public/private namespaces unique", async () => {

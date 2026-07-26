@@ -63,7 +63,7 @@ export default function ProblemPage() {
       setCloudState({ version: tests.version });
       return { ok: true, version: tests.version, updatedAt: tests.updatedAt };
     } catch (error) {
-      if (error instanceof ProblemApiError && error.status === 409) return { ok: false, status: 409, currentVersion: error.currentVersion };
+      if (error instanceof ProblemApiError && error.status === 409) return { ok: false, status: 409, currentVersion: error.currentVersion, updatedAt: error.updatedAt };
       throw error;
     }
   }, [cloudId, setCloudState]);
@@ -75,7 +75,7 @@ export default function ProblemPage() {
       setCloudState({ draftVersion: result.version });
       return { ok: true, version: result.version, updatedAt: result.updatedAt };
     } catch (error) {
-      if (error instanceof ProblemApiError && error.status === 409) return { ok: false, status: 409, currentVersion: error.currentVersion };
+      if (error instanceof ProblemApiError && error.status === 409) return { ok: false, status: 409, currentVersion: error.currentVersion, updatedAt: error.updatedAt };
       throw error;
     }
   }, [cloudId, setCloudState]);
@@ -397,7 +397,7 @@ export default function ProblemPage() {
               <option value="light">亮色</option><option value="dark">暗色</option><option value="girl">少女</option>
             </select>
           </label>
-          <AuthStatus onSignedOut={() => { store.setHistory([]); store.setCloudState({ cloudId: null, version: 0, draftVersion: 0, syncStatus: "local-only" }); aiStore.clearChat(); }} />
+          <AuthStatus onSignedOut={() => { store.clearPrivateWorkspace(); aiStore.clearChat(); }} />
         </div>
       </header>
 

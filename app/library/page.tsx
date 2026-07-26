@@ -6,7 +6,7 @@ import { AuthStatus } from "../components/auth-status";
 import { Toast } from "../components/toast";
 import { useToast } from "../hooks/use-toast";
 import { authClient } from "../lib/auth-client";
-import { ProblemApi } from "../lib/problem-api";
+import { buildCloudFolderPaths, ProblemApi } from "../lib/problem-api";
 import { useAiStore } from "../stores/ai-store";
 import { useLibraryStore, loadAcwingCatalog, folderName, folderParent, folderContains, orderFolderTree, getAcwingFolders, getAcwingProblems } from "../stores/library-store";
 import { useProblemStore, INITIAL_PROBLEM, STARTER_CODE } from "../stores/problem-store";
@@ -15,7 +15,7 @@ import { useThemeStore } from "../stores/theme-store";
 export default function LibraryPage() {
   const router = useRouter();
   const store = useLibraryStore();
-  const { setProblem, setCode, setResults, setCompilerDiagnostic, setCloudState } = useProblemStore();
+  const { setProblem, setCode, setResults, setCompilerDiagnostic, setCloudState, loadLocalProblem, clearPrivateWorkspace } = useProblemStore();
   const session = authClient.useSession();
   const aiStore = useAiStore();
   const theme = useThemeStore();
@@ -38,7 +38,7 @@ export default function LibraryPage() {
   const acwingFolders = getAcwingFolders();
   const acwingProblems = getAcwingProblems();
 
-  const folders = [...store.folders, ...(store.cloudArchives.length ? ["云端题库"] : []), ...acwingFolders];
+  const folders = [...store.folders, ...(store.cloudArchives.length ? ["云端题库"] : []), ...Object.keys(store.cloudFolderIds), ...acwingFolders];
   const orderedFolders = orderFolderTree(folders, store.folderOrder);
 
   const visibleFolders = orderedFolders.filter((folder) => {
@@ -56,13 +56,16 @@ export default function LibraryPage() {
 
   useEffect(() => { store.setLibraryReady(); loadAcwingCatalog(); }, []);
   useEffect(() => {
-    if (!session.data?.user) { store.setCloudArchives([]); return; }
+    if (!session.data?.user) { store.setCloudArchives([]); store.setCloudFolderIds({}); return; }
     const controller = new AbortController();
-    ProblemApi.list(controller.signal).then(({ problems }) => {
+    Promise.all([ProblemApi.list(controller.signal), ProblemApi.listFolders(controller.signal)]).then(([{ problems }, { folders }]) => {
+      const folderPaths = buildCloudFolderPaths(folders);
+      const pathById = new Map(Object.entries(folderPaths).map(([path, id]) => [id, path]));
+      store.setCloudFolderIds(folderPaths);
       store.setCloudArchives(problems.map((item) => ({
         cloudId: item.id,
         version: item.version,
-        folder: "云端题库",
+        folder: item.folderId ? pathById.get(item.folderId) ?? "云端题库" : "云端题库",
         archivedAt: item.updatedAt,
         problem: {
           id: item.problemCode, title: item.title, difficulty: item.difficulty, time: item.timeLimit, memory: item.memoryLimit,
@@ -92,9 +95,9 @@ export default function LibraryPage() {
         const draft = await ProblemApi.getDraft("private", item.cloudId, "cpp");
         setCode(draft.draft.sourceCode);
         setCloudState({ draftVersion: draft.version });
-      } catch { setCloudState({ draftVersion: 0 }); }
+      } catch { setCode(STARTER_CODE); setCloudState({ draftVersion: 0 }); }
     } else {
-      setCloudState({ cloudId: null, version: 0, draftVersion: 0, syncStatus: "local-only" });
+      loadLocalProblem(selected);
     }
     setProblem(selected);
     setResults([]);
@@ -104,52 +107,67 @@ export default function LibraryPage() {
   }
 
   function openBundled(item: ReturnType<typeof getAcwingProblems>[number]) {
-    setProblem(item);
-    setCode(STARTER_CODE);
-    setResults([]);
-    setCompilerDiagnostic("");
+    loadLocalProblem(item);
     router.push(`/problem/${item.id}`);
     toast(`已打开 ${item.id} · ${item.title}`);
   }
 
   function openBuiltIn() {
-    setProblem(INITIAL_PROBLEM);
-    setCode(STARTER_CODE);
-    setResults([]);
-    setCompilerDiagnostic("");
+    loadLocalProblem(INITIAL_PROBLEM);
     router.push("/problem/P1001");
   }
 
-  function createFolder() {
+  async function createFolder() {
     const name = newFolderName.trim();
     if (!name) return;
     if (/[\\/]/.test(name)) return toast("文件夹名称不能包含斜杠");
-    const parent = store.selectedFolder === "全部题目" ? "" : store.selectedFolder;
+    const cloudParent = store.cloudFolderIds[store.selectedFolder] ? store.selectedFolder : "";
+    const parent = session.data?.user ? cloudParent : store.selectedFolder === "全部题目" ? "" : store.selectedFolder;
     if (parent.split("/").filter(Boolean).length >= 5) return toast("最多支持 5 级文件夹");
     const path = parent ? `${parent}/${name}` : name;
     if (orderedFolders.includes(path)) return toast("该文件夹已存在");
-    store.addFolder(path);
+    if (session.data?.user) {
+      const created = await ProblemApi.createFolder(name, parent ? store.cloudFolderIds[parent] ?? null : null);
+      store.setCloudFolderIds({ ...store.cloudFolderIds, [path]: created.folder.id });
+    } else {
+      store.addFolder(path);
+    }
     store.setSelectedFolder(path);
     setNewFolderName("");
     toast(`已创建文件夹「${path}」`);
   }
 
-  function dissolveFolder(folder: string) {
-    if (folder === "默认题库" || !store.folders.includes(folder)) return;
-    const parent = folder.includes("/") ? folder.slice(0, folder.lastIndexOf("/")) : "默认题库";
-    const affected = store.archives.filter((item) => folderContains(item.folder, folder)).length;
+  async function dissolveFolder(folder: string) {
+    const cloudId = store.cloudFolderIds[folder];
+    if (folder === "默认题库" || (!store.folders.includes(folder) && !cloudId)) return;
+    const parent = folder.includes("/") ? folder.slice(0, folder.lastIndexOf("/")) : cloudId ? "云端题库" : "默认题库";
+    const affected = [...store.archives, ...store.cloudArchives].filter((item) => folderContains(item.folder, folder)).length;
     if (!window.confirm(`确定解散文件夹「${folder}」？其中 ${affected} 道题目会移至「${parent}」`)) return;
-    store.removeFolder(folder);
+    if (cloudId) {
+      await ProblemApi.deleteFolder(cloudId);
+      const nextIds = Object.fromEntries(Object.entries(store.cloudFolderIds).filter(([path]) => path !== folder).map(([path, id]) => [path.startsWith(`${folder}/`) ? `${parent}/${path.slice(folder.length + 1)}` : path, id]));
+      store.setCloudFolderIds(nextIds);
+      store.setCloudArchives(store.cloudArchives.map((item) => folderContains(item.folder, folder) ? { ...item, folder: parent } : item));
+    } else store.removeFolder(folder);
     if (folderContains(store.selectedFolder, folder)) store.setSelectedFolder(parent);
     toast(`已解散文件夹「${folder}」`);
   }
 
-  function deleteFolder(folder: string) {
-    if (folder === "默认题库" || !store.folders.includes(folder)) return;
-    const affected = store.archives.filter((item) => folderContains(item.folder, folder));
-    if (!window.confirm(`永久删除文件夹「${folder}」及其中 ${affected.length} 道题目？此操作不可恢复。`)) return;
-    store.removeFolder(folder);
-    if (folderContains(store.selectedFolder, folder)) store.setSelectedFolder(folderParent(folder) || "默认题库");
+  async function deleteFolder(folder: string) {
+    const cloudId = store.cloudFolderIds[folder];
+    if (folder === "默认题库" || (!store.folders.includes(folder) && !cloudId)) return;
+    const affected = [...store.archives, ...store.cloudArchives].filter((item) => folderContains(item.folder, folder));
+    const prompt = cloudId
+      ? `删除云端文件夹「${folder}」？其中 ${affected.length} 道题目会移至上级文件夹。`
+      : `永久删除文件夹「${folder}」及其中 ${affected.length} 道题目？此操作不可恢复。`;
+    if (!window.confirm(prompt)) return;
+    if (cloudId) {
+      await ProblemApi.deleteFolder(cloudId);
+      const parent = folderParent(folder) || "云端题库";
+      store.setCloudFolderIds(Object.fromEntries(Object.entries(store.cloudFolderIds).filter(([path]) => path !== folder).map(([path, id]) => [path.startsWith(`${folder}/`) ? `${parent}/${path.slice(folder.length + 1)}` : path, id])));
+      store.setCloudArchives(store.cloudArchives.map((item) => folderContains(item.folder, folder) ? { ...item, folder: parent } : item));
+    } else store.removeFolder(folder);
+    if (folderContains(store.selectedFolder, folder)) store.setSelectedFolder(folderParent(folder) || (cloudId ? "云端题库" : "默认题库"));
     toast(`已永久删除`);
   }
 
@@ -206,11 +224,12 @@ export default function LibraryPage() {
           problemCode: numbered.id, title: numbered.title, difficulty: numbered.difficulty, timeLimit: numbered.time, memoryLimit: numbered.memory,
           description: numbered.description, inputFormat: numbered.inputFormat, outputFormat: numbered.outputFormat,
           sourceUrl: numbered.sourceUrl ?? null, extractionStatus: numbered.extractionStatus ?? null,
+          folderId: store.cloudFolderIds[archiveFolder] ?? null,
         });
         const saved = await ProblemApi.replaceTests(created.problem.id, created.version, numbered.samples.map((item) => ({
           input: item.input, expectedOutput: item.output, category: item.category, scale: item.scale, targets: item.targets, reason: item.reason,
         })), crypto.randomUUID());
-        store.setCloudArchives([{ problem: numbered, folder: "云端题库", archivedAt: saved.updatedAt, cloudId: created.problem.id, version: saved.version }, ...store.cloudArchives]);
+        store.setCloudArchives([{ problem: numbered, folder: store.cloudFolderIds[archiveFolder] ? archiveFolder : "云端题库", archivedAt: saved.updatedAt, cloudId: created.problem.id, version: saved.version }, ...store.cloudArchives]);
         setCloudState({ cloudId: created.problem.id, version: saved.version, draftVersion: 0, syncStatus: "synced" });
       } else {
         store.addArchive({ problem: numbered, folder: archiveFolder, archivedAt: new Date().toISOString() });
@@ -247,9 +266,10 @@ export default function LibraryPage() {
           const created = await ProblemApi.create({
             problemCode: numbered.id, title: numbered.title, difficulty: numbered.difficulty, timeLimit: numbered.time, memoryLimit: numbered.memory,
             description: numbered.description, inputFormat: numbered.inputFormat, outputFormat: numbered.outputFormat,
+            folderId: store.cloudFolderIds[archiveFolder] ?? null,
           });
           const saved = await ProblemApi.replaceTests(created.problem.id, created.version, numbered.samples.map((item) => ({ input: item.input, expectedOutput: item.output })), crypto.randomUUID());
-          store.setCloudArchives([{ problem: numbered, folder: "云端题库", archivedAt: saved.updatedAt, cloudId: created.problem.id, version: saved.version }, ...store.cloudArchives]);
+          store.setCloudArchives([{ problem: numbered, folder: store.cloudFolderIds[archiveFolder] ? archiveFolder : "云端题库", archivedAt: saved.updatedAt, cloudId: created.problem.id, version: saved.version }, ...store.cloudArchives]);
         } else {
           store.addArchive({ problem: numbered, folder: archiveFolder, archivedAt: new Date().toISOString() });
         }
@@ -280,7 +300,7 @@ export default function LibraryPage() {
               <option value="light">亮色</option><option value="dark">暗色</option><option value="girl">少女</option>
             </select>
           </label>
-          <AuthStatus onSignedOut={() => { aiStore.clearChat(); store.setCloudArchives([]); setCloudState({ cloudId: null, version: 0, draftVersion: 0, syncStatus: "local-only" }); }} />
+          <AuthStatus onSignedOut={() => { aiStore.clearChat(); store.setCloudArchives([]); store.setCloudFolderIds({}); clearPrivateWorkspace(); }} />
         </div>
       </header>
 
@@ -311,7 +331,7 @@ export default function LibraryPage() {
                     <span>▱ {folderName(folder)}</span>
                     <b>{store.archives.filter((a) => folderContains(a.folder, folder)).length + acwingProblems.filter((p) => folderContains(p.folder, folder)).length + (folder === "默认题库" ? 1 : 0)}</b>
                   </button>
-                  {folder !== "默认题库" && store.folders.includes(folder) && <>
+                  {folder !== "默认题库" && (store.folders.includes(folder) || Boolean(store.cloudFolderIds[folder])) && <>
                     <button className="folder-action dissolve" onClick={() => dissolveFolder(folder)}>散</button>
                     <button className="folder-action destructive" onClick={() => deleteFolder(folder)}>删</button>
                   </>}

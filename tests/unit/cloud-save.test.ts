@@ -29,6 +29,17 @@ describe("useCloudSave", () => {
     expect(result.current.version).toBe(2);
   });
 
+  it("uses a newly supplied server version for the next queued change", async () => {
+    const save = vi.fn(async (_payload: unknown, version: number, _key: string, _signal: AbortSignal) => ({ ok: true as const, version: version + 1, updatedAt: "now" }));
+    const { result, rerender } = renderHook(({ version }) => useCloudSave({ enabled: true, version, save, delay: 100 }), { initialProps: { version: 1 } });
+    const initialQueueSave = result.current.queueSave;
+    rerender({ version: 7 });
+    expect(result.current.queueSave).toBe(initialQueueSave);
+    act(() => result.current.queueSave({ title: "other problem" }));
+    await act(() => vi.advanceTimersByTimeAsync(100));
+    expect(save.mock.calls[0][1]).toBe(7);
+  });
+
   it("retains failed local payloads", async () => {
     const save = vi.fn(async (_payload: unknown, _version: number, _key: string, _signal: AbortSignal) => { throw new Error("offline"); });
     const { result } = renderHook(() => useCloudSave({ enabled: true, version: 1, save, delay: 100 }));

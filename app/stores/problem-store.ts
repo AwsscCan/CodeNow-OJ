@@ -83,6 +83,8 @@ type ProblemStore = {
   setCursor: (line: number, column: number) => void;
   setNotice: (msg: string) => void;
   setCloudState: (state: Partial<Pick<ProblemStore, "cloudId" | "version" | "draftVersion" | "syncStatus">>) => void;
+  loadLocalProblem: (problem: Problem) => void;
+  clearPrivateWorkspace: () => void;
   addTest: () => void;
   removeTest: (id: number) => void;
   updateTest: (id: number, field: "input" | "output" | "targets" | "reason", value: string) => void;
@@ -123,6 +125,14 @@ export const useProblemStore = create<ProblemStore>()(
       setCursor: (line, column) => set((s) => s.cursor.line === line && s.cursor.column === column ? s : { cursor: { line, column } }),
       setNotice: (notice) => set({ notice }),
       setCloudState: (state) => set(state),
+      loadLocalProblem: (problem) => set({
+        problem, code: STARTER_CODE, results: [], compilerDiagnostic: "",
+        cloudId: null, version: 0, draftVersion: 0, syncStatus: "local-only",
+      }),
+      clearPrivateWorkspace: () => set({
+        problem: INITIAL_PROBLEM, code: STARTER_CODE, results: [], compilerDiagnostic: "", history: [], selectedSubmission: null,
+        cloudId: null, version: 0, draftVersion: 0, syncStatus: "local-only",
+      }),
 
       addTest: () => set((s) => ({
         problem: { ...s.problem, samples: [...s.problem.samples, { id: Date.now(), input: "", output: "" }] },

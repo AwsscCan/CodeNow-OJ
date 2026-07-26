@@ -34,7 +34,7 @@ export function createDraftHandlers(resolveContext: ResolveDraftContext = resolv
       const result = await context.repository.saveDraft(context.userId, {
         problemKind: body.problemKind as "public" | "private", problemRef, language: body.language, sourceCode: body.sourceCode,
       }, body.expectedVersion);
-      if (!result.ok) return apiError(result.status, result.code, result.message);
+      if (!result.ok) return apiError(result.status, result.code, result.message, undefined, { currentVersion: result.currentVersion, updatedAt: result.updatedAt });
       return Response.json({ draft: result.value, version: result.version, updatedAt: result.updatedAt }, { headers: privateNoStore });
     },
   };

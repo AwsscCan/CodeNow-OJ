@@ -106,6 +106,7 @@ type LibraryStore = {
   librarySearch: string;
   libraryReady: boolean;
   cloudArchives: ArchivedProblem[];
+  cloudFolderIds: Record<string, string>;
 
   setArchives: (archives: ArchivedProblem[]) => void;
   addArchive: (archive: ArchivedProblem) => void;
@@ -124,6 +125,7 @@ type LibraryStore = {
   setLibrarySearch: (s: string) => void;
   setLibraryReady: () => void;
   setCloudArchives: (archives: ArchivedProblem[]) => void;
+  setCloudFolderIds: (folders: Record<string, string>) => void;
 };
 
 export const useLibraryStore = create<LibraryStore>()(
@@ -138,6 +140,7 @@ export const useLibraryStore = create<LibraryStore>()(
       librarySearch: "",
       libraryReady: false,
       cloudArchives: [],
+      cloudFolderIds: {},
 
       setArchives: (archives) => set({ archives }),
       addArchive: (archive) => set((s) => ({ archives: [archive, ...s.archives] })),
@@ -174,6 +177,7 @@ export const useLibraryStore = create<LibraryStore>()(
       setLibrarySearch: (librarySearch) => set({ librarySearch }),
       setLibraryReady: () => set({ libraryReady: true }),
       setCloudArchives: (cloudArchives) => set({ cloudArchives }),
+      setCloudFolderIds: (cloudFolderIds) => set({ cloudFolderIds }),
     }),
     {
       name: "codenow-problem-library",
