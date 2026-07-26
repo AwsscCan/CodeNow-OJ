@@ -80,7 +80,8 @@ export type SaveResult<T> =
 ### Task 6: Phase verification
 
 - [ ] Apply migrations to a disposable local D1 database and seed users A/B.
-- [ ] Verify user A can create `CF0001` with 200 small tests and user B can independently create the same code.
-- [ ] Verify a 513 KiB input returns `413`, lists omit test bodies, and soft-deleted problems return `404`.
-- [ ] Run `npm run lint`, `npm test`, and `npm run build`; all must PASS.
-- [ ] Commit any test-only fixes with `git commit -m "test: verify cloud problem persistence"`.
+- Blocked locally: Wrangler 4.92.0/workerd 2026-05-15 crashes on Windows 10.0.26200 with access violation before starting Miniflare. The same migrations and seed were verified through the disposable better-sqlite3 adapter used by local tests.
+- [x] Verify user A can create `CF0001` with 200 small tests and user B can independently create the same code.
+- [x] Verify a 513 KiB input returns `413`, lists omit test bodies, and soft-deleted problems return `404`.
+- [x] Run `npm run lint`, `npm test`, and `npm run build`; all must PASS.
+- [x] Commit any test-only fixes with `git commit -m "test: verify cloud problem persistence"`.

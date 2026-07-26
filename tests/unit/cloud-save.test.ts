@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-/* eslint-disable import/order -- Vitest environment must be declared before imports. */
+
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useCloudSave } from "../../app/hooks/use-cloud-save";

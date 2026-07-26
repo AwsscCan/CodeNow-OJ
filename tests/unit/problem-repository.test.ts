@@ -1,12 +1,12 @@
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { beforeEach, describe, expect, it } from "vitest";
-import { createLocalDb } from "../../db/client";
-import { users } from "../../db/schema";
 import {
   createProblemRepository,
   type ProblemInput,
 } from "../../app/server/problems/problem-repository";
 import { validateTestCases } from "../../app/server/problems/problem-validation";
+import { createLocalDb } from "../../db/client";
+import { users } from "../../db/schema";
 
 const baseProblem: ProblemInput = {
   problemCode: "CF0001",

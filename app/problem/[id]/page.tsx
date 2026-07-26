@@ -5,11 +5,11 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
 import type { CSSProperties } from "react";
 import { AuthStatus } from "../../components/auth-status";
 import { Toast } from "../../components/toast";
-import { useJudge } from "../../hooks/use-judge";
 import { useCloudSave, type CloudSaveResult, type SyncStatus } from "../../hooks/use-cloud-save";
+import { useJudge } from "../../hooks/use-judge";
 import { useToast } from "../../hooks/use-toast";
-import { formatCppCode } from "../../lib/format-cpp";
 import { authClient } from "../../lib/auth-client";
+import { formatCppCode } from "../../lib/format-cpp";
 import { ProblemApi, ProblemApiError, type CloudProblem } from "../../lib/problem-api";
 import { useAiStore } from "../../stores/ai-store";
 import { useLibraryStore } from "../../stores/library-store";
@@ -30,6 +30,7 @@ export default function ProblemPage() {
   const problemId = String(params.id || "P1001");
 
   const store = useProblemStore();
+  const { cloudId, setCloudState } = store;
   const libraryStore = useLibraryStore();
   const aiStore = useAiStore();
   const theme = useThemeStore();
@@ -49,46 +50,48 @@ export default function ProblemPage() {
   const [workspaceResizing, setWorkspaceResizing] = useState(false);
 
   const saveCloudProblem = useCallback(async (payload: typeof store.problem, version: number, idempotencyKey: string, signal: AbortSignal): Promise<CloudSaveResult> => {
-    if (!store.cloudId) return { ok: false, status: 404 };
+    if (!cloudId) return { ok: false, status: 404 };
     try {
-      const metadata = await ProblemApi.update(store.cloudId, version, {
+      const metadata = await ProblemApi.update(cloudId, version, {
         problemCode: payload.id, title: payload.title, difficulty: payload.difficulty, timeLimit: payload.time, memoryLimit: payload.memory,
         description: payload.description, inputFormat: payload.inputFormat, outputFormat: payload.outputFormat,
         sourceUrl: payload.sourceUrl ?? null, extractionStatus: payload.extractionStatus ?? null,
       }, idempotencyKey, signal);
-      const tests = await ProblemApi.replaceTests(store.cloudId, metadata.version, payload.samples.map((item) => ({
+      const tests = await ProblemApi.replaceTests(cloudId, metadata.version, payload.samples.map((item) => ({
         input: item.input, expectedOutput: item.output, category: item.category, scale: item.scale, targets: item.targets, reason: item.reason,
       })), idempotencyKey, signal);
-      store.setCloudState({ version: tests.version });
+      setCloudState({ version: tests.version });
       return { ok: true, version: tests.version, updatedAt: tests.updatedAt };
     } catch (error) {
       if (error instanceof ProblemApiError && error.status === 409) return { ok: false, status: 409, currentVersion: error.currentVersion };
       throw error;
     }
-  }, [store.cloudId, store.setCloudState]);
+  }, [cloudId, setCloudState]);
 
   const saveCloudDraft = useCallback(async (sourceCode: string, version: number, idempotencyKey: string, signal: AbortSignal): Promise<CloudSaveResult> => {
-    if (!store.cloudId) return { ok: false, status: 404 };
+    if (!cloudId) return { ok: false, status: 404 };
     try {
-      const result = await ProblemApi.saveDraft("private", store.cloudId, "cpp", sourceCode, version, idempotencyKey, signal);
-      store.setCloudState({ draftVersion: result.version });
+      const result = await ProblemApi.saveDraft("private", cloudId, "cpp", sourceCode, version, idempotencyKey, signal);
+      setCloudState({ draftVersion: result.version });
       return { ok: true, version: result.version, updatedAt: result.updatedAt };
     } catch (error) {
       if (error instanceof ProblemApiError && error.status === 409) return { ok: false, status: 409, currentVersion: error.currentVersion };
       throw error;
     }
-  }, [store.cloudId, store.setCloudState]);
+  }, [cloudId, setCloudState]);
 
-  const cloudSave = useCloudSave({ enabled: Boolean(session.data?.user && store.cloudId), version: store.version, save: saveCloudProblem });
-  const draftSave = useCloudSave({ enabled: Boolean(session.data?.user && store.cloudId), version: store.draftVersion, save: saveCloudDraft });
+  const cloudSave = useCloudSave({ enabled: Boolean(session.data?.user && cloudId), version: store.version, save: saveCloudProblem });
+  const draftSave = useCloudSave({ enabled: Boolean(session.data?.user && cloudId), version: store.draftVersion, save: saveCloudDraft });
+  const queueProblemSave = cloudSave.queueSave;
+  const queueDraftSave = draftSave.queueSave;
 
-  useEffect(() => { if (store.cloudId) cloudSave.queueSave(store.problem); }, [store.problem, store.cloudId]);
-  useEffect(() => { if (store.cloudId) draftSave.queueSave(store.code); }, [store.code, store.cloudId]);
+  useEffect(() => { if (cloudId) queueProblemSave(store.problem); }, [cloudId, queueProblemSave, store.problem]);
+  useEffect(() => { if (cloudId) queueDraftSave(store.code); }, [cloudId, queueDraftSave, store.code]);
   useEffect(() => {
     const states = [cloudSave.status, draftSave.status];
     const status: SyncStatus = states.includes("conflicted") ? "conflicted" : states.includes("failed") ? "failed" : states.includes("saving") ? "saving" : states.every((item) => item === "local-only") ? "local-only" : "synced";
-    store.setCloudState({ syncStatus: status });
-  }, [cloudSave.status, draftSave.status]);
+    setCloudState({ syncStatus: status });
+  }, [cloudSave.status, draftSave.status, setCloudState]);
 
   function fromCloud(cloud: CloudProblem) {
     return {

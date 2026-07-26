@@ -1,8 +1,8 @@
 import { and, eq, isNull } from "drizzle-orm";
-import { MAX_SUBMISSION_SOURCE_LENGTH } from "../../api/_lib/constants";
 import type { Database } from "../../../db/client";
 import { createLocalDb } from "../../../db/client";
 import { codeDrafts, problems } from "../../../db/schema";
+import { MAX_SUBMISSION_SOURCE_LENGTH } from "../../api/_lib/constants";
 
 type RepositoryDb = ReturnType<typeof createLocalDb>;
 type DraftRow = typeof codeDrafts.$inferSelect;
