@@ -5,7 +5,7 @@ import { useEffect } from "react";
 import { Toast } from "./components/toast";
 import { Topbar } from "./components/topbar";
 import { useToast } from "./hooks/use-toast";
-import { getAcwingProblems, loadAcwingCatalog, useLibraryStore } from "./stores/library-store";
+import { getAcwingProblems, loadAcwingCatalog, loadBundledSamples, useLibraryStore } from "./stores/library-store";
 import { INITIAL_PROBLEM, useProblemStore, type Problem } from "./stores/problem-store";
 import { useThemeStore } from "./stores/theme-store";
 
@@ -25,8 +25,10 @@ export default function Home() {
   /**
    * 装载题目到工作区并进入做题页
    */
-  function openProblem(item: Problem) {
-    loadLocalProblem(item);
+  async function openProblem(item: Problem) {
+    // 索引精选题 samples 为空，按需拉取完整测试点再进入做题页
+    const samples = item.samples.length ? item.samples : await loadBundledSamples(item.id);
+    loadLocalProblem({ ...item, samples });
     router.push(`/problem/${item.id}`);
   }
 

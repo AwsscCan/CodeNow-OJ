@@ -31,13 +31,11 @@ afterEach(() => {
 
 describe("题库异步加载后自动重渲染(修复侧栏只显示默认题库)", () => {
   it("bundled 题源加载完成后侧栏出现对应文件夹", async () => {
-    vi.stubGlobal("fetch", vi.fn(async (url: RequestInfo | URL) => {
-      const path = String(url);
-      if (path.includes("acwing")) return new Response(JSON.stringify([{ id: "AW1", title: "a", difficulty: "普及", time: "1s", memory: "64MB", description: "", inputFormat: "", outputFormat: "", samples: [], folder: "acwing/第一讲 基础算法/快速排序", sourceUrl: "x", extractionStatus: "complete" }]), { status: 200 });
-      if (path.includes("classic")) return new Response(JSON.stringify([{ id: "CL1", title: "c", difficulty: "普及", time: "1s", memory: "64MB", description: "", inputFormat: "", outputFormat: "", samples: [], folder: "经典题库/枚举与模拟", sourceUrl: "", extractionStatus: "complete" }]), { status: 200 });
-      if (path.includes("contest")) return new Response(JSON.stringify([{ id: "CS1", title: "s", difficulty: "普及", time: "1s", memory: "64MB", description: "", inputFormat: "", outputFormat: "", samples: [], folder: "竞赛真题/CSP-J 入门级", sourceUrl: "", extractionStatus: "complete" }]), { status: 200 });
-      return new Response(JSON.stringify([]), { status: 200 });
-    }));
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify([
+      { id: "AW1", title: "a", difficulty: "普及", time: "1s", memory: "64MB", description: "", inputFormat: "", outputFormat: "", folder: "acwing/第一讲 基础算法/快速排序", sourceUrl: "x", extractionStatus: "complete", sampleCount: 13 },
+      { id: "CL1", title: "c", difficulty: "普及", time: "1s", memory: "64MB", description: "", inputFormat: "", outputFormat: "", folder: "经典题库/枚举与模拟", sourceUrl: "", extractionStatus: "complete", sampleCount: 12 },
+      { id: "CS1", title: "s", difficulty: "普及", time: "1s", memory: "64MB", description: "", inputFormat: "", outputFormat: "", folder: "竞赛真题/CSP-J 入门级", sourceUrl: "", extractionStatus: "complete", sampleCount: 12 },
+    ]), { status: 200 })));
 
     const { container } = render(<LibraryPage />);
     // 初始渲染只有默认题库

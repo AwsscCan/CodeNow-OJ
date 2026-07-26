@@ -9,7 +9,7 @@ import { useToast } from "../hooks/use-toast";
 import { authClient } from "../lib/auth-client";
 import { buildCloudFolderPaths, ProblemApi } from "../lib/problem-api";
 import { useAiStore } from "../stores/ai-store";
-import { useLibraryStore, loadAcwingCatalog, folderName, folderParent, folderContains, orderFolderTree, getAcwingFolders, getAcwingProblems } from "../stores/library-store";
+import { useLibraryStore, loadAcwingCatalog, loadBundledSamples, folderName, folderParent, folderContains, orderFolderTree, getAcwingFolders, getAcwingProblems } from "../stores/library-store";
 import { useProblemStore, INITIAL_PROBLEM, STARTER_CODE } from "../stores/problem-store";
 import { useThemeStore } from "../stores/theme-store";
 
@@ -122,8 +122,10 @@ export default function LibraryPage() {
     toast(`已打开 ${selected.id} · ${selected.title}`);
   }
 
-  function openBundled(item: ReturnType<typeof getAcwingProblems>[number]) {
-    loadLocalProblem(item);
+  async function openBundled(item: ReturnType<typeof getAcwingProblems>[number]) {
+    // 索引题 samples 为空，打开做题页前按需拉取完整测试点
+    const samples = item.samples.length ? item.samples : await loadBundledSamples(item.id);
+    loadLocalProblem({ ...item, samples });
     router.push(`/problem/${item.id}`);
     toast(`已打开 ${item.id} · ${item.title}`);
   }
@@ -187,7 +189,7 @@ export default function LibraryPage() {
     toast(`已永久删除`);
   }
 
-  function confirmRename() {
+  async function confirmRename() {
     if (!renamingId) return;
     const nextId = nextProblemId.trim();
     if (!/^[A-Za-z][A-Za-z0-9_-]{0,19}$/.test(nextId)) return toast("题号需以字母开头，仅含字母数字下划线短横线，最长 20 位");
@@ -199,7 +201,9 @@ export default function LibraryPage() {
         ? { problem: INITIAL_PROBLEM, folder: "默认题库" }
         : (() => { const item = acwingProblems.find((p) => p.id === renamingId); return item ? { problem: item, folder: item.folder } : null; })();
       if (!builtin) return toast("未找到该题目");
-      store.materializeBuiltin(builtin.problem, builtin.folder, nextId);
+      // 索引题 samples 为空，物化前按需补齐完整测试点
+      const samples = builtin.problem.samples.length ? builtin.problem.samples : await loadBundledSamples(renamingId);
+      store.materializeBuiltin({ ...builtin.problem, samples }, builtin.folder, nextId);
     }
     setRenamingId(null);
     setNextProblemId("");
@@ -417,7 +421,7 @@ export default function LibraryPage() {
               {selectedAcwing.map((item) => (
                 <article className="catalog-row external-problem" key={item.id}>
                   <div className="catalog-problem-link"><button className="catalog-id-edit editable" onClick={() => { setRenamingId(item.id); setNextProblemId(item.id); }}><code>{item.id}</code></button><button className="catalog-title-open" onClick={() => openBundled(item)}><span><b>{item.title}</b><small>{item.extractionStatus === "complete" ? "题面已自动提取" : "题面需结合来源核对"} · 博客园来源</small></span></button></div>
-                  <span className="difficulty normal">{item.difficulty}</span><span>{item.samples.length} 个</span><span title={item.folder}>{folderName(item.folder)}</span>
+                  <span className="difficulty normal">{item.difficulty}</span><span>{item.sampleCount ?? item.samples.length} 个</span><span title={item.folder}>{folderName(item.folder)}</span>
                   <div className="row-actions"><a href={item.sourceUrl} target="_blank" rel="noreferrer">来源</a><i onClick={() => openBundled(item)}>进入 →</i></div>
                 </article>
               ))}

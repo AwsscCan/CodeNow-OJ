@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /* eslint-disable import/order -- Vitest 要求环境指令先于 import。 */
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { push } = vi.hoisted(() => ({ push: vi.fn() }));
@@ -16,6 +16,7 @@ vi.mock("../../app/stores/library-store", () => ({
     { id: "AW790", title: "归并排序", difficulty: "普及" as const, time: "1000 ms", memory: "64 MB", description: "排序", inputFormat: "", outputFormat: "", samples: [], folder: "算法基础课/基础算法", sourceUrl: "https://example.com/790" },
   ],
   useLibraryStore: (sel: (s: { catalogVersion: number }) => unknown) => sel({ catalogVersion: 0 }),
+  loadBundledSamples: vi.fn(async () => [{ id: 1, input: "1\n", output: "1\n" }]),
 }));
 vi.mock("../../app/stores/theme-store", () => ({
   useThemeStore: () => ({ themeMode: "girl", setThemeMode: vi.fn(), editorTheme: "girl", setEditorTheme: vi.fn() }),
@@ -58,18 +59,18 @@ describe("首页做题入口", () => {
     expect(screen.getByText(INITIAL_PROBLEM.title, { selector: ".quick-start b" })).toBeTruthy();
   });
 
-  it("点击精选题目会装载题目并跳转对应做题页", () => {
+  it("点击精选题目会装载题目并跳转对应做题页", async () => {
     render(<Home />);
     fireEvent.click(screen.getByRole("button", { name: /快速排序/ }));
-    expect(useProblemStore.getState().problem.id).toBe("AW789");
+    await waitFor(() => expect(useProblemStore.getState().problem.id).toBe("AW789"));
     expect(push).toHaveBeenCalledWith("/problem/AW789");
   });
 
-  it("点击内置题会装载 P1001 并跳转", () => {
+  it("点击内置题会装载 P1001 并跳转", async () => {
     useProblemStore.setState({ problem: { ...INITIAL_PROBLEM, id: "CF0042", title: "滑动窗口" } });
     render(<Home />);
     fireEvent.click(screen.getByRole("button", { name: new RegExp(INITIAL_PROBLEM.title.replace(/[+]/g, "\\+")) }));
-    expect(useProblemStore.getState().problem.id).toBe("P1001");
+    await waitFor(() => expect(useProblemStore.getState().problem.id).toBe("P1001"));
     expect(push).toHaveBeenCalledWith("/problem/P1001");
   });
 

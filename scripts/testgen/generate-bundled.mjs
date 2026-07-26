@@ -26,3 +26,4 @@ function build(defs, outFile) {
 const classicCount = build([...CLASSIC_DEFS_1, ...CLASSIC_DEFS_2, ...CLASSIC_DEFS_3], "classic-problems.json");
 const contestCount = build(CONTEST_DEFS, "contest-problems.json");
 console.log(`共 经典 ${classicCount} + 竞赛 ${contestCount} 题 (${((Date.now() - started) / 1000).toFixed(1)}s)`);
+console.log("提示：运行 node scripts/testgen/split-catalog.mjs 重建轻量索引与单题文件");

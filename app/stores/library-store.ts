@@ -3,10 +3,11 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-// Lazy-loaded bundled catalogs (AcWing 基础课 + 经典题库等静态题源)
+// Lazy-loaded bundled catalog INDEX (轻量元数据, 不含测试点; 完整测试点按需从 /problems/<id>.json 取)
 let _acwingCatalog: BundledProblem[] | null = null;
 let _acwingLoadAttempted = false;
-const BUNDLED_CATALOG_URLS = ["/acwing-course.json", "/classic-problems.json", "/contest-problems.json"];
+const _bundledSampleCache = new Map<string, TestCase[]>();
+const CATALOG_INDEX_URL = "/catalog-index.json";
 
 type TestCase = { id: number; input: string; output: string; category?: string; scale?: number; targets?: string; reason?: string };
 type Problem = {
@@ -23,7 +24,7 @@ type Problem = {
   extractionStatus?: "complete" | "needs_review";
 };
 type ArchivedProblem = { problem: Problem; folder: string; archivedAt: string; cloudId?: string; version?: number };
-type BundledProblem = Problem & { folder: string; sourceUrl: string; extractionStatus: "complete" | "needs_review" };
+type BundledProblem = Problem & { folder: string; sourceUrl: string; extractionStatus: "complete" | "needs_review"; sampleCount?: number };
 
 export type { Problem, ArchivedProblem, BundledProblem, TestCase };
 
@@ -65,23 +66,40 @@ function getAcwingCatalog(): BundledProblem[] {
 export async function loadAcwingCatalog() {
   if (_acwingLoadAttempted) return;
   _acwingLoadAttempted = true;
-  const results = await Promise.all(BUNDLED_CATALOG_URLS.map(async (url) => {
-    try {
-      const res = await fetch(url);
-      return res.ok ? await res.json() as BundledProblem[] : [];
-    } catch {
-      return [];
-    }
-  }));
-  _acwingCatalog = results.flat();
+  try {
+    const res = await fetch(CATALOG_INDEX_URL);
+    // 索引题条目 samples 为空数组(仅元数据)，测试点打开做题时按需加载
+    _acwingCatalog = res.ok ? (await res.json() as Array<Omit<BundledProblem, "samples"> & { sampleCount: number }>).map((item) => ({ ...item, samples: [] as TestCase[], sampleCount: item.sampleCount })) : [];
+  } catch {
+    _acwingCatalog = [];
+  }
   // 异步加载完成后 bump 版本号，触发订阅了 catalogVersion 的组件重渲染
   useLibraryStore.getState().bumpCatalogVersion();
+}
+
+/**
+ * 按需加载单题完整测试点(带内存缓存)。题库页只加载轻量索引，
+ * 打开做题页时才拉取该题 /problems/<id>.json 的完整 samples。
+ */
+export async function loadBundledSamples(id: string): Promise<TestCase[]> {
+  if (_bundledSampleCache.has(id)) return _bundledSampleCache.get(id)!;
+  try {
+    const res = await fetch(`/problems/${encodeURIComponent(id)}.json`);
+    if (!res.ok) return [];
+    const full = await res.json() as BundledProblem;
+    const samples = Array.isArray(full.samples) ? full.samples : [];
+    _bundledSampleCache.set(id, samples);
+    return samples;
+  } catch {
+    return [];
+  }
 }
 
 /** Test-only: reset the bundled catalog cache so fetch stubs take effect. */
 export function __resetBundledCatalogForTests() {
   _acwingCatalog = null;
   _acwingLoadAttempted = false;
+  _bundledSampleCache.clear();
 }
 
 export function getAcwingFolders(): string[] {
