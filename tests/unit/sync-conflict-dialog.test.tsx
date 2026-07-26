@@ -1,5 +1,4 @@
 // @vitest-environment jsdom
-/* eslint-disable import/order -- Vitest requires its environment directive before imports. */
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SyncConflictDialog } from "../../app/components/sync-conflict-dialog";

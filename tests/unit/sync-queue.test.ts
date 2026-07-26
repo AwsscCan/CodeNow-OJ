@@ -1,5 +1,4 @@
 // @vitest-environment jsdom
-/* eslint-disable import/order -- Vitest requires its environment directive before imports. */
 import "fake-indexeddb/auto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createSyncQueue, type SyncQueue } from "../../app/lib/local-data/queue";

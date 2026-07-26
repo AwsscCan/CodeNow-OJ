@@ -78,8 +78,8 @@ export type LocalDataParseResult =
 
 ### Task 6: Phase verification
 
-- [ ] Import a fixture containing folders, two problems, test cases, a draft, preferences, and AI messages; verify counts and content.
-- [ ] Repeat with the same idempotency key; verify no new rows.
-- [ ] Simulate conflict, network failure, Session expiry, and account switch; verify no cross-account replay.
-- [ ] Run `npm run lint`, `npm test`, and `npm run build`; all PASS.
-- [ ] Commit verification fixes with `git commit -m "test: verify local migration and recovery"`.
+- [x] Import a fixture containing folders, two problems, test cases, a draft, preferences, and AI messages; verify counts and content.
+- [x] Repeat with the same idempotency key; verify no new rows.
+- [x] Simulate conflict, network failure, Session expiry, and account switch; verify no cross-account replay.
+- [x] Run `npm run lint`, `npm test`, and `npm run build`; all PASS.
+- [x] Commit verification fixes with `git commit -m "test: verify local migration and recovery"`.

@@ -1,3 +1,4 @@
+import { MAX_SUBMISSION_SOURCE_LENGTH } from "../../api/_lib/constants";
 import type {
   LocalDataAiProviderV1,
   LocalDataConversationV1,
@@ -9,7 +10,6 @@ import type {
   LocalDataTestCaseV1,
   LocalDataThemeV1,
 } from "./types";
-import { MAX_SUBMISSION_SOURCE_LENGTH } from "../../api/_lib/constants";
 
 const MAX_TEST_FIELD_BYTES = 512 * 1024;
 const MAX_PROBLEM_TEST_BYTES = 20 * 1024 * 1024;

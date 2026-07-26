@@ -14,7 +14,7 @@
 
 - [x] **Plan 1 — Authentication foundation:** Execute `docs/superpowers/plans/2026-07-25-user-auth-foundation.md`. Exit gate: verified registration/login/reset works in vinext and Cloudflare build; submissions are isolated by user.
 - [x] **Plan 2 — Cloud problem data:** Execute `docs/superpowers/plans/2026-07-25-cloud-problem-data.md`. Exit gate: folders, private problems, test cases, and drafts persist cross-device with `409` conflict detection.
-- [ ] **Plan 3 — Local migration and recovery:** Execute `docs/superpowers/plans/2026-07-25-local-data-migration-and-conflicts.md`. Exit gate: guest data imports idempotently and unsynced edits survive offline/session failures.
+- [x] **Plan 3 — Local migration and recovery:** Execute `docs/superpowers/plans/2026-07-25-local-data-migration-and-conflicts.md`. Exit gate: guest data imports idempotently and unsynced edits survive offline/session failures.
 - [ ] **Plan 4 — Preferences, AI sync, release:** Execute `docs/superpowers/plans/2026-07-25-preferences-ai-sync-and-release.md`. Exit gate: approved non-secret data syncs, two-user E2E isolation passes, and preview deployment is signed off.
 
 Do not begin a later plan until the previous plan's phase gate passes. In particular, a Better Auth/vinext/Worker incompatibility in Plan 1 stops the entire roadmap and triggers the fallback evaluation required by the approved design.
