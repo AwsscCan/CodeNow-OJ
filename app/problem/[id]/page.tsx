@@ -49,6 +49,7 @@ export default function ProblemPage() {
 
   // Local UI state
   const [showAi, setShowAi] = useState(false);
+  const [showMascotAiPrompt, setShowMascotAiPrompt] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [chatInput, setChatInput] = useState("");
   const [chatBusy, setChatBusy] = useState(false);
@@ -169,15 +170,15 @@ export default function ProblemPage() {
     return () => { if (codeSyncTimer.current) clearTimeout(codeSyncTimer.current); };
   }, [store.code, setMascotContext]);
 
-  // 桌宠：被拖入编辑区(aiSolveRequestId 递增)时打开 AI 解题弹窗。
+  // 桌宠：被拖入代码区(aiSolveRequestId 递增)时先弹高木风"比试确认"框，点"是"才开 AI 解题弹窗。
   // 初值取 store 当前值，避免跨题目导航时把历史递增值误判为新触发而误弹窗。
   const aiSolveSeen = useRef(useMascotStore.getState().aiSolveRequestId);
   useEffect(() => {
     if (aiSolveRequestId > aiSolveSeen.current) {
       aiSolveSeen.current = aiSolveRequestId;
-      setShowAi(true);
+      if (!showAi && !showMascotAiPrompt) setShowMascotAiPrompt(true);
     }
-  }, [aiSolveRequestId]);
+  }, [aiSolveRequestId, showAi, showMascotAiPrompt]);
 
   // Sync test cases back to library IMMEDIATELY on every change + on unmount
   useEffect(() => {
@@ -605,6 +606,13 @@ export default function ProblemPage() {
         <p>{new Date(store.selectedSubmission.submittedAt).toLocaleString("zh-CN")} · {store.selectedSubmission.status} · 通过 {store.selectedSubmission.passed}</p>
         <pre><code>{store.selectedSubmission.sourceCode}</code></pre>
         <div className="submission-actions"><button onClick={() => store.setSelectedSubmission(null)}>关闭</button><button onClick={() => { store.setCode(store.selectedSubmission!.sourceCode); store.setSelectedSubmission(null); toast("已载入编辑器"); }}>载入到编辑器</button></div>
+      </div></div>}
+
+      {/* 桌宠比试确认框：拖入代码区先问"要不要比试"，点"是"才开 AI 解题 */}
+      {showMascotAiPrompt && <div className="modal-backdrop" onMouseDown={() => setShowMascotAiPrompt(false)}><div className="modal mascot-ai-modal" onMouseDown={(e) => e.stopPropagation()}>
+        <button className="modal-close" onClick={() => setShowMascotAiPrompt(false)}>×</button><span className="modal-kicker">TAKAGI CHALLENGE</span><h2>AI 解题，来比一局？</h2>
+        <p>把我拖到代码旁边，是想让我出手吗？勝負しよ。先让 AI 写一份 C++17，你来挑错。要是看不出来，可就算我赢咯。</p>
+        <div className="mascot-ai-actions"><button onClick={() => setShowMascotAiPrompt(false)}>还是自己来</button><button onClick={() => { setShowMascotAiPrompt(false); setShowAi(true); }}>使用 AI 解题</button></div>
       </div></div>}
 
       {/* AI Modal */}
