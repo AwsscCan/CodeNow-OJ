@@ -1,4 +1,5 @@
 import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import type { AnySQLiteColumn } from "drizzle-orm/sqlite-core";
 
 export const users = sqliteTable("user", {
   id: text("id").primaryKey(),
@@ -71,4 +72,74 @@ export const authRateLimits = sqliteTable("auth_rate_limits", {
 }, (table) => [
   primaryKey({ columns: [table.keyHash, table.action] }),
   index("auth_rate_limits_expires_at_idx").on(table.expiresAt),
+]);
+
+export const folders = sqliteTable("folders", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  parentId: text("parent_id").references((): AnySQLiteColumn => folders.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+}, (table) => [
+  index("folders_user_id_parent_id_sort_order_idx").on(table.userId, table.parentId, table.sortOrder),
+]);
+
+export const problems = sqliteTable("problems", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  folderId: text("folder_id").references(() => folders.id, { onDelete: "set null" }),
+  problemCode: text("problem_code").notNull(),
+  title: text("title").notNull(),
+  difficulty: text("difficulty").notNull(),
+  timeLimit: text("time_limit").notNull(),
+  memoryLimit: text("memory_limit").notNull(),
+  description: text("description").notNull(),
+  inputFormat: text("input_format").notNull(),
+  outputFormat: text("output_format").notNull(),
+  origin: text("origin").notNull().default("private"),
+  sourceUrl: text("source_url"),
+  extractionStatus: text("extraction_status"),
+  version: integer("version").notNull().default(1),
+  deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+}, (table) => [
+  uniqueIndex("problems_user_id_problem_code_unique").on(table.userId, table.problemCode),
+  index("problems_user_id_folder_id_deleted_at_idx").on(table.userId, table.folderId, table.deletedAt),
+  index("problems_user_id_updated_at_idx").on(table.userId, table.updatedAt),
+]);
+
+export const testCases = sqliteTable("test_cases", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  problemId: text("problem_id").notNull().references(() => problems.id, { onDelete: "cascade" }),
+  sortOrder: integer("sort_order").notNull(),
+  input: text("input").notNull(),
+  expectedOutput: text("expected_output").notNull(),
+  category: text("category"),
+  scale: integer("scale"),
+  targets: text("targets"),
+  reason: text("reason"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+}, (table) => [
+  uniqueIndex("test_cases_problem_id_sort_order_unique").on(table.problemId, table.sortOrder),
+  index("test_cases_user_id_problem_id_sort_order_idx").on(table.userId, table.problemId, table.sortOrder),
+]);
+
+export const codeDrafts = sqliteTable("code_drafts", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  problemKind: text("problem_kind").notNull(),
+  problemRef: text("problem_ref").notNull(),
+  language: text("language").notNull(),
+  sourceCode: text("source_code").notNull(),
+  version: integer("version").notNull().default(1),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+}, (table) => [
+  uniqueIndex("code_drafts_user_id_problem_ref_language_unique").on(table.userId, table.problemRef, table.language),
+  index("code_drafts_user_id_updated_at_idx").on(table.userId, table.updatedAt),
 ]);

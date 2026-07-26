@@ -22,11 +22,11 @@
 
 **Files:** `db/schema.ts`, `tests/unit/problem-schema.test.ts`, `drizzle/0003_*.sql`
 
-- [ ] Write a failing test using `getTableColumns` and `getTableConfig` that asserts `folders.userId`, `problems.problemCode/version/deletedAt`, `testCases.problemId/sortOrder`, and `codeDrafts.problemRef/language/version`, plus unique keys `(userId, problemCode)` and `(userId, problemRef, language)`.
-- [ ] Run `npm run test:unit -- tests/unit/problem-schema.test.ts`; expect missing-export failures.
-- [ ] Define the four tables. Use integer versions defaulting to `1`, timestamp-ms fields, foreign keys to `users`, and indexes beginning with `user_id`. Store `problem_kind` beside `problem_ref` in drafts so public keys and private UUIDs cannot collide.
-- [ ] Run `npm run db:generate`; inspect the migration for both unique constraints and all foreign keys. Run the focused test and `npm run build`; expect PASS.
-- [ ] Commit with `git commit -m "feat: add cloud problem data schema"`.
+- [x] Write a failing test using `getTableColumns` and `getTableConfig` that asserts `folders.userId`, `problems.problemCode/version/deletedAt`, `testCases.problemId/sortOrder`, and `codeDrafts.problemRef/language/version`, plus unique keys `(userId, problemCode)` and `(userId, problemRef, language)`.
+- [x] Run `npm run test:unit -- tests/unit/problem-schema.test.ts`; expect missing-export failures.
+- [x] Define the four tables. Use integer versions defaulting to `1`, timestamp-ms fields, foreign keys to `users`, and indexes beginning with `user_id`. Store `problem_kind` beside `problem_ref` in drafts so public keys and private UUIDs cannot collide.
+- [x] Run `npm run db:generate`; inspect the migration for both unique constraints and all foreign keys. Run the focused test and `npm run build`; expect PASS.
+- [x] Commit with `git commit -m "feat: add cloud problem data schema"`.
 
 ### Task 2: Implement validation and user-scoped repositories
 
