@@ -51,4 +51,20 @@ describe("AuthStatus", () => {
     expect(onSignedOut).toHaveBeenCalled();
     expect(push).toHaveBeenCalledWith("/");
   });
+
+  it("shows the administrator link only to administrators", () => {
+    useSession.mockReturnValue({
+      data: { user: { name: "Owner", email: "owner@example.test", role: "admin" } },
+      isPending: false,
+    });
+    const { rerender } = render(<AuthStatus onSignedOut={() => {}} />);
+    expect(screen.getByRole("link", { name: "管理控制台" }).getAttribute("href")).toBe("/admin");
+
+    useSession.mockReturnValue({
+      data: { user: { name: "Friend", email: "friend@example.test", role: "user" } },
+      isPending: false,
+    });
+    rerender(<AuthStatus onSignedOut={() => {}} />);
+    expect(screen.queryByRole("link", { name: "管理控制台" })).toBeNull();
+  });
 });

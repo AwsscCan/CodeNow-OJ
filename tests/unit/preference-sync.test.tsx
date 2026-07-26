@@ -22,6 +22,14 @@ afterEach(() => {
 });
 
 describe("PreferenceSync", () => {
+  it("defers persisted theme hydration until after the first client render", async () => {
+    expect(useThemeStore.persist.getOptions().skipHydration).toBe(true);
+    localStorage.setItem("codenow-theme", JSON.stringify({ state: { themeMode: "dark", editorTheme: "girl" }, version: 0 }));
+    useSession.mockReturnValue({ data: null, isPending: false });
+    render(<PreferenceSync delay={0} />);
+    await waitFor(() => expect(useThemeStore.getState()).toMatchObject({ themeMode: "dark", editorTheme: "girl" }));
+  });
+
   it("keeps guest preferences local without calling the cloud", () => {
     useSession.mockReturnValue({ data: null, isPending: false });
     render(<PreferenceSync delay={0} />);

@@ -8,9 +8,18 @@ export const users = sqliteTable("user", {
   email: text("email").notNull(),
   emailVerified: integer("email_verified", { mode: "boolean" }).notNull().default(false),
   image: text("image"),
+  role: text("role", { enum: ["user", "admin"] }).notNull().default("user"),
+  banned: integer("banned", { mode: "boolean" }).notNull().default(false),
+  banReason: text("ban_reason"),
+  banExpires: integer("ban_expires", { mode: "timestamp_ms" }),
+  mustChangePassword: integer("must_change_password", { mode: "boolean" }).notNull().default(false),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
-}, (table) => [uniqueIndex("user_email_unique").on(table.email)]);
+}, (table) => [
+  check("user_role_check", sql`${table.role} in ('user', 'admin')`),
+  uniqueIndex("user_email_unique").on(table.email),
+  index("user_role_banned_idx").on(table.role, table.banned),
+]);
 
 export const sessions = sqliteTable("session", {
   id: text("id").primaryKey(),
@@ -20,6 +29,7 @@ export const sessions = sqliteTable("session", {
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
   ipAddress: text("ip_address"),
   userAgent: text("user_agent"),
+  impersonatedBy: text("impersonated_by"),
   userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
 }, (table) => [
   uniqueIndex("session_token_unique").on(table.token),
@@ -138,6 +148,7 @@ export const codeDrafts = sqliteTable("code_drafts", {
   language: text("language").notNull(),
   sourceCode: text("source_code").notNull(),
   version: integer("version").notNull().default(1),
+  deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 }, (table) => [
@@ -173,6 +184,7 @@ export const aiConversations = sqliteTable("ai_conversations", {
   problemRef: text("problem_ref"),
   title: text("title").notNull(),
   version: integer("version").notNull().default(1),
+  deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 }, (table) => [
@@ -307,4 +319,30 @@ export const reports = sqliteTable("reports", {
   check("reports_status_check", sql`${table.status} in ('open', 'reviewed', 'dismissed', 'actioned')`),
   uniqueIndex("reports_reporter_target_unique").on(table.reporterUserId, table.targetKind, table.targetId),
   index("reports_status_created_at_idx").on(table.status, table.createdAt),
+]);
+
+const adminAuditActions = [
+  "user.invite",
+  "user.password_reset",
+  "user.ban",
+  "user.unban",
+  "user.sessions_revoke",
+  "user.role_change",
+  "content.soft_delete",
+  "content.restore",
+] as const;
+
+export const adminAuditLogs = sqliteTable("admin_audit_logs", {
+  id: text("id").primaryKey(),
+  adminUserId: text("admin_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  action: text("action", { enum: adminAuditActions }).notNull(),
+  targetType: text("target_type").notNull(),
+  targetId: text("target_id").notNull(),
+  requestId: text("request_id").notNull(),
+  metadataJson: text("metadata_json").notNull().default("{}"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+}, (table) => [
+  check("admin_audit_action_check", sql`${table.action} in ('user.invite', 'user.password_reset', 'user.ban', 'user.unban', 'user.sessions_revoke', 'user.role_change', 'content.soft_delete', 'content.restore')`),
+  index("admin_audit_admin_created_at_idx").on(table.adminUserId, table.createdAt),
+  index("admin_audit_target_idx").on(table.targetType, table.targetId, table.createdAt),
 ]);

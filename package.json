@@ -15,7 +15,10 @@
     "test:unit": "vitest run --exclude tests/e2e/**",
     "test:watch": "vitest",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "admin:bootstrap:local": "node scripts/bootstrap-admin.mjs --target local",
+    "release:preview": "node scripts/release-cloudflare.mjs preview",
+    "release:production": "node scripts/release-cloudflare.mjs production"
   },
   "dependencies": {
     "@better-auth/drizzle-adapter": "1.6.25",

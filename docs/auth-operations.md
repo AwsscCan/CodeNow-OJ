@@ -1,5 +1,43 @@
 # CodeNow 认证运维说明
 
+## 邀请制与首个管理员
+
+私有部署设置 `INVITE_ONLY=1` 后，公开注册、重发验证邮件和密码重置入口返回 404。管理员在 `/admin` 创建好友账户，将一次性临时密码私下发送给好友；好友首次登录必须立即设置正式密码。系统只支持软删除用户内容，不提供永久删除。
+
+本地首次初始化：
+
+```powershell
+$env:CODEFORGE_LOCAL_DB_PATH='.data/codenow.db'
+npm run admin:bootstrap:local -- --email 700whitebird007@gmail.com --name 管理员
+```
+
+命令只允许在尚无管理员时成功一次。结构化结果写入标准输出，一次性临时密码仅写入标准错误；不要把输出重定向到仓库文件。生产远程初始化还必须提供 `--confirm-production`，并通过环境变量 `ADMIN_BOOTSTRAP_TOKEN` 传入令牌，禁止把令牌或密码放进命令行参数。
+
+远程示例：
+
+```powershell
+$env:ADMIN_BOOTSTRAP_TOKEN='<从密码管理器读取>'
+$env:ADMIN_BOOTSTRAP_URL_PREVIEW='https://<preview-worker>.workers.dev'
+node scripts/bootstrap-admin.mjs --target preview --email 700whitebird007@gmail.com --name 管理员
+```
+
+初始化成功后立即登录并更换临时密码。重复执行只返回 `alreadyExists: true`，不会再次显示凭据。
+
+## Cloudflare 私有发布
+
+预览和生产必须分别使用 `codenow-oj-preview`、`codenow-oj-production` Worker，以及同名的两个独立 D1 数据库，绑定名统一为 `DB`。两套环境均启用 `workers.dev`、`INVITE_ONLY=1` 和 `migrations_dir="drizzle"`，不配置自定义域名、Resend 或公开注册。
+
+不要把以下值写入 `wrangler.jsonc`：`BETTER_AUTH_SECRET`、`ADMIN_BOOTSTRAP_TOKEN`。用 `node scripts/generate-auth-secret.mjs` 为四个环境/用途分别生成值，再逐项执行 `wrangler secret put <NAME> --env preview|production`。每个值只进入密码管理器和 Wrangler 标准输入。
+
+发布命令：
+
+```powershell
+npm run release:preview
+npm run release:production
+```
+
+脚本先验证配置，再按“D1 导出备份 → 应用迁移 → 部署”的顺序执行。生产发布会先重新发布并冒烟验证预览；预览失败时不会执行任何生产命令。备份位于已忽略的 `backups/`。Worker 回滚只回滚应用版本，D1 迁移采用前向修复，并保留迁移前备份。
+
 ## 必需环境变量
 
 - `BETTER_AUTH_SECRET`：至少 32 个随机字符；生产环境缺失时服务拒绝启动认证。
