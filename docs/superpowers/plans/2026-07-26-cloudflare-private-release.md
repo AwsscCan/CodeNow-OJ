@@ -42,7 +42,7 @@
 - Create: `scripts/generate-auth-secret.mjs`
 - Modify: `docs/auth-operations.md`
 
-- [ ] Test that the generator emits at least 32 random bytes and never writes a file.
+- [x] Test that the generator emits at least 32 random bytes and never writes a file.
 - [ ] Set distinct `BETTER_AUTH_SECRET` and `ADMIN_BOOTSTRAP_TOKEN` values with `npx wrangler secret put <NAME> --env preview` and `--env production`.
 - [ ] Set `BETTER_AUTH_URL` and `INVITE_ONLY=1` as environment variables in `wrangler.jsonc`; omit `RESEND_API_KEY` and `AUTH_EMAIL_FROM` while no domain exists.
 - [ ] Run `npx wrangler secret list` for each environment and verify only secret names are displayed.
@@ -55,9 +55,9 @@
 - Create: `tests/unit/release-gates.test.ts`
 - Modify: `package.json`
 
-- [ ] Write failing tests with a fake command runner proving preview failure prevents production commands, backups precede migrations, and production requires successful preview smoke output.
-- [ ] Implement `release:preview` and `release:production` scripts using argument arrays rather than shell-built strings. Store backups under ignored `backups/` and stop on every non-zero exit.
-- [ ] Verify RED then GREEN with `npm run test:unit -- tests/unit/release-gates.test.ts`.
+- [x] Write failing tests with a fake command runner proving preview failure prevents production commands, backups precede migrations, and production requires successful preview smoke output.
+- [x] Implement `release:preview` and `release:production` scripts using argument arrays rather than shell-built strings. Store backups under ignored `backups/` and stop on every non-zero exit.
+- [x] Verify RED then GREEN with `npm run test:unit -- tests/unit/release-gates.test.ts`.
 - [ ] Commit with `git commit -m "ops: gate Cloudflare database releases"`.
 
 ### Task 5: Deploy preview and run acceptance tests
