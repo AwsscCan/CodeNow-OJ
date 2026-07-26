@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-/* eslint-disable import/order -- Vitest 要求环境指令先于 import。 */
+ 
 import { fireEvent, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { useEscapeClose } from "../../app/hooks/use-escape-close";

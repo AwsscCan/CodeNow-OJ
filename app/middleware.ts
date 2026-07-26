@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
+import { NextRequest, NextResponse } from "next/server";
 import { createLocalDb, type Database } from "../db/client";
 import { users } from "../db/schema";
 import { getRuntimeServices } from "./lib/auth";

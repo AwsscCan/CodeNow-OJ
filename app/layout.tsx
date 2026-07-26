@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import { LocalDataMigration } from "./components/local-data-migration";
 import { InvitationPasswordGate } from "./components/invitation-password-gate";
+import { LocalDataMigration } from "./components/local-data-migration";
 import { MascotWrapper } from "./components/mascot-wrapper";
 import { PreferenceSync } from "./components/preference-sync";
 import "./globals.css";

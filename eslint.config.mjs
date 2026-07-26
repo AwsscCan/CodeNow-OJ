@@ -39,6 +39,7 @@ const eslintConfig = defineConfig([
     ".wrangler/**",
     "work/**",
     ".npm-cache/**",
+    ".worktrees/**",
   ]),
 ]);
 

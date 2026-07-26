@@ -1,5 +1,5 @@
-import { requireAdmin } from "../../server/admin/admin-authorization";
 import type { Database } from "../../../db/client";
+import { requireAdmin } from "../../server/admin/admin-authorization";
 
 export type AdminRouteContext = { userId: string; services: { db: Database } };
 export type ResolveAdmin = (request: Request) => Promise<AdminRouteContext | null>;

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-/* eslint-disable import/order -- Vitest 要求环境指令先于 import。 */
+ 
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProblemEditor } from "../../app/components/problem-editor";

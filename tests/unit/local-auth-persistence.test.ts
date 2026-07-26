@@ -1,7 +1,7 @@
-import { eq } from "drizzle-orm";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 import { createLocalRuntimeServices } from "../../app/lib/auth";
 import { users } from "../../db/schema";

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-/* eslint-disable import/order -- Vitest 要求环境指令先于 import。 */
+ 
 import { cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { SafeMarkdown } from "../../app/components/notes/safe-markdown";

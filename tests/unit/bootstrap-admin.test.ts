@@ -1,10 +1,10 @@
-import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { eq } from "drizzle-orm";
+import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { describe, expect, it } from "vitest";
+import { createBootstrapAdminHandlers } from "../../app/api/internal/bootstrap-admin/route";
+import { createBootstrapAdminService } from "../../app/server/admin/admin-bootstrap";
 import { createLocalDb } from "../../db/client";
 import { accounts, users } from "../../db/schema";
-import { createBootstrapAdminService } from "../../app/server/admin/admin-bootstrap";
-import { createBootstrapAdminHandlers } from "../../app/api/internal/bootstrap-admin/route";
 import { parseBootstrapArguments } from "../../scripts/bootstrap-admin.mjs";
 
 function migratedDb() {
