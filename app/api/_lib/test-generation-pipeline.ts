@@ -52,6 +52,17 @@ const EMPTY_PROFILE: ProblemProfile = {
   stressScale: 1,
 };
 
+// Canonical dedup key: two inputs that differ only by per-line trailing
+// whitespace, CRLF, or blank-line padding are the same test case. The stored
+// input keeps its original formatting; only the dedup fingerprint is canonical.
+function canonicalKey(input: string): string {
+  return input
+    .replace(/\r\n/g, "\n")
+    .replace(/[ \t]+$/gm, "")
+    .replace(/\n{2,}/g, "\n")
+    .trim();
+}
+
 function categoryOf(value: string): Category {
   const category = String(value || "").toLowerCase();
   if (/performance|stress|large|max|性能|压力/.test(category)) return "performance";
@@ -179,7 +190,7 @@ function selectByQuota(candidates: GeneratedTest[], target: number, quota: Recor
     for (const test of candidates) {
       if (selected.length >= target || limit <= 0) break;
       if (category && test.category !== category) continue;
-      const key = test.input.trim();
+      const key = canonicalKey(test.input);
       if (used.has(key)) continue;
       used.add(key);
       selected.push(test);
@@ -303,7 +314,7 @@ export async function generateComplexityAwareTests(options: {
   }
 
   const candidates: GeneratedTest[] = [];
-  const fingerprints = new Set(existing.map((test) => test.input.trim()));
+  const fingerprints = new Set(existing.map((test) => canonicalKey(test.input)));
   let profile: ProblemProfile = options.validatedRef ? {
     ...EMPTY_PROFILE,
     acceptedComplexity: options.validatedRef.expectedTimeComplexity,
@@ -316,13 +327,10 @@ export async function generateComplexityAwareTests(options: {
   const auditedCases = new Set<string>();
   const maxAttempts = Math.min(8, Math.max(3, Math.ceil(target / 8) + 2));
 
-  const stillNeedsCases = () => candidates.length < target || Object.values(missingQuota(quota, candidates)).some((value) => value > 0);
-  while (stillNeedsCases() && batches < maxAttempts && stagnant < 3 && Date.now() < overallDeadline - 1_500) {
-    const remainingCount = Math.max(0, target - candidates.length);
-    const gaps = missingQuota(quota, candidates);
-    const missingCategories = Object.values(gaps).reduce((sum, value) => sum + value, 0);
-    const baseRequest = Math.max(remainingCount, missingCategories);
-    const requested = batches === 0 && target > 6 ? Math.min(4, baseRequest) : Math.min(12, Math.max(1, Math.ceil(baseRequest * 1.2)));
+  // Run a single AI generation batch: prompt, parse, dedupe, append. Returns
+  // how many brand-new candidates were accepted. Shared by the main generation
+  // loop and the reference backfill loop.
+  async function runBatch(requested: number, gaps: Record<Category, number>): Promise<number> {
     const prompt = batchPrompt({ problemDigest, requested, quota: gaps, accepted: candidates, existing, profile, hasReference, first: batches === 0, generationContext });
     const messages = previousRaw
       ? [{ role: "assistant", content: previousRaw.slice(-14_000) }, { role: "user", content: prompt }]
@@ -353,7 +361,7 @@ export async function generateComplexityAwareTests(options: {
             }
           }
           for (const index of rejectedIndexes.sort((a, b) => b - a)) {
-            fingerprints.delete(candidates[index].input.trim());
+            fingerprints.delete(canonicalKey(candidates[index].input));
             candidates.splice(index, 1);
           }
         }
@@ -364,7 +372,7 @@ export async function generateComplexityAwareTests(options: {
         const normalized = normalizeCandidate(rawTest);
         if (!normalized || (!hasReference && !normalized.output.trim())) continue;
         const test = enforceCategoryEvidence(normalized, profile);
-        const key = test.input.trim();
+        const key = canonicalKey(test.input);
         if (fingerprints.has(key)) continue;
         fingerprints.add(key);
         candidates.push(test);
@@ -373,31 +381,84 @@ export async function generateComplexityAwareTests(options: {
       previousRaw = raw;
       stagnant = added ? 0 : stagnant + 1;
       if (!added) warnings.push(`batch ${batches} returned no new valid cases`);
+      return added;
     } catch (error) {
       stagnant += 1;
       warnings.push(`batch ${batches} failed: ${error instanceof Error ? error.message : String(error)}`);
       previousRaw = "";
+      return 0;
     }
   }
 
-  let selected = selectByQuota(candidates, target, quota);
+  const stillNeedsCases = () => candidates.length < target || Object.values(missingQuota(quota, candidates)).some((value) => value > 0);
+  while (stillNeedsCases() && batches < maxAttempts && stagnant < 3 && Date.now() < overallDeadline - 1_500) {
+    const remainingCount = Math.max(0, target - candidates.length);
+    const gaps = missingQuota(quota, candidates);
+    const missingCategories = Object.values(gaps).reduce((sum, value) => sum + value, 0);
+    const baseRequest = Math.max(remainingCount, missingCategories);
+    const requested = batches === 0 && target > 6 ? Math.min(4, baseRequest) : Math.min(12, Math.max(1, Math.ceil(baseRequest * 1.2)));
+    await runBatch(requested, gaps);
+  }
+
+  let selected: GeneratedTest[];
   let computedCount = 0;
-  if (hasReference && selected.length) {
+  if (hasReference) {
+    let languageId: number | null = null;
     try {
-      const languageId = await getCppLanguageId();
-      const computed = await Promise.all(selected.map(async (test) => {
-        try {
-          const result = await judge0Submit(referenceSolution, test.input, languageId);
-          if (!result.accepted) return null;
-          computedCount += 1;
-          return { ...test, output: result.stdout.endsWith("\n") ? result.stdout : `${result.stdout}\n` };
-        } catch { return null; }
-      }));
-      selected = computed.filter((test): test is GeneratedTest => Boolean(test));
+      languageId = await getCppLanguageId();
     } catch (error) {
       warnings.push(`reference verification failed: ${error instanceof Error ? error.message : String(error)}`);
-      selected = selected.filter((test) => test.output.trim());
     }
+
+    if (languageId === null) {
+      // Cannot reach the compiler — keep whatever draft outputs exist.
+      selected = selectByQuota(candidates, target, quota).filter((test) => test.output.trim());
+    } else {
+      const lang = languageId;
+      const verified: GeneratedTest[] = [];
+      const usedKeys = new Set<string>();
+      const verify = async (pool: GeneratedTest[]) => {
+        for (const test of pool) {
+          if (verified.length >= target) break;
+          const key = canonicalKey(test.input);
+          if (usedKeys.has(key)) continue;
+          try {
+            const result = await judge0Submit(referenceSolution, test.input, lang);
+            if (!result.accepted) continue;
+            usedKeys.add(key);
+            verified.push({ ...test, output: result.stdout.endsWith("\n") ? result.stdout : `${result.stdout}\n` });
+            computedCount += 1;
+          } catch { /* input rejected by the reference — skip and backfill */ }
+        }
+      };
+
+      // Verify in quota-priority order first, then the rest of the pool.
+      await verify(selectByQuota(candidates, target, quota));
+      if (verified.length < target) await verify(candidates);
+
+      // Backfill: reference verification may drop malformed inputs, so keep
+      // generating and verifying fresh cases until we reach the exact target.
+      let backfillAttempts = 0;
+      let backfillStagnant = 0;
+      while (verified.length < target && backfillAttempts < maxAttempts && backfillStagnant < 2 && Date.now() < overallDeadline - 2_000) {
+        const before = candidates.length;
+        const gaps = missingQuota(quota, verified);
+        const need = target - verified.length;
+        const missingCategories = Object.values(gaps).reduce((sum, value) => sum + value, 0);
+        const requested = Math.min(12, Math.max(1, Math.ceil(Math.max(need, missingCategories) * 1.2)));
+        await runBatch(requested, gaps);
+        backfillAttempts += 1;
+        if (candidates.length > before) {
+          await verify(candidates.slice(before));
+          backfillStagnant = 0;
+        } else {
+          backfillStagnant += 1;
+        }
+      }
+      selected = verified;
+    }
+  } else {
+    selected = selectByQuota(candidates, target, quota);
   }
 
   const categoryCounts = countsOf(selected);

@@ -2,6 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseGeneratedTests } from "../../app/api/_lib/complexity-tests";
 import { buildCategoryQuota, generateComplexityAwareTests } from "../../app/api/_lib/test-generation-pipeline";
 
+const judge0SubmitMock = vi.fn();
+vi.mock("../../app/api/_lib/reference-solution", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../app/api/_lib/reference-solution")>();
+  return { ...actual, judge0Submit: (...args: unknown[]) => judge0SubmitMock(...args) };
+});
+
 const problem = {
   id: "T1",
   title: "求和",
@@ -152,6 +158,99 @@ describe("test generation pipeline", () => {
     expect(result.tests).toHaveLength(5);
     expect(result.report.qualityOk).toBe(true);
     expect(result.report.categoryCounts).toMatchObject({ boundary: 1, special: 1, ordinary: 1, adversarial: 1, performance: 1 });
+  });
+
+  it("treats internal-line trailing-whitespace variants as duplicate inputs", async () => {
+    const responses = [
+      aiResponse([
+        test("1\n0\n", "0\n", "boundary"),
+        test("2\n7 7\n", "14\n", "special"),
+        test("3\n9 -9 5\n", "5\n", "adversarial"),
+        test("6\n1 1 1 1 1 1\n", "6\n", "performance", 100000),
+        test("2\n5 5\n", "10\n", "ordinary"),
+        // identical test but with a trailing space on the first line — must be deduped
+        test("2 \n5 5\n", "10\n", "ordinary"),
+      ]),
+      aiResponse([
+        test("4\n1 2 3 4\n", "10\n", "ordinary"),
+      ]),
+    ];
+    const fetchMock = vi.fn(async () => responses.shift()!);
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await generateComplexityAwareTests({
+      apiKey: "test-key",
+      endpoint: "https://api.deepseek.com",
+      model: "deepseek-chat",
+      problem,
+      count: 6,
+    });
+
+    const canonical = (value: string) => value.replace(/[ \t]+$/gm, "").replace(/\n{2,}/g, "\n").trim();
+    const canonicalInputs = result.tests.map((item) => canonical(item.input));
+    expect(new Set(canonicalInputs).size).toBe(result.tests.length);
+    expect(result.tests).toHaveLength(6);
+    expect(result.report.categoryCounts).toMatchObject({ ordinary: 2 });
+  });
+
+  it("backfills after a validated reference rejects some generated inputs", async () => {
+    judge0SubmitMock.mockReset();
+    // The reference program accepts every input except the one flagged BAD.
+    judge0SubmitMock.mockImplementation(async (_src: string, input: string) => (
+      input.includes("BAD")
+        ? { accepted: false, stdout: "", stderr: "runtime error", compileError: "", statusId: 11, time: 5 }
+        : { accepted: true, stdout: "OK\n", stderr: "", compileError: "", statusId: 3, time: 5 }
+    ));
+
+    const aiResponses = [
+      // First batch: the adversarial case has a malformed (BAD) input.
+      aiResponse([
+        test("1\n0\n", "0\n", "boundary"),
+        test("2\n7 7\n", "14\n", "special"),
+        test("3\n1 2 3\n", "6\n", "ordinary"),
+        test("9\nBAD\n", "0\n", "adversarial"),
+      ]),
+      // Backfill batch: a valid adversarial replacement.
+      aiResponse([
+        test("5\n1 -1 2 -2 100\n", "100\n", "adversarial"),
+      ]),
+    ];
+    vi.stubGlobal("fetch", vi.fn(async (url: string | URL) => {
+      if (String(url).includes("/languages")) {
+        return new Response(JSON.stringify([{ id: 54, name: "C++ (GCC 9.2.0)" }]), { status: 200 });
+      }
+      return aiResponses.shift()!;
+    }));
+
+    const validatedRef = {
+      solutionCode: "int main(){return 0;}",
+      bruteCode: "int main(){return 0;}",
+      algorithmSummary: "prefix sum",
+      expectedTimeComplexity: "O(n)",
+      expectedSpaceComplexity: "O(1)",
+      bruteMaxScale: 10,
+      report: {
+        status: "validated" as const, compiled: true, samplesPassed: true,
+        differentialTestsPassed: 8, differentialTestsFailed: 0, errors: [],
+      },
+    };
+
+    const result = await generateComplexityAwareTests({
+      apiKey: "test-key",
+      endpoint: "https://api.deepseek.com",
+      model: "deepseek-chat",
+      problem,
+      count: 4,
+      validatedRef,
+    });
+
+    // The BAD input must be dropped, then backfilled to reach the exact target.
+    expect(result.tests).toHaveLength(4);
+    expect(result.tests.some((item) => item.input.includes("BAD"))).toBe(false);
+    expect(result.tests.every((item) => item.output === "OK\n")).toBe(true);
+    expect(result.report.computedCount).toBe(4);
+    expect(result.report.referenceValidated).toBe(true);
+    expect(result.report.categoryCounts).toMatchObject({ adversarial: 1 });
   });
 });
 
