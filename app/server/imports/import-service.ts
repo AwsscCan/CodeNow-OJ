@@ -1,7 +1,7 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import type { Database } from "../../../db/client";
 import { createD1Db, createLocalDb } from "../../../db/client";
-import { codeDrafts, dataImports, folders, problems, testCases } from "../../../db/schema";
+import { codeDrafts, dataImports, folders, problems, testCases, userPreferences } from "../../../db/schema";
 import { MAX_SUBMISSION_SOURCE_LENGTH } from "../../api/_lib/constants";
 import { fingerprintManifest } from "../../lib/local-data/fingerprint";
 import type { LocalDataManifestV1 } from "../../lib/local-data/types";
@@ -305,6 +305,15 @@ export function createImportService(db: Database) {
         },
       };
       const importRow = { id: crypto.randomUUID(), userId, idempotencyKey, fingerprint, resultJson: JSON.stringify(summary), createdAt: now };
+      const preferenceRow = input.preferences.themeMode || input.preferences.editorTheme ? {
+        userId,
+        themeMode: input.preferences.themeMode ?? "light",
+        editorTheme: input.preferences.editorTheme ?? "light",
+        settingsJson: "{}",
+        version: 1,
+        createdAt: now,
+        updatedAt: now,
+      } : null;
 
       try {
         if (isD1Database(db)) {
@@ -332,6 +341,7 @@ export function createImportService(db: Database) {
             id: crypto.randomUUID(), userId, problemKind: "private", problemRef: draftProblemId, language: input.currentDraft.language,
             sourceCode: input.currentDraft.sourceCode, version: 1, createdAt: now, updatedAt: now,
           }).onConflictDoUpdate({ target: [codeDrafts.userId, codeDrafts.problemKind, codeDrafts.problemRef, codeDrafts.language], set: { sourceCode: input.currentDraft.sourceCode, updatedAt: now } }));
+          if (preferenceRow) statements.push(db.insert(userPreferences).values(preferenceRow).onConflictDoNothing({ target: userPreferences.userId }));
           statements.push(db.insert(dataImports).values(importRow));
           await db.batch(statements as unknown as Parameters<typeof db.batch>[0]);
         } else {
@@ -356,6 +366,7 @@ export function createImportService(db: Database) {
             id: crypto.randomUUID(), userId, problemKind: "private", problemRef: draftProblemId, language: input.currentDraft.language,
             sourceCode: input.currentDraft.sourceCode, version: 1, createdAt: now, updatedAt: now,
           }).onConflictDoUpdate({ target: [codeDrafts.userId, codeDrafts.problemKind, codeDrafts.problemRef, codeDrafts.language], set: { sourceCode: input.currentDraft.sourceCode, updatedAt: now } }).run();
+          if (preferenceRow) tx.insert(userPreferences).values(preferenceRow).onConflictDoNothing({ target: userPreferences.userId }).run();
           tx.insert(dataImports).values(importRow).run();
           });
         }

@@ -8,7 +8,7 @@ import { parseLocalData } from "../../app/lib/local-data/parse";
 import { createImportService } from "../../app/server/imports/import-service";
 import { createProblemRepository } from "../../app/server/problems/problem-repository";
 import { createLocalDb } from "../../db/client";
-import { codeDrafts, dataImports, folders, problems, testCases, users } from "../../db/schema";
+import { codeDrafts, dataImports, folders, problems, testCases, userPreferences, users } from "../../db/schema";
 
 describe("local migration phase verification", () => {
   let db: ReturnType<typeof createLocalDb>;
@@ -53,6 +53,7 @@ describe("local migration phase verification", () => {
     expect(await ownedCounts("user-a")).toEqual({ folders: 2, problems: 2, testCases: 3, drafts: 1, imports: 1 });
     expect((await db.select().from(problems).where(eq(problems.userId, "user-a"))).map((row) => row.title).sort()).toEqual(["A + B", "边界计数"]);
     expect((await db.select().from(codeDrafts).where(eq(codeDrafts.userId, "user-a")))[0].sourceCode).toContain("main");
+    expect((await db.select().from(userPreferences).where(eq(userPreferences.userId, "user-a")))[0]).toMatchObject({ themeMode: "dark", editorTheme: "light" });
     expect(await ownedCounts("user-b")).toEqual({ folders: 0, problems: 0, testCases: 0, drafts: 0, imports: 0 });
   });
 

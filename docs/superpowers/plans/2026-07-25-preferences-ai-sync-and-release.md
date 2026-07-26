@@ -24,11 +24,11 @@
 
 **Files:** `app/server/preferences/preference-repository.ts`, `app/api/preferences/route.ts`, `app/stores/theme-store.ts`, `tests/unit/preferences-api.test.ts`
 
-- [ ] Write tests for anonymous `401`, per-user isolation, initial GET defaults, conditional PATCH, stale `409`, unknown-key rejection, and rejection of `apiKey`, `apiKeys`, `token`, or `secret` at any JSON depth.
-- [ ] Run focused tests; expect failure.
-- [ ] Allow only `themeMode` and `editorTheme` initially. Implement GET/PATCH with versioning and no-store responses.
-- [ ] Hydrate cloud preferences after login and debounce changes; guests retain current local persistence. Never modify `ai-store` API-key persistence in this task.
-- [ ] Run tests/build and commit with `git commit -m "feat: sync safe user preferences"`.
+- [x] Write tests for anonymous `401`, per-user isolation, initial GET defaults, conditional PATCH, stale `409`, unknown-key rejection, and rejection of `apiKey`, `apiKeys`, `token`, or `secret` at any JSON depth.
+- [x] Run focused tests; expect failure.
+- [x] Allow only `themeMode` and `editorTheme` initially. Implement GET/PATCH with versioning and no-store responses.
+- [x] Hydrate cloud preferences after login and debounce changes; guests retain current local persistence. Never modify `ai-store` API-key persistence in this task.
+- [x] Run tests/build and commit with `git commit -m "feat: sync safe user preferences"`.
 
 ### Task 3: Implement user-owned AI conversations
 
