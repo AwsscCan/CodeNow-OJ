@@ -1,8 +1,8 @@
 import { count } from "drizzle-orm";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { beforeEach, describe, expect, it } from "vitest";
-import { createConversationHandlers } from "../../app/api/conversations/route";
 import { createConversationMessageHandlers } from "../../app/api/conversations/[id]/messages/route";
+import { createConversationHandlers } from "../../app/api/conversations/route";
 import { createConversationRepository } from "../../app/server/conversations/conversation-repository";
 import { createLocalDb } from "../../db/client";
 import { aiMessages, users } from "../../db/schema";

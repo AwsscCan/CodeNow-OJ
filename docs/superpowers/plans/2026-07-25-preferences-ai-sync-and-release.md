@@ -54,11 +54,11 @@
 
 **Files:** `db/schema.ts`, `app/server/security/auth-rate-limit.ts`, `app/server/observability/events.ts`, `app/middleware.ts`, `tests/unit/security-boundaries.test.ts`, `docs/auth-operations.md`
 
-- [ ] Write tests for IP+email auth limits, per-user write quotas, private cache headers, log redaction, Markdown/script payload handling, and account A/B object-ID swapping across every route family.
-- [ ] Run focused tests; expect at least rate-limit and event failures.
-- [ ] Extend the D1-backed `auth_rate_limits` service created in Plan 1 with per-user quota actions and expiry cleanup; never store raw password/reset token. Add structured events containing request ID, event name, status, duration, and opaque user hash only.
-- [ ] Enforce quotas centrally and update operations docs with thresholds, Resend domain verification, D1 migration/backup/restore, secret rotation, incident Session revocation, and rollback steps.
-- [ ] Run focused tests, lint, full tests, and build; commit with `git commit -m "feat: enforce account security boundaries"`.
+- [x] Write tests for IP+email auth limits, per-user write quotas, private cache headers, log redaction, Markdown/script payload handling, and account A/B object-ID swapping across every route family.
+- [x] Run focused tests; expect at least rate-limit and event failures.
+- [x] Extend the D1-backed `auth_rate_limits` service created in Plan 1 with per-user quota actions and expiry cleanup; never store raw password/reset token. Add structured events containing request ID, event name, status, duration, and opaque user hash only.
+- [x] Enforce quotas centrally and update operations docs with thresholds, Resend domain verification, D1 migration/backup/restore, secret rotation, incident Session revocation, and rollback steps.
+- [x] Run focused tests, lint, full tests, and build; commit with `git commit -m "feat: enforce account security boundaries"`.
 
 ### Task 6: Complete two-user end-to-end and release gates
 

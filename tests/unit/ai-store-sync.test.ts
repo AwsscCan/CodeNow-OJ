@@ -1,5 +1,4 @@
 // @vitest-environment jsdom
-/* eslint-disable import/order -- Vitest requires its environment directive before imports. */
 import "fake-indexeddb/auto";
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

@@ -1,7 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getRuntimeServices } from "./lib/auth";
+import { createSecurityEvent, emitSecurityEvent } from "./server/observability/events";
+import { guardUserWriteRequest } from "./server/security/auth-rate-limit";
 
-export function middleware(_request: NextRequest) {
+export async function middleware(request: NextRequest) {
+  const requestId = request.headers.get("x-request-id") ?? crypto.randomUUID();
+  const startedAt = Date.now();
+  if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method) && request.nextUrl.pathname.startsWith("/api/")) {
+    try {
+      const services = await getRuntimeServices(request);
+      const session = await services.auth.api.getSession({ headers: request.headers });
+      if (session) {
+        const limited = await guardUserWriteRequest(services.db, request, session.user.id, services.rateLimitPepper);
+        emitSecurityEvent(await createSecurityEvent({
+          requestId,
+          eventName: "private.write.guard",
+          status: limited?.status ?? 200,
+          durationMs: Date.now() - startedAt,
+          userId: session.user.id,
+          pepper: services.rateLimitPepper,
+          details: { method: request.method },
+        }));
+        if (limited) {
+          limited.headers.set("x-request-id", requestId);
+          return limited;
+        }
+      }
+    } catch {
+      return Response.json(
+        { error: { code: "SECURITY_GUARD_UNAVAILABLE", message: "安全检查暂时不可用" } },
+        { status: 503, headers: { "Cache-Control": "private, no-store", "x-request-id": requestId } },
+      );
+    }
+  }
   const response = NextResponse.next();
+  response.headers.set("x-request-id", requestId);
 
   // Security headers
   response.headers.set("x-content-type-options", "nosniff");

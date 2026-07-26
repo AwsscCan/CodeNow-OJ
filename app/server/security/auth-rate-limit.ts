@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { lte, sql } from "drizzle-orm";
 import type { Database } from "../../../db/client";
 import { createLocalDb } from "../../../db/client";
 import { authRateLimits } from "../../../db/schema";
@@ -55,6 +55,59 @@ export async function checkAuthRateLimit(db: Database, input: RateLimitInput) {
     remaining: Math.max(0, input.limit - row.attempts),
     expiresAt: row.expiresAt.toISOString(),
   };
+}
+
+export async function cleanupExpiredRateLimits(db: Database, now = new Date()) {
+  const database = db as RateLimitDb;
+  const rows = await database.delete(authRateLimits).where(lte(authRateLimits.expiresAt, now))
+    .returning({ keyHash: authRateLimits.keyHash, action: authRateLimits.action });
+  return rows.length;
+}
+
+export async function checkUserWriteQuota(db: Database, input: {
+  userId: string;
+  action: string;
+  pepper: string;
+  limit: number;
+  windowMs: number;
+}) {
+  await cleanupExpiredRateLimits(db);
+  return checkAuthRateLimit(db, {
+    action: `write:${input.action}`,
+    identifier: `user:${input.userId}`,
+    pepper: input.pepper,
+    limit: input.limit,
+    windowMs: input.windowMs,
+  });
+}
+
+const USER_WRITE_LIMITS: Record<string, { action: string; limit: number }> = {
+  folders: { action: "folders", limit: 300 },
+  problems: { action: "problems", limit: 300 },
+  drafts: { action: "drafts", limit: 600 },
+  submissions: { action: "submissions", limit: 300 },
+  preferences: { action: "preferences", limit: 120 },
+  conversations: { action: "conversations", limit: 600 },
+  imports: { action: "imports", limit: 20 },
+};
+
+export async function guardUserWriteRequest(db: Database, request: Request, userId: string, pepper: string) {
+  if (!new Set(["POST", "PUT", "PATCH", "DELETE"]).has(request.method)) return null;
+  const family = new URL(request.url).pathname.split("/")[2] ?? "";
+  const config = USER_WRITE_LIMITS[family];
+  if (!config) return null;
+  const result = await checkUserWriteQuota(db, {
+    userId,
+    action: config.action,
+    pepper,
+    limit: config.limit,
+    windowMs: 60 * 60_000,
+  });
+  if (result.allowed) return null;
+  return Response.json(
+    { error: { code: "WRITE_QUOTA_EXCEEDED", message: "写入操作过于频繁，请稍后重试" } },
+    { status: 429, headers: { "Cache-Control": "private, no-store", "Retry-After": "3600" } },
+  );
 }
 
 const AUTH_LIMITS: Record<string, { action: string; limit: number }> = {
