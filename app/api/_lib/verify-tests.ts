@@ -1,75 +1,29 @@
 // Judge0-based verification of AI-generated test cases.
 // Runs a reference solution against each test input and compares actual output with AI's expected output.
 
-import { JUDGE0_BASE, CPU_TIME_LIMIT_SECONDS, WALL_TIME_LIMIT_SECONDS, MEMORY_LIMIT_KB, JUDGE_POLL_INTERVAL_MS, JUDGE_FIRST_POLL_MS, JUDGE_MAX_POLLS } from "./constants";
+import { CPU_TIME_LIMIT_SECONDS, WALL_TIME_LIMIT_SECONDS, MEMORY_LIMIT_KB } from "./constants";
+import { decode, encode, getCppLanguageId, submitSingle } from "./judge0-client";
 
 type VerifiableTest = { input: string; output: string; category?: string; scale?: number; targets?: string; reason?: string };
 type VerifiedTest = VerifiableTest & { verified: boolean; actualOutput?: string };
 
-function encode(value: string): string {
-  const bytes = new TextEncoder().encode(value);
-  let binary = "";
-  for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
-  return btoa(binary);
-}
-
-function decode(value?: string | null): string {
-  if (!value) return "";
-  try {
-    const binary = atob(value);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-    return new TextDecoder().decode(bytes);
-  } catch { return ""; }
-}
-
-async function getCppLanguageId() {
-  const response = await fetch(`${JUDGE0_BASE}/languages`, { headers: { Accept: "application/json" } });
-  if (!response.ok) throw new Error("无法读取 C++ 编译器列表");
-  const languages = await response.json() as { id: number; name: string }[];
-  const preferred = languages.find((item) => item.name.includes("C++ (GCC 14"))
-    || languages.find((item) => item.name.includes("C++ (GCC 9"))
-    || languages.find((item) => item.name.includes("C++"));
-  if (!preferred) throw new Error("判题服务没有可用的 C++ 编译器");
-  return preferred.id;
-}
+const VERIFY_FIELDS = "stdout,stderr,compile_output,message,status";
 
 async function runSingleTest(sourceCode: string, input: string, languageId: number): Promise<{ actual: string; error?: string }> {
-  const create = await fetch(`${JUDGE0_BASE}/submissions?base64_encoded=true`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify({
-      language_id: languageId,
-      source_code: encode(sourceCode),
-      stdin: encode(input),
-      cpu_time_limit: CPU_TIME_LIMIT_SECONDS,
-      wall_time_limit: WALL_TIME_LIMIT_SECONDS,
-      memory_limit: MEMORY_LIMIT_KB,
-    }),
-  });
-  const created = await create.json() as { token?: string; error?: string };
-  if (!create.ok || !created.token) throw new Error(created.error || "验证提交失败");
+  const result = await submitSingle({
+    language_id: languageId,
+    source_code: encode(sourceCode),
+    stdin: encode(input),
+    cpu_time_limit: CPU_TIME_LIMIT_SECONDS,
+    wall_time_limit: WALL_TIME_LIMIT_SECONDS,
+    memory_limit: MEMORY_LIMIT_KB,
+  }, VERIFY_FIELDS);
+  if (!result) throw new Error("验证判题超时");
 
-  type JudgeResult = { stdout?: string | null; stderr?: string | null; compile_output?: string | null; message?: string | null; status: { id: number } };
-  let result: JudgeResult | null = null;
-  for (let attempt = 0; attempt < JUDGE_MAX_POLLS; attempt += 1) {
-    await new Promise((resolve) => setTimeout(resolve, attempt === 0 ? JUDGE_FIRST_POLL_MS : JUDGE_POLL_INTERVAL_MS));
-    const response = await fetch(`${JUDGE0_BASE}/submissions/${created.token}?base64_encoded=true&fields=stdout,stderr,compile_output,message,status`, { headers: { Accept: "application/json" } });
-    if (!response.ok) throw new Error("读取验证结果失败");
-    result = await response.json() as JudgeResult;
-    if (result.status.id > 2) break;
-  }
-  if (!result || result.status.id <= 2) throw new Error("验证判题超时");
-
-  if (result.status.id === 6) { // Compile Error
-    return { actual: "", error: decode(result.compile_output) || "参考解答编译错误" };
-  }
-  if (result.status.id === 5) { // TLE
-    return { actual: "", error: "参考解答在验证时超时" };
-  }
-  if (result.status.id !== 3 && result.status.id !== 4) { // Error/RE
-    return { actual: "", error: decode(result.compile_output) || decode(result.stderr) || decode(result.message) || "参考解答运行时错误" };
-  }
+  const id = result.status.id;
+  if (id === 6) return { actual: "", error: decode(result.compile_output) || "参考解答编译错误" }; // Compile Error
+  if (id === 5) return { actual: "", error: "参考解答在验证时超时" }; // TLE
+  if (id !== 3 && id !== 4) return { actual: "", error: decode(result.compile_output) || decode(result.stderr) || decode(result.message) || "参考解答运行时错误" }; // Error/RE
 
   return { actual: decode(result.stdout).trim() };
 }

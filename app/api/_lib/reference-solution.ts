@@ -3,23 +3,11 @@
 
 import {
   CPU_TIME_LIMIT_SECONDS,
-  JUDGE0_BASE,
-  JUDGE_FIRST_POLL_MS,
-  JUDGE_MAX_POLLS,
-  JUDGE_POLL_INTERVAL_MS,
   MEMORY_LIMIT_KB,
   WALL_TIME_LIMIT_SECONDS,
 } from "./constants";
+import { decode, encode, getCppLanguageId, submitSingle } from "./judge0-client";
 import { validateEndpoint } from "./validate-endpoint";
-
-type JudgeResult = {
-  stdout?: string | null;
-  stderr?: string | null;
-  compile_output?: string | null;
-  message?: string | null;
-  time?: string | null;
-  status: { id: number; description: string };
-};
 
 type RunResult = {
   stdout: string;
@@ -30,81 +18,25 @@ type RunResult = {
   time: number;
 };
 
-let cachedCppLanguageId: number | null = null;
-
-function encode64(value: string): string {
-  const bytes = new TextEncoder().encode(value);
-  let binary = "";
-  for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
-  return btoa(binary);
-}
-
-function decode64(value?: string | null): string {
-  if (!value) return "";
-  try {
-    const binary = atob(value);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-    return new TextDecoder().decode(bytes);
-  } catch {
-    return "";
-  }
-}
-
-async function getCppLanguageId(): Promise<number> {
-  if (cachedCppLanguageId !== null) return cachedCppLanguageId;
-  const response = await fetch(`${JUDGE0_BASE}/languages`, {
-    headers: { Accept: "application/json" },
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (!response.ok) throw new Error("无法读取 C++ 编译器列表");
-  const languages = await response.json() as { id: number; name: string }[];
-  const cpp = languages.find((item) => item.name.includes("C++ (GCC 14"))
-    || languages.find((item) => item.name.includes("C++ (GCC 9"))
-    || languages.find((item) => item.name.includes("C++"));
-  if (!cpp) throw new Error("没有可用 C++ 编译器");
-  cachedCppLanguageId = cpp.id;
-  return cpp.id;
-}
-
 export async function judge0Submit(sourceCode: string, stdin: string, languageId: number): Promise<RunResult> {
-  const create = await fetch(`${JUDGE0_BASE}/submissions?base64_encoded=true`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify({
-      language_id: languageId,
-      source_code: encode64(sourceCode),
-      stdin: encode64(stdin),
-      cpu_time_limit: CPU_TIME_LIMIT_SECONDS,
-      wall_time_limit: WALL_TIME_LIMIT_SECONDS,
-      memory_limit: MEMORY_LIMIT_KB,
-    }),
-    signal: AbortSignal.timeout(15_000),
-  });
-  const created = await create.json() as { token?: string; error?: string };
-  if (!create.ok || !created.token) throw new Error(created.error || "提交进入判题队列失败");
-
-  let result: JudgeResult | null = null;
-  for (let attempt = 0; attempt < JUDGE_MAX_POLLS; attempt += 1) {
-    await new Promise((resolve) => setTimeout(resolve, attempt === 0 ? JUDGE_FIRST_POLL_MS : JUDGE_POLL_INTERVAL_MS));
-    const poll = await fetch(`${JUDGE0_BASE}/submissions/${created.token}?base64_encoded=true&fields=stdout,stderr,compile_output,message,time,status`, {
-      headers: { Accept: "application/json" },
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!poll.ok) throw new Error("读取判题结果失败");
-    result = await poll.json() as JudgeResult;
-    if (result.status.id > 2) break;
-  }
-  if (!result || result.status.id <= 2) throw new Error("判题轮询超时");
+  const result = await submitSingle({
+    language_id: languageId,
+    source_code: encode(sourceCode),
+    stdin: encode(stdin),
+    cpu_time_limit: CPU_TIME_LIMIT_SECONDS,
+    wall_time_limit: WALL_TIME_LIMIT_SECONDS,
+    memory_limit: MEMORY_LIMIT_KB,
+  }, "stdout,stderr,compile_output,message,time,status");
+  if (!result) throw new Error("判题轮询超时");
 
   return {
     // Preserve the exact stdout of the reference program (only CRLF->LF) so the
     // stored ground-truth output is byte-faithful. Leading whitespace is part of
     // the required answer for format-sensitive problems; trailing whitespace is
     // ignored by Judge0 at judge time, so we do NOT strip either here.
-    stdout: decode64(result.stdout).replace(/\r\n/g, "\n"),
-    stderr: decode64(result.stderr) || decode64(result.message),
-    compileError: decode64(result.compile_output),
+    stdout: decode(result.stdout).replace(/\r\n/g, "\n"),
+    stderr: decode(result.stderr) || decode(result.message),
+    compileError: decode(result.compile_output),
     statusId: result.status.id,
     accepted: result.status.id === 3,
     time: Math.max(1, Math.round(Number(result.time || 0) * 1000)),

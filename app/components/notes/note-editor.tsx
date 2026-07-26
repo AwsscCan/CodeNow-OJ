@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { SyncStatus } from "../../hooks/use-cloud-save";
 import type { NoteProblemKind, NoteVisibility } from "../../lib/note-api";
-import { ProblemRefPicker } from "./problem-ref-picker";
+import { ProblemRefPicker, type PickedProblem } from "./problem-ref-picker";
 import { SafeMarkdown } from "./safe-markdown";
 
 export type NoteEditorRef = { problemKind: NoteProblemKind; problemRef: string };
@@ -42,10 +42,10 @@ export function NoteEditor({ value, onChange, onSubmit, submitLabel, status, onD
     setTagDraft("");
   };
 
-  const insertProblem = (picked: { problemCode: string; title: string; cloudId: string }) => {
+  const insertProblem = (picked: PickedProblem) => {
     const link = `\n[📎 ${picked.problemCode} ${picked.title}](/problem/${encodeURIComponent(picked.problemCode)})\n`;
-    const ref: NoteEditorRef = { problemKind: "private", problemRef: picked.cloudId };
-    const exists = value.problemRefs.some((item) => item.problemRef === ref.problemRef);
+    const ref: NoteEditorRef = { problemKind: picked.problemKind, problemRef: picked.problemRef };
+    const exists = value.problemRefs.some((item) => item.problemRef === ref.problemRef && item.problemKind === ref.problemKind);
     onChange({ ...value, content: value.content + link, problemRefs: exists ? value.problemRefs : [...value.problemRefs, ref] });
   };
 
