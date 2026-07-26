@@ -5,9 +5,11 @@ import { resolve } from "node:path";
 import { ACWING_SOLVERS_1 } from "./acwing-solvers-1.mjs";
 import { ACWING_SOLVERS_2A } from "./acwing-solvers-2a.mjs";
 import { ACWING_SOLVERS_2B } from "./acwing-solvers-2b.mjs";
+import { ACWING_SOLVERS_3A } from "./acwing-solvers-3a.mjs";
+import { ACWING_SOLVERS_3B } from "./acwing-solvers-3b.mjs";
 import { buildSamples, verifyAnchor } from "./lib.mjs";
 
-const SOLVERS = { ...ACWING_SOLVERS_1, ...ACWING_SOLVERS_2A, ...ACWING_SOLVERS_2B };
+const SOLVERS = { ...ACWING_SOLVERS_1, ...ACWING_SOLVERS_2A, ...ACWING_SOLVERS_2B, ...ACWING_SOLVERS_3A, ...ACWING_SOLVERS_3B };
 
 const target = resolve(import.meta.dirname, "../../public/acwing-course.json");
 const catalog = JSON.parse(readFileSync(target, "utf8"));

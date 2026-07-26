@@ -8,6 +8,8 @@ export const ENHANCED_ACWING_IDS = [
   "AW799", "AW800", "AW801", "AW802", "AW803",
   "AW826", "AW827", "AW828", "AW3302", "AW829", "AW830", "AW831",
   "AW835", "AW143", "AW836", "AW837", "AW240", "AW838", "AW839", "AW841",
+  "AW842", "AW843", "AW844", "AW845", "AW846", "AW847", "AW848",
+  "AW849", "AW853", "AW851", "AW852", "AW854", "AW858", "AW859", "AW860", "AW861",
 ];
 
 type Bundled = {
@@ -30,7 +32,10 @@ describe("AcWing 增强题测试点质量契约", () => {
       expect(problem.samples[0].category, `${problem.id} 首点应为原题样例`).toBe("sample");
       for (const sample of problem.samples) {
         expect(sample.input.trim().length, `${problem.id} 空输入`).toBeGreaterThan(0);
-        expect(sample.output.trim().length, `${problem.id} 空输出`).toBeGreaterThan(0);
+        // 无解类测试点(如 n 皇后 n=2/3)期望输出合法为空
+        if (!/无解/.test(sample.targets ?? "")) {
+          expect(sample.output.trim().length, `${problem.id} 空输出`).toBeGreaterThan(0);
+        }
         expect(sample.output, `${problem.id} 期望输出残留博客正文污染`).not.toMatch(/理解|感悟|题解|规则|知识|说明一下/);
       }
     }
