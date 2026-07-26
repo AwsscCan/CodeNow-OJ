@@ -44,11 +44,11 @@
 
 **Files:** `app/stores/ai-store.ts`, `app/lib/conversation-api.ts`, `app/problem/[id]/page.tsx`, `tests/unit/ai-store-sync.test.ts`
 
-- [ ] Write tests proving provider endpoint/model/API keys stay local, only role/content messages are uploaded, switching accounts clears prior conversations, guests remain local, and a failed append stays queued.
-- [ ] Run focused tests; expect failures.
-- [ ] Split `ai-store` persistence into `localConfig` and conversation cache. Implement typed cloud fetch calls containing only `conversationId`, `problemRef`, `role`, `content`, and idempotency key.
-- [ ] Load conversation metadata after login; load messages on selection; preserve current local conversation when anonymous; clear user cache on logout.
-- [ ] Run `rg -n "apiKey|apiKeys" app/lib/conversation-api.ts app/api/conversations`; expected no matches. Run tests/build and commit `git commit -m "feat: sync ai conversations without api keys"`.
+- [x] Write tests proving provider endpoint/model/API keys stay local, only role/content messages are uploaded, switching accounts clears prior conversations, guests remain local, and a failed append stays queued.
+- [x] Run focused tests; expect failures.
+- [x] Split `ai-store` persistence into `localConfig` and conversation cache. Implement typed cloud fetch calls containing only `conversationId`, `problemRef`, `role`, `content`, and idempotency key.
+- [x] Load conversation metadata after login; load messages on selection; preserve current local conversation when anonymous; clear user cache on logout.
+- [x] Run `rg -n "apiKey|apiKeys" app/lib/conversation-api.ts app/api/conversations`; expected no matches. Run tests/build and commit `git commit -m "feat: sync ai conversations without api keys"`.
 
 ### Task 5: Add persistent limits and privacy-safe observability
 

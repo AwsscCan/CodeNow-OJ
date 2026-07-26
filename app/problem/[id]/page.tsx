@@ -7,6 +7,7 @@ import { AuthStatus } from "../../components/auth-status";
 import { SyncConflictDialog } from "../../components/sync-conflict-dialog";
 import { Toast } from "../../components/toast";
 import { useCloudSave, type CloudSaveResult, type SyncStatus } from "../../hooks/use-cloud-save";
+import { useConversationSync } from "../../hooks/use-conversation-sync";
 import { useJudge } from "../../hooks/use-judge";
 import { useToast } from "../../hooks/use-toast";
 import { authClient } from "../../lib/auth-client";
@@ -38,6 +39,7 @@ export default function ProblemPage() {
   const { notice, toast } = useToast();
   const { running, runTests } = useJudge();
   const session = authClient.useSession();
+  const conversationSync = useConversationSync(session.data?.user.id ?? null, cloudId ?? store.problem.id);
 
   // Local UI state
   const [showAi, setShowAi] = useState(false);
@@ -301,6 +303,7 @@ export default function ProblemPage() {
     if (!key.trim()) return toast("请先配置 API Key");
     const next = [...aiStore.chatMessages, { role: "user" as const, content: question }];
     aiStore.addChatMessage({ role: "user", content: question });
+    void conversationSync.append({ role: "user", content: question }).catch(() => undefined);
     setChatInput("");
     setChatBusy(true);
     try {
@@ -312,6 +315,7 @@ export default function ProblemPage() {
       const data = await res.json() as { answer?: string; error?: string };
       if (!res.ok || !data.answer) throw new Error(data.error || "AI 没有返回内容");
       aiStore.addChatMessage({ role: "assistant", content: data.answer! });
+      void conversationSync.append({ role: "assistant", content: data.answer! }).catch(() => undefined);
     } catch (err) {
       toast(err instanceof Error ? err.message : "AI 对话失败");
     } finally {
