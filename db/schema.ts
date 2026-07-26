@@ -186,12 +186,14 @@ export const aiMessages = sqliteTable("ai_messages", {
   conversationId: text("conversation_id").notNull().references(() => aiConversations.id, { onDelete: "cascade" }),
   role: text("role", { enum: ["user", "assistant"] }).notNull(),
   content: text("content").notNull(),
+  idempotencyKey: text("idempotency_key").notNull(),
   sortOrder: integer("sort_order").notNull(),
   version: integer("version").notNull().default(1),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 }, (table) => [
   check("ai_messages_role_check", sql`${table.role} in ('user', 'assistant')`),
+  uniqueIndex("ai_messages_user_conversation_idempotency_unique").on(table.userId, table.conversationId, table.idempotencyKey),
   uniqueIndex("ai_messages_conversation_id_sort_order_unique").on(table.conversationId, table.sortOrder),
   index("ai_messages_user_id_conversation_id_sort_order_idx").on(table.userId, table.conversationId, table.sortOrder),
 ]);

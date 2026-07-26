@@ -34,11 +34,11 @@
 
 **Files:** `app/server/conversations/conversation-repository.ts`, `app/api/conversations/route.ts`, `app/api/conversations/[id]/messages/route.ts`, `tests/unit/conversations-api.test.ts`
 
-- [ ] Write tests for create/list pagination, append message, ordering, title update, deletion, anonymous access, cross-user `404`, message/content limits, and API-key-shaped payload rejection.
-- [ ] Run focused tests; expect missing modules.
-- [ ] Implement repository functions requiring `userId`; lists return conversation metadata only, messages load by cursor, and an append increments conversation version/updated time in one batch.
-- [ ] Implement routes with unified errors, private/no-store caching, body limits, and idempotency keys for message append.
-- [ ] Run focused/full tests and build; commit with `git commit -m "feat: persist user ai conversations"`.
+- [x] Write tests for create/list pagination, append message, ordering, title update, deletion, anonymous access, cross-user `404`, message/content limits, and API-key-shaped payload rejection.
+- [x] Run focused tests; expect missing modules.
+- [x] Implement repository functions requiring `userId`; lists return conversation metadata only, messages load by cursor, and an append increments conversation version/updated time in one batch.
+- [x] Implement routes with unified errors, private/no-store caching, body limits, and idempotency keys for message append. Persist append keys through `drizzle/0007_wet_shadow_king.sql`.
+- [x] Run focused/full tests and build; commit with `git commit -m "feat: persist user ai conversations"`.
 
 ### Task 4: Connect AI store to cloud conversations
 

@@ -1,7 +1,7 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import type { Database } from "../../../db/client";
 import { createD1Db, createLocalDb } from "../../../db/client";
-import { codeDrafts, dataImports, folders, problems, testCases, userPreferences } from "../../../db/schema";
+import { aiConversations, aiMessages, codeDrafts, dataImports, folders, problems, testCases, userPreferences } from "../../../db/schema";
 import { MAX_SUBMISSION_SOURCE_LENGTH } from "../../api/_lib/constants";
 import { fingerprintManifest } from "../../lib/local-data/fingerprint";
 import type { LocalDataManifestV1 } from "../../lib/local-data/types";
@@ -22,7 +22,7 @@ type ManifestValidationError = { ok: false; status: 400 | 413; code: string; mes
 export type ImportDecision = { action: "overwrite" | "duplicate" | "skip"; cloudVersion?: number };
 export type ImportCommitSummary = {
   fingerprint: string;
-  counts: { folders: number; problems: number; testCases: number; drafts: number; overwritten: number; duplicated: number; skipped: number };
+  counts: { folders: number; problems: number; testCases: number; drafts: number; conversations: number; overwritten: number; duplicated: number; skipped: number };
 };
 export type ImportCommitResult =
   | { ok: true; value: ImportCommitSummary }
@@ -294,6 +294,18 @@ export function createImportService(db: Database) {
       }
 
       const draftProblemId = input.currentDraft ? problemIds.get(input.currentDraft.problemId) : undefined;
+      const conversationRows = input.conversations.map((conversation) => {
+        const id = crypto.randomUUID();
+        const title = conversation.messages.find((message) => message.role === "user")?.content.trim().slice(0, 200) || "导入的本地对话";
+        return {
+          id, userId, problemRef: conversation.problemId ? problemIds.get(conversation.problemId) ?? null : null,
+          title, version: conversation.messages.length + 1, createdAt: now, updatedAt: now,
+          messages: conversation.messages.map((message, sortOrder) => ({
+            id: crypto.randomUUID(), userId, conversationId: id, role: message.role, content: message.content,
+            idempotencyKey: crypto.randomUUID(), sortOrder, version: sortOrder + 2, createdAt: now, updatedAt: now,
+          })),
+        };
+      });
       const summary: ImportCommitSummary = {
         fingerprint,
         counts: {
@@ -301,6 +313,7 @@ export function createImportService(db: Database) {
           problems: writes.length,
           testCases: writes.reduce((sum, write) => sum + write.local.testCases.length, 0),
           drafts: draftProblemId ? 1 : 0,
+          conversations: conversationRows.length,
           overwritten, duplicated, skipped,
         },
       };
@@ -341,6 +354,11 @@ export function createImportService(db: Database) {
             id: crypto.randomUUID(), userId, problemKind: "private", problemRef: draftProblemId, language: input.currentDraft.language,
             sourceCode: input.currentDraft.sourceCode, version: 1, createdAt: now, updatedAt: now,
           }).onConflictDoUpdate({ target: [codeDrafts.userId, codeDrafts.problemKind, codeDrafts.problemRef, codeDrafts.language], set: { sourceCode: input.currentDraft.sourceCode, updatedAt: now } }));
+          if (conversationRows.length) {
+            statements.push(db.insert(aiConversations).values(conversationRows.map(({ messages: _messages, ...conversation }) => conversation)));
+            const messages = conversationRows.flatMap((conversation) => conversation.messages);
+            if (messages.length) statements.push(db.insert(aiMessages).values(messages));
+          }
           if (preferenceRow) statements.push(db.insert(userPreferences).values(preferenceRow).onConflictDoNothing({ target: userPreferences.userId }));
           statements.push(db.insert(dataImports).values(importRow));
           await db.batch(statements as unknown as Parameters<typeof db.batch>[0]);
@@ -366,6 +384,11 @@ export function createImportService(db: Database) {
             id: crypto.randomUUID(), userId, problemKind: "private", problemRef: draftProblemId, language: input.currentDraft.language,
             sourceCode: input.currentDraft.sourceCode, version: 1, createdAt: now, updatedAt: now,
           }).onConflictDoUpdate({ target: [codeDrafts.userId, codeDrafts.problemKind, codeDrafts.problemRef, codeDrafts.language], set: { sourceCode: input.currentDraft.sourceCode, updatedAt: now } }).run();
+          if (conversationRows.length) {
+            tx.insert(aiConversations).values(conversationRows.map(({ messages: _messages, ...conversation }) => conversation)).run();
+            const messages = conversationRows.flatMap((conversation) => conversation.messages);
+            if (messages.length) tx.insert(aiMessages).values(messages).run();
+          }
           if (preferenceRow) tx.insert(userPreferences).values(preferenceRow).onConflictDoNothing({ target: userPreferences.userId }).run();
           tx.insert(dataImports).values(importRow).run();
           });

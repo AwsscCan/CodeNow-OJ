@@ -1,0 +1,2 @@
+ALTER TABLE `ai_messages` ADD `idempotency_key` text NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX `ai_messages_user_conversation_idempotency_unique` ON `ai_messages` (`user_id`,`conversation_id`,`idempotency_key`);
