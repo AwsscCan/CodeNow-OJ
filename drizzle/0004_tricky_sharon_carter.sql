@@ -1,0 +1,2 @@
+DROP INDEX `code_drafts_user_id_problem_ref_language_unique`;--> statement-breakpoint
+CREATE UNIQUE INDEX `code_drafts_user_id_problem_ref_language_unique` ON `code_drafts` (`user_id`,`problem_kind`,`problem_ref`,`language`);

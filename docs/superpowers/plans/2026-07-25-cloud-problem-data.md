@@ -60,11 +60,11 @@ export type SaveResult<T> =
 
 **Files:** `app/server/problems/draft-repository.ts`, `app/api/drafts/[problemRef]/route.ts`, `tests/unit/drafts-api.test.ts`
 
-- [ ] Write failing tests for public and private problem refs, per-language uniqueness, anonymous `401`, cross-user isolation, insert at version 1, update to version 2, and stale update `409`.
-- [ ] Run `npm run test:unit -- tests/unit/drafts-api.test.ts`; expect failure.
-- [ ] Implement `getDraft(userId, problemKind, problemRef, language)` and `saveDraft(userId, input, expectedVersion)`. Private refs must resolve to a problem owned by the same user; source length uses the existing submission-source limit or a stricter shared constant.
-- [ ] Implement GET/PUT route mapping and return `{ draft, version, updatedAt }`; omit `userId` from client payloads.
-- [ ] Run focused tests and build; expect PASS. Commit with `git commit -m "feat: sync per language code drafts"`.
+- [x] Write failing tests for public and private problem refs, per-language uniqueness, anonymous `401`, cross-user isolation, insert at version 1, update to version 2, and stale update `409`.
+- [x] Run `npm run test:unit -- tests/unit/drafts-api.test.ts`; expect failure.
+- [x] Implement `getDraft(userId, problemKind, problemRef, language)` and `saveDraft(userId, input, expectedVersion)`. Private refs must resolve to a problem owned by the same user; source length uses the existing submission-source limit or a stricter shared constant.
+- [x] Implement GET/PUT route mapping and return `{ draft, version, updatedAt }`; omit `userId` from client payloads.
+- [x] Run focused tests and build; expect PASS. Commit with `git commit -m "feat: sync per language code drafts"`.
 
 ### Task 5: Hydrate the library and show explicit save state
 

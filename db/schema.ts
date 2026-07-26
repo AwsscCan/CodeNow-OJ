@@ -140,6 +140,6 @@ export const codeDrafts = sqliteTable("code_drafts", {
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 }, (table) => [
-  uniqueIndex("code_drafts_user_id_problem_ref_language_unique").on(table.userId, table.problemRef, table.language),
+  uniqueIndex("code_drafts_user_id_problem_ref_language_unique").on(table.userId, table.problemKind, table.problemRef, table.language),
   index("code_drafts_user_id_updated_at_idx").on(table.userId, table.updatedAt),
 ]);
