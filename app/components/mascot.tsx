@@ -1,36 +1,41 @@
+/* CodeNow OJ · 桌宠(高木同学)交互组件 · Bamzc */
+
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-
-type MascotMood = "smile" | "laugh" | "smug" | "surprised" | "gentle" | "annoyed" | "angry";
-
-const mascotStates: { mood: MascotMood; sprite: number; message: string }[] = [
-  { mood: "smile", sprite: 6, message: "我就在这里看着你写哦。ふふ，偷懒的话我可是会发现的。" },
-  { mood: "smile", sprite: 0, message: "今天也一起 AC 吧。ね，要不要来比一比谁先看穿题意？" },
-  { mood: "laugh", sprite: 1, message: "勝負しよ？你先写，我来猜你会在哪个边界摔一跤。" },
-  { mood: "smug", sprite: 2, message: "あれ？这个边界条件是不是被你悄悄略过去了？" },
-  { mood: "surprised", sprite: 3, message: "诶，这个输出不太对吧。もう一回，认真看一遍？" },
-  { mood: "gentle", sprite: 0, message: "大丈夫，慢慢来。先把思路理顺，代码自然就会听话。" },
-  { mood: "annoyed", sprite: 4, message: "又 WA 了？もう，太天真啦。先看第一个没过的点。" },
-  { mood: "angry", sprite: 5, message: "编译错误还提交？だめ。红线不消掉，我可不会放你过去。" },
-  { mood: "smug", sprite: 2, message: "如果一发 AC，我就稍微夸你一下。ほんの少しだけ。" },
-  { mood: "laugh", sprite: 1, message: "すごいじゃん！不过隐藏测试可没我这么温柔哦。" },
-  { mood: "gentle", sprite: 0, message: "复杂度也要看，ね。只会暴力的话，可赢不了我。" },
-  { mood: "surprised", sprite: 3, message: "おや？刚才这段实现有点聪明嘛，我差点就被你骗到了。" },
-  { mood: "smile", sprite: 0, message: "那就约好了：你认真写，我认真看。ふふ，别输给我哦。" },
-];
+import type { MascotMood } from "../stores/mascot-lines";
 
 type MascotPosition = { x: number; y: number };
 
+/** 点 (x, y) 是否落在矩形内 */
+export function isInsideDropZone(x: number, y: number, zone: DOMRect | null): boolean {
+  if (!zone) return false;
+  return x >= zone.left && x <= zone.right && y >= zone.top && y <= zone.bottom;
+}
+
+/** 桌宠松手时，其中心是否落在编辑区投放区([data-mascot-drop-zone])内 */
+export function droppedInsideEditor(node: HTMLElement | null): boolean {
+  if (!node) return false;
+  const rect = node.getBoundingClientRect();
+  const centerX = rect.left + rect.width / 2;
+  const centerY = rect.top + rect.height / 2;
+  const zone = document.querySelector("[data-mascot-drop-zone]")?.getBoundingClientRect() ?? null;
+  return isInsideDropZone(centerX, centerY, zone);
+}
+
 export function DesktopMascot({
   visible,
-  messageIndex,
+  message,
+  mood,
+  sprite,
   onCycle,
   onDragDrop,
   onSetVisible,
 }: {
   visible: boolean;
-  messageIndex: number;
+  message: string;
+  mood: MascotMood;
+  sprite: number;
   onCycle: () => void;
   onDragDrop?: (dragged: boolean, insideEditor: boolean) => void;
   onSetVisible: (v: boolean) => void;
@@ -90,7 +95,9 @@ export function DesktopMascot({
       apply();
       setDragging(false);
       if (nextPosition.current) setPosition(nextPosition.current);
-      if (onDragDrop) onDragDrop(dragged.current, false);
+      // 落点碰撞检测：拖动过且落在编辑区投放区内，才视为"投喂"编辑器
+      const insideEditor = dragged.current && droppedInsideEditor(mascotRef.current);
+      if (onDragDrop) onDragDrop(dragged.current, insideEditor);
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", stop, { once: true });
@@ -121,8 +128,6 @@ export function DesktopMascot({
     onCycle();
   }, [onCycle]);
 
-  const state = mascotStates[messageIndex % mascotStates.length];
-
   if (!visible) {
     return (
       <button className="mascot-reopen" onClick={() => onSetVisible(true)} title="召回 CodeNow 编程伙伴">
@@ -135,23 +140,23 @@ export function DesktopMascot({
   return (
     <aside
       ref={mascotRef}
-      className={`desktop-mascot mood-${state.mood} ${dragging ? "dragging" : ""}`}
+      className={`desktop-mascot mood-${mood} ${dragging ? "dragging" : ""}`}
       aria-label="CodeNow 编程伙伴"
       style={position ? { left: position.x, top: position.y, right: "auto", bottom: "auto" } : undefined}
     >
       <button className="mascot-close" aria-label="暂时隐藏桌宠" onClick={() => onSetVisible(false)}>×</button>
-      <button className="mascot-bubble" onClick={onCycle}>
-        {state.message}<small>点击换表情，按住人物可拖动</small>
+      <button className="mascot-bubble" onClick={onCycle} aria-live="polite" aria-atomic={true}>
+        {message}<small>点击换台词，按住人物可拖动到编辑器</small>
       </button>
-      <button className={`mascot-character ${state.sprite === 6 ? "original-state" : ""}`} aria-label="和 CodeNow 编程伙伴互动" onPointerDown={startDrag} onClick={clickCharacter}>
-        {state.sprite === 6 ? (
+      <button className={`mascot-character ${sprite === 6 ? "original-state" : ""}`} aria-label="和 CodeNow 编程伙伴互动" onPointerDown={startDrag} onClick={clickCharacter}>
+        {sprite === 6 ? (
           <img className="mascot-original" src="/codenow/mascot.png" alt="" aria-hidden="true" loading="lazy" decoding="async" />
         ) : (
-          <span className={`mascot-sprite-frame sprite-${state.sprite}`} aria-hidden="true">
+          <span className={`mascot-sprite-frame sprite-${sprite}`} aria-hidden="true">
             <img src="/codenow/mascot-sprites.png" alt="" loading="lazy" decoding="async" />
           </span>
         )}
-        <span className="sr-only">切换 CodeNow 编程伙伴表情</span>
+        <span className="sr-only">切换 CodeNow 编程伙伴台词。当前：{message}</span>
       </button>
     </aside>
   );

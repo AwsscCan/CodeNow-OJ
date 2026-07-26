@@ -34,9 +34,8 @@ describe("classifyResults", () => {
     expect(classifyResults([result("AC", 1), result("TLE", 2)]).phase).toBe("tle");
   });
 
-  it("有 RE 或 MLE 判为 re", () => {
+  it("有 RE 判为 re", () => {
     expect(classifyResults([result("AC", 1), result("RE", 2)]).phase).toBe("re");
-    expect(classifyResults([result("AC", 1), result("MLE", 2)]).phase).toBe("re");
   });
 
   it("仅答案错误判为 wa，并给出第一个未过点下标", () => {

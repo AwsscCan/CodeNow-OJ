@@ -3,6 +3,7 @@ import {
   RATE_LIMIT_JUDGE,
   RATE_LIMIT_AI,
   RATE_LIMIT_SUBMISSIONS,
+  RATE_LIMIT_MASCOT,
 } from "./constants";
 
 type BucketEntry = { count: number; resetAt: number };
@@ -36,7 +37,7 @@ let pruneCounter = 0;
 
 export function rateLimit(
   request: Request,
-  route: "judge" | "ai" | "submissions",
+  route: "judge" | "ai" | "submissions" | "mascot",
 ): { allowed: boolean; remaining: number } {
   pruneCounter += 1;
   if (pruneCounter > 100) {
@@ -52,6 +53,7 @@ export function rateLimit(
     judge: RATE_LIMIT_JUDGE,
     ai: RATE_LIMIT_AI,
     submissions: RATE_LIMIT_SUBMISSIONS,
+    mascot: RATE_LIMIT_MASCOT,
   };
 
   return check(key, limits[route]);

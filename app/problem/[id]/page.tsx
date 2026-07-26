@@ -16,6 +16,7 @@ import { formatCppCode } from "../../lib/format-cpp";
 import { ProblemApi, ProblemApiError, type CloudProblem } from "../../lib/problem-api";
 import { useAiStore } from "../../stores/ai-store";
 import { useLibraryStore } from "../../stores/library-store";
+import { useMascotStore } from "../../stores/mascot-store";
 import { useProblemStore } from "../../stores/problem-store";
 import type { Problem, SubmissionRecord } from "../../stores/problem-store";
 import { useThemeStore } from "../../stores/theme-store";
@@ -39,6 +40,10 @@ export default function ProblemPage() {
   const theme = useThemeStore();
   const { notice, toast } = useToast();
   const { running, runTests } = useJudge();
+  const setMascotContext = useMascotStore((s) => s.setContext);
+  const setMascotPhase = useMascotStore((s) => s.setPhase);
+  const reactMascotToJudge = useMascotStore((s) => s.reactToJudge);
+  const aiSolveRequestId = useMascotStore((s) => s.aiSolveRequestId);
   const session = authClient.useSession();
   const conversationSync = useConversationSync(session.data?.user.id ?? null, cloudId ?? store.problem.id);
 
@@ -154,6 +159,26 @@ export default function ProblemPage() {
     // Problem state is set by library page or persisted in localStorage
   }, [problemId]);
 
+  // 桌宠：进入做题页即进入"观察编码"态；题面即时同步，代码防抖同步(避免每次按键都写 store)
+  useEffect(() => { setMascotPhase("coding"); }, [setMascotPhase]);
+  useEffect(() => { setMascotContext({ problemTitle: store.problem.title }); }, [store.problem.title, setMascotContext]);
+  const codeSyncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (codeSyncTimer.current) clearTimeout(codeSyncTimer.current);
+    codeSyncTimer.current = setTimeout(() => setMascotContext({ codeExcerpt: store.code.slice(0, 2000) }), 600);
+    return () => { if (codeSyncTimer.current) clearTimeout(codeSyncTimer.current); };
+  }, [store.code, setMascotContext]);
+
+  // 桌宠：被拖入编辑区(aiSolveRequestId 递增)时打开 AI 解题弹窗。
+  // 初值取 store 当前值，避免跨题目导航时把历史递增值误判为新触发而误弹窗。
+  const aiSolveSeen = useRef(useMascotStore.getState().aiSolveRequestId);
+  useEffect(() => {
+    if (aiSolveRequestId > aiSolveSeen.current) {
+      aiSolveSeen.current = aiSolveRequestId;
+      setShowAi(true);
+    }
+  }, [aiSolveRequestId]);
+
   // Sync test cases back to library IMMEDIATELY on every change + on unmount
   useEffect(() => {
     // Sync to library store archives
@@ -259,6 +284,7 @@ export default function ProblemPage() {
 
       store.setResults(result.results);
       store.setCompilerDiagnostic(result.diagnostic);
+      reactMascotToJudge(result.results, { submit });
 
       // Always add to local history (both run and submit)
       if (result.submission) {
@@ -520,7 +546,7 @@ export default function ProblemPage() {
         <button className="resize-handle" type="button" aria-label="拖动调整题目区和编辑器宽度" onPointerDown={startResize}><span>{Math.round(store.workspaceSplit)}%</span></button>
 
         {/* Code Panel */}
-        <section ref={codePanelRef} className={`code-panel editor-theme-${theme.editorTheme}`}>
+        <section ref={codePanelRef} data-mascot-drop-zone="editor" className={`code-panel editor-theme-${theme.editorTheme}`}>
           <div className="editor-toolbar">
             <div className="file-tab"><span>C++</span> main.cpp <i>●</i></div>
             <div>

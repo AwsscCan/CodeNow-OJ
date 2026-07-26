@@ -32,6 +32,15 @@ export const AI_GENERATION_TEMPERATURE = 0.08;
 export const AI_MAX_TOKENS_SOLUTION = 4096;
 export const AI_MAX_TOKENS_CHAT = 2048;
 export const AI_TIMEOUT_MS = 45_000;
+// 桌宠台词：一句话即可，追求多样与快返回（温度不宜过高，否则易破格/超长/混 emoji）
+export const AI_MASCOT_TEMPERATURE = 0.7;
+export const AI_MAX_TOKENS_MASCOT = 120;
+export const MASCOT_LINE_TIMEOUT_MS = 15_000;
+export const MASCOT_LINE_MAX_LENGTH = 40;
+export const MASCOT_CODE_EXCERPT_LENGTH = 600;
+export const MASCOT_TITLE_MAX_LENGTH = 80;
+export const MASCOT_RECENT_MAX_ITEMS = 12;
+export const MASCOT_RECENT_LINE_MAX_LENGTH = 40;
 export const AI_MAX_RAW_PROBLEM_LENGTH = 60_000;
 export const AI_MAX_CODE_CONTEXT_LENGTH = 12_000;
 export const AI_JSON_REPAIR_MAX_RAW_LENGTH = 12_000;
@@ -43,6 +52,7 @@ export const RATE_LIMIT_WINDOW_MS = 60_000;
 export const RATE_LIMIT_JUDGE = 30;       // 30 judge runs per minute
 export const RATE_LIMIT_AI = 15;           // 15 AI calls per minute
 export const RATE_LIMIT_SUBMISSIONS = 60;  // 60 submission ops per minute
+export const RATE_LIMIT_MASCOT = 40;       // 40 桌宠台词/分钟(失败即降级本地池，独立桶避免挤占 AI 配额)
 
 // ── Submissions ──
 export const MAX_SUBMISSION_SOURCE_LENGTH = 200_000;
