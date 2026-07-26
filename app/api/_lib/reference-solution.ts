@@ -115,6 +115,22 @@ function normalizeOutput(value: string): string {
   return value.replace(/\r\n/g, "\n").replace(/[ \t]+$/gm, "").trim();
 }
 
+// Run an async mapper with a bounded number of concurrent workers, preserving
+// result order. Keeps validation fast without flooding the Judge0 CE queue.
+async function mapConcurrent<T, R>(items: T[], limit: number, fn: (item: T, index: number) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let cursor = 0;
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
+    while (cursor < items.length) {
+      const index = cursor++;
+      results[index] = await fn(items[index], index);
+    }
+  }));
+  return results;
+}
+
+const VALIDATION_CONCURRENCY = 6;
+
 const DANGEROUS_PATTERNS = [
   /\bsystem\s*\(/, /\bpopen\s*\(/, /\bfork\s*\(/, /\bexec[lvpe]*\s*\(/,
   /\bsocket\s*\(/, /\bconnect\s*\(/, /\baccept\s*\(/,
@@ -256,22 +272,32 @@ export async function validateReference(
     return { report: { status: "compile_failed", compiled: false, samplesPassed: false, differentialTestsPassed: 0, differentialTestsFailed: 0, errors: [error instanceof Error ? error.message : "编译器获取失败"] } };
   }
 
+  // Probe with empty stdin ONLY to surface genuine compile errors. A runtime
+  // error / TLE on empty input is expected for any program that reads stdin and
+  // must NOT be treated as a compile failure — correctness is checked below via
+  // the official samples and the differential (solution-vs-brute) rounds.
   const [solutionCompile, bruteCompile] = await Promise.all([
     judge0Submit(candidate.solutionCode, "", languageId),
     judge0Submit(candidate.bruteCode, "", languageId),
   ]);
-  if (solutionCompile.compileError || !solutionCompile.accepted) errors.push(`solution 编译/启动失败: ${solutionCompile.compileError || solutionCompile.stderr || solutionCompile.statusId}`);
-  if (bruteCompile.compileError || !bruteCompile.accepted) errors.push(`brute 编译/启动失败: ${bruteCompile.compileError || bruteCompile.stderr || bruteCompile.statusId}`);
+  if (solutionCompile.compileError) errors.push(`solution 编译失败: ${solutionCompile.compileError}`);
+  if (bruteCompile.compileError) errors.push(`brute 编译失败: ${bruteCompile.compileError}`);
   if (errors.length) return { report: { status: "compile_failed", compiled: false, samplesPassed: false, differentialTestsPassed: 0, differentialTestsFailed: 0, errors } };
 
-  // Both implementations must pass all official samples.
-  for (const sample of samples.slice(0, 6)) {
+  // Both implementations must pass all official samples — checked concurrently.
+  const sampleResults = await mapConcurrent(samples.slice(0, 6), VALIDATION_CONCURRENCY, async (sample) => {
     const [solutionRun, bruteRun] = await Promise.all([
       judge0Submit(candidate.solutionCode, sample.input, languageId),
       judge0Submit(candidate.bruteCode, sample.input, languageId),
     ]);
-    if (!solutionRun.accepted || normalizeOutput(solutionRun.stdout) !== normalizeOutput(sample.output)) errors.push("solution 未通过官方样例");
-    if (!bruteRun.accepted || normalizeOutput(bruteRun.stdout) !== normalizeOutput(sample.output)) errors.push("brute 未通过官方样例");
+    return {
+      solutionOk: solutionRun.accepted && normalizeOutput(solutionRun.stdout) === normalizeOutput(sample.output),
+      bruteOk: bruteRun.accepted && normalizeOutput(bruteRun.stdout) === normalizeOutput(sample.output),
+    };
+  });
+  for (const result of sampleResults) {
+    if (!result.solutionOk) errors.push("solution 未通过官方样例");
+    if (!result.bruteOk) errors.push("brute 未通过官方样例");
   }
   if (errors.length) return { report: { status: "sample_failed", compiled: true, samplesPassed: false, differentialTestsPassed: 0, differentialTestsFailed: 0, errors } };
 
@@ -294,22 +320,23 @@ export async function validateReference(
   const validationInputs = Array.from(new Set(candidate.validationInputs.filter((input) => input.length <= 100_000 && !input.includes("\0")))).slice(0, 16);
   if (validationInputs.length < 4) errors.push("有效对拍输入少于 4 个");
 
+  // Differential (solution-vs-brute) rounds run concurrently with a bounded
+  // worker pool so a full validation set finishes in ~one Judge0 round instead
+  // of N serial ones.
   let passed = 0;
   let failed = 0;
-  for (const input of validationInputs) {
+  const diffResults = await mapConcurrent(validationInputs, VALIDATION_CONCURRENCY, async (input) => {
     const [solutionRun, bruteRun] = await Promise.all([
       judge0Submit(candidate.solutionCode, input, languageId),
       judge0Submit(candidate.bruteCode, input, languageId),
     ]);
-    if (!solutionRun.accepted || !bruteRun.accepted) {
-      failed++;
-      errors.push(`对拍输入导致程序异常: ${input.slice(0, 120)}`);
-    } else if (normalizeOutput(solutionRun.stdout) !== normalizeOutput(bruteRun.stdout)) {
-      failed++;
-      errors.push(`solution/brute 输出不一致: ${input.slice(0, 120)}`);
-    } else {
-      passed++;
-    }
+    if (!solutionRun.accepted || !bruteRun.accepted) return { ok: false, error: `对拍输入导致程序异常: ${input.slice(0, 120)}` };
+    if (normalizeOutput(solutionRun.stdout) !== normalizeOutput(bruteRun.stdout)) return { ok: false, error: `solution/brute 输出不一致: ${input.slice(0, 120)}` };
+    return { ok: true, error: "" };
+  });
+  for (const result of diffResults) {
+    if (result.ok) passed++;
+    else { failed++; errors.push(result.error); }
   }
   if (failed > 0 || errors.length) return { report: { status: "differential_failed", compiled: true, samplesPassed: true, differentialTestsPassed: passed, differentialTestsFailed: failed, errors: errors.slice(0, 8) } };
 
