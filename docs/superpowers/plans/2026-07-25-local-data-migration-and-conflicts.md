@@ -40,11 +40,11 @@ export type LocalDataParseResult =
 
 **Files:** `app/lib/local-data/fingerprint.ts`, `app/server/imports/import-service.ts`, `app/api/imports/local-data/preview/route.ts`, `tests/unit/import-preview.test.ts`
 
-- [ ] Write failing tests for anonymous `401`, stable SHA-256 fingerprints, no-conflict preview, same-code conflict, oversize rejection, and proof that preview does not write any table.
-- [ ] Run `npm run test:unit -- tests/unit/import-preview.test.ts`; expect failure.
-- [ ] Compute the fingerprint from deterministic JSON with sorted keys. Implement `previewImport(userId, manifest)` returning counts and conflicts `{ localProblemKey, cloudProblemId, problemCode, cloudVersion }`.
-- [ ] Implement POST preview with `Cache-Control: no-store`, unified errors, and no database mutations. Return `previewFingerprint` and expiry metadata.
-- [ ] Run focused tests and build; expect PASS. Commit with `git commit -m "feat: preview local data migration"`.
+- [x] Write failing tests for anonymous `401`, stable SHA-256 fingerprints, no-conflict preview, same-code conflict, oversize rejection, and proof that preview does not write any table.
+- [x] Run `npm run test:unit -- tests/unit/import-preview.test.ts`; expect failure.
+- [x] Compute the fingerprint from deterministic JSON with sorted keys. Implement `previewImport(userId, manifest)` returning counts and conflicts `{ localProblemKey, cloudProblemId, problemCode, cloudVersion }`.
+- [x] Implement POST preview with `Cache-Control: no-store`, unified errors, and no database mutations. Return `previewFingerprint` and expiry metadata.
+- [x] Run focused tests and build; expect PASS. Commit with `git commit -m "feat: preview local data migration"`.
 
 ### Task 3: Commit imports atomically and idempotently
 
