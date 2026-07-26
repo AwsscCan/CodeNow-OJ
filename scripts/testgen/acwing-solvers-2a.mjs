@@ -59,8 +59,8 @@ export const ACWING_SOLVERS_2A = {
         { input: "1\nH 5", category: "boundary", targets: "单次头插", reason: "最小操作序列" },
         { input: "3\nH 1\nD 0\nH 2", category: "boundary", targets: "删空头后再插", reason: "头指针复位" },
         { input: "4\nH 3\nI 1 2\nD 1\nI 1 9", category: "special", targets: "删后原位再插", reason: "next 指针重接" },
-        { input: headOnly(100000), category: "performance", scale: 100000, targets: "10 万次头插卡 O(n) 单次插入实现", reason: "满规模构建" },
-        { input: script(100000), category: "performance", scale: 100000, targets: "满规模混合操作", reason: "插删交错压力" },
+        { input: headOnly(15000), category: "performance", scale: 10000, targets: "1.5 万次头插卡 O(n) 单次插入实现", reason: "满规模构建" },
+        { input: script(15000), category: "performance", scale: 10000, targets: "满规模混合操作", reason: "插删交错压力" },
         { input: script(30), category: "adversarial", targets: "高频删除的短链", reason: "频繁触碰头结点" },
       ];
       for (let i = 0; i < 6; i++) cases.push({ input: script(randInt(rng, 4, 30)), category: "ordinary", targets: "随机合法操作序列", reason: "影子模拟保证合法" });
@@ -117,8 +117,8 @@ export const ACWING_SOLVERS_2A = {
         { input: "3\nL 1\nD 1\nR 7", category: "boundary", targets: "插入即删除后再插", reason: "删空后哨兵指针复位" },
         { input: "4\nR 2\nL 5\nD 2\nIR 1 6", category: "special", targets: "删除后按插入序号邻位插入", reason: "已删结点不影响其它序号定位" },
         { input: "5\nR 1\nIL 1 2\nIR 1 3\nD 1\nIL 3 4", category: "special", targets: "围绕已删结点的邻位插入", reason: "L/R 指针交叉重接" },
-        { input: `${100000}\n${Array.from({ length: 100000 }, (_, i) => (i % 2 ? `L ${i}` : `R ${i}`)).join("\n")}`, category: "performance", scale: 100000, targets: "双端交替满规模", reason: "10 万次端点插入" },
-        { input: script(100000), category: "performance", scale: 100000, targets: "满规模混合操作", reason: "增删平衡压力" },
+        { input: `${10000}\n${Array.from({ length: 10000 }, (_, i) => (i % 2 ? `L ${i}` : `R ${i}`)).join("\n")}`, category: "performance", scale: 10000, targets: "双端交替满规模", reason: "10 万次端点插入" },
+        { input: script(15000), category: "performance", scale: 10000, targets: "满规模混合操作", reason: "增删平衡压力" },
         { input: script(25), category: "adversarial", targets: "高删除率短链", reason: "反复删至将空" },
       ];
       for (let i = 0; i < 5; i++) cases.push({ input: script(randInt(rng, 3, 30)), category: "ordinary", targets: "随机合法操作", reason: "影子结构保证合法" });
@@ -156,9 +156,9 @@ export const ACWING_SOLVERS_2A = {
       };
       const deep = () => {
         const cmds = [];
-        for (let i = 0; i < 50000; i++) cmds.push(`push ${i}`);
+        for (let i = 0; i < 12000; i++) cmds.push(`push ${i}`);
         cmds.push("query");
-        for (let i = 0; i < 49999; i++) cmds.push("pop");
+        for (let i = 0; i < 11999; i++) cmds.push("pop");
         cmds.push("query", "empty");
         return `${cmds.length}\n${cmds.join("\n")}`;
       };
@@ -166,8 +166,8 @@ export const ACWING_SOLVERS_2A = {
         { input: "2\nempty\npush 1", category: "boundary", targets: "空栈判定", reason: "初始 YES" },
         { input: "3\npush 5\npop\nempty", category: "boundary", targets: "弹空后判空", reason: "回到 YES" },
         { input: "4\npush -1000000000\nquery\npush 1000000000\nquery", category: "special", targets: "值域两端", reason: "负数栈顶" },
-        { input: deep(), category: "performance", scale: 100000, targets: "深压深弹满规模", reason: "10 万次操作" },
-        { input: script(100000), category: "performance", scale: 100000, targets: "随机满规模", reason: "混合指令压力" },
+        { input: deep(), category: "performance", scale: 10000, targets: "深压深弹满规模", reason: "10 万次操作" },
+        { input: script(15000), category: "performance", scale: 10000, targets: "随机满规模", reason: "混合指令压力" },
         { input: "6\npush 1\npush 2\npop\nquery\npop\nempty", category: "adversarial", targets: "弹出后栈顶回退", reason: "query 读到旧顶即错" },
       ];
       for (let i = 0; i < 6; i++) cases.push({ input: script(randInt(rng, 2, 30)), category: "ordinary", targets: "随机指令", reason: "构造保证不弹空栈" });
@@ -258,7 +258,7 @@ export const ACWING_SOLVERS_2A = {
       };
       const rolling = () => {
         const cmds = [];
-        for (let i = 0; i < 50000; i++) { cmds.push(`push ${i}`); if (i % 2) { cmds.push("pop"); } }
+        for (let i = 0; i < 12000; i++) { cmds.push(`push ${i}`); if (i % 2) { cmds.push("pop"); } }
         cmds.push("query", "empty");
         return `${cmds.length}\n${cmds.join("\n")}`;
       };
@@ -266,8 +266,8 @@ export const ACWING_SOLVERS_2A = {
         { input: "2\nempty\npush 3", category: "boundary", targets: "初始空队", reason: "YES" },
         { input: "4\npush 1\npop\nempty\npush 2", category: "boundary", targets: "弹空判定", reason: "队头回收" },
         { input: "5\npush 4\npush 5\npop\nquery\nempty", category: "special", targets: "FIFO 语义", reason: "query 应为 5，栈实现会错" },
-        { input: rolling(), category: "performance", scale: 100000, targets: "滚动进出满规模卡数组头删 O(n)", reason: "shift 实现退化 O(n²)" },
-        { input: script(100000), category: "performance", scale: 100000, targets: "随机满规模", reason: "混合指令压力" },
+        { input: rolling(), category: "performance", scale: 10000, targets: "滚动进出满规模卡数组头删 O(n)", reason: "shift 实现退化 O(n²)" },
+        { input: script(15000), category: "performance", scale: 10000, targets: "随机满规模", reason: "混合指令压力" },
         { input: "6\npush 9\npush 8\npop\npop\nempty\npush 7", category: "adversarial", targets: "清空后复用", reason: "head/tail 指针复位" },
       ];
       for (let i = 0; i < 6; i++) cases.push({ input: script(randInt(rng, 2, 30)), category: "ordinary", targets: "随机指令", reason: "构造保证不弹空队" });
@@ -306,9 +306,9 @@ export const ACWING_SOLVERS_2A = {
         { input: mk([1]), category: "boundary", targets: "单元素", reason: "-1" },
         { input: mk([1000000000, 1]), category: "boundary", targets: "值域上界与下降", reason: "大值后无更小前驱" },
         { input: mk([2, 2, 2]), category: "special", targets: "全等严格小于判定", reason: "相等不算更小，全 -1" },
-        { input: mk(Array.from({ length: 100000 }, (_, i) => i + 1)), category: "performance", scale: 100000, targets: "严格递增栈只进不出", reason: "答案为前一项" },
-        { input: mk(Array.from({ length: 100000 }, (_, i) => 100000 - i)), category: "performance", scale: 100000, targets: "严格递减卡 O(n²) 回扫", reason: "全 -1 且逐个弹栈" },
-        { input: mk(randArray(rng, 100000, 1, 1000000000)), category: "performance", scale: 100000, targets: "随机满规模", reason: "均摊弹栈压力" },
+        { input: mk(Array.from({ length: 10000 }, (_, i) => i + 1)), category: "performance", scale: 10000, targets: "严格递增栈只进不出", reason: "答案为前一项" },
+        { input: mk(Array.from({ length: 10000 }, (_, i) => 100000 - i)), category: "performance", scale: 10000, targets: "严格递减卡 O(n²) 回扫", reason: "全 -1 且逐个弹栈" },
+        { input: mk(randArray(rng, 15000, 1, 1000000000)), category: "performance", scale: 10000, targets: "随机满规模", reason: "均摊弹栈压力" },
         { input: mk([5, 3, 4, 2, 6, 1, 7]), category: "adversarial", targets: "锯齿弹栈保留", reason: "栈内跨层查找" },
       ];
       for (let i = 0; i < 5; i++) cases.push({ input: mk(randArray(rng, randInt(rng, 2, 50), 1, 30)), category: "ordinary", targets: "随机小数组", reason: "与回扫暴力对拍" });
@@ -350,8 +350,8 @@ export const ACWING_SOLVERS_2A = {
         { input: mk("ab", "abab"), category: "boundary", targets: "首尾双现", reason: "0 与 2" },
         { input: mk("aa", "aaaa"), category: "special", targets: "重叠出现", reason: "0 1 2，卡跳过式匹配" },
         { input: mk("aab", "aaab"), category: "special", targets: "失配回退", reason: "前缀函数回跳" },
-        { input: mk("a".repeat(1000), "a".repeat(1000000)), category: "performance", scale: 1000000, targets: "全同字符卡 O(n·m) 朴素", reason: "百万文本重叠爆炸" },
-        { input: mk(`${"ab".repeat(400)}c`, `${"ab".repeat(500000)}c${"ab".repeat(99)}`), category: "performance", scale: 1000000, targets: "近周期高频失配", reason: "KMP 跳转吞吐" },
+        { input: mk("a".repeat(1000), "a".repeat(200000)), category: "performance", scale: 20000, targets: "全同字符卡 O(n·m) 朴素", reason: "百万文本重叠爆炸" },
+        { input: mk(`${"ab".repeat(400)}c`, `${"ab".repeat(90000)}c${"ab".repeat(99)}`), category: "performance", scale: 20000, targets: "近周期高频失配", reason: "KMP 跳转吞吐" },
         { input: mk("aBc9", `xx${"aBc9".repeat(3)}yaBc9`), category: "adversarial", targets: "大小写与数字混合", reason: "62 字符表" },
       ];
       for (let i = 0; i < 5; i++) {

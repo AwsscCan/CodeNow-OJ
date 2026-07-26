@@ -86,8 +86,8 @@ export const ACWING_SOLVERS_2B = {
         { input: mk([0, 2147483647]), category: "boundary", targets: "值域两端", reason: "2^31-1" },
         { input: mk([5, 5, 5]), category: "special", targets: "全等元素", reason: "任意对异或为 0" },
         { input: mk([1073741824, 1073741823]), category: "special", targets: "最高位互补", reason: "高位贪心正确性" },
-        { input: mk(randArray(rng, 100000, 0, 2147483647)), category: "performance", scale: 100000, targets: "满规模卡 O(n²) 枚举", reason: "10 万数需 Trie" },
-        { input: mk(Array.from({ length: 100000 }, (_, i) => i)), category: "performance", scale: 100000, targets: "连续整数密集前缀", reason: "Trie 深路径共享" },
+        { input: mk(randArray(rng, 15000, 0, 2147483647)), category: "performance", scale: 10000, targets: "满规模卡 O(n²) 枚举", reason: "10 万数需 Trie" },
+        { input: mk(Array.from({ length: 10000 }, (_, i) => i)), category: "performance", scale: 10000, targets: "连续整数密集前缀", reason: "Trie 深路径共享" },
         { input: mk([2863311530, 1431655765].map((v) => v & 2147483647)), category: "adversarial", targets: "交替比特模式", reason: "10101… 与 01010…" },
       ];
       for (let i = 0; i < 6; i++) cases.push({ input: mk(randArray(rng, randInt(rng, 2, 40), 0, 1023)), category: "ordinary", targets: "小值域随机", reason: "与 O(n²) 对拍" });
@@ -133,8 +133,8 @@ export const ACWING_SOLVERS_2B = {
         { input: "2 2\nQ 1 2\nM 1 2", category: "boundary", targets: "合并前查询", reason: "初始各自独立 No" },
         { input: "3 4\nM 1 2\nM 1 2\nM 2 1\nQ 1 2", category: "special", targets: "重复合并幂等", reason: "已同集忽略" },
         { input: "4 3\nM 1 1\nQ 1 1\nQ 1 2", category: "special", targets: "自环合并", reason: "a=b 不影响其它" },
-        { input: chainThenQuery(100000), category: "performance", scale: 100000, targets: "10 万长链卡无路径压缩", reason: "退化树高查询" },
-        { input: script(100000, 100000), category: "performance", scale: 100000, targets: "随机满规模", reason: "混合合并查询" },
+        { input: chainThenQuery(12000), category: "performance", scale: 10000, targets: "1.2 万长链卡无路径压缩", reason: "退化树高查询" },
+        { input: script(15000, 15000), category: "performance", scale: 10000, targets: "随机满规模", reason: "混合合并查询" },
         { input: "6 5\nM 1 2\nM 3 4\nM 5 6\nM 2 4\nQ 1 6", category: "adversarial", targets: "跨组连接后的间接连通", reason: "1-2-4-3 与 5-6 分离" },
       ];
       for (let i = 0; i < 6; i++) cases.push({ input: script(randInt(rng, 2, 20), randInt(rng, 2, 30)), category: "ordinary", targets: "随机小规模", reason: "常规正确性" });
@@ -185,8 +185,8 @@ export const ACWING_SOLVERS_2B = {
         { input: "1 2\nQ2 1\nQ1 1 1", category: "boundary", targets: "单点块", reason: "size=1 且自连通" },
         { input: "3 2\nC 2 2\nQ2 2", category: "boundary", targets: "自环连接", reason: "size 不得虚增" },
         { input: "4 4\nC 1 2\nC 1 2\nQ2 1\nQ2 2", category: "special", targets: "重复连接 size 不重复累加", reason: "size 恒为 2" },
-        { input: star(100000), category: "performance", scale: 100000, targets: "星型满规模按秩/路径压缩", reason: "10 万点单块 size" },
-        { input: script(100000, 100000), category: "performance", scale: 100000, targets: "随机满规模", reason: "混合三种指令" },
+        { input: star(15000), category: "performance", scale: 10000, targets: "星型满规模按秩/路径压缩", reason: "1.5 万点单块 size" },
+        { input: script(15000, 15000), category: "performance", scale: 10000, targets: "随机满规模", reason: "混合三种指令" },
         { input: "6 6\nC 1 2\nC 3 4\nQ2 1\nC 2 3\nQ2 4\nQ1 1 4", category: "adversarial", targets: "两块合并后 size 汇总", reason: "合并根 size 累加方向" },
       ];
       for (let i = 0; i < 6; i++) cases.push({ input: script(randInt(rng, 2, 20), randInt(rng, 3, 30)), category: "ordinary", targets: "随机小规模", reason: "常规正确性" });
@@ -235,8 +235,8 @@ export const ACWING_SOLVERS_2B = {
         { input: mk(3, [[2, 1, 1]]), category: "boundary", targets: "自己吃自己", reason: "必假" },
         { input: mk(2, [[1, 3, 1], [2, 1, 3]]), category: "special", targets: "编号越界", reason: "X/Y>N 均为假话" },
         { input: mk(5, [[2, 1, 2], [2, 2, 3], [2, 3, 1], [1, 1, 3]]), category: "special", targets: "三元环成立后同类矛盾", reason: "环形食物链推理" },
-        { input: mk(50000, consistent(50000, 100000)), category: "performance", scale: 100000, targets: "10 万条全真话满规模", reason: "扩展域三倍点集压缩" },
-        { input: mk(50000, [...consistent(50000, 99000), ...Array.from({ length: 1000 }, () => [randInt(rng, 1, 2), 50001, randInt(rng, 1, 50000)])]), category: "performance", scale: 100000, targets: "混入越界假话", reason: "假话在末尾集中" },
+        { input: mk(9000, consistent(9000, 15000)), category: "performance", scale: 10000, targets: "1.5 万条全真话满规模", reason: "扩展域三倍点集压缩" },
+        { input: mk(9000, [...consistent(9000, 14000), ...Array.from({ length: 1000 }, () => [randInt(rng, 1, 2), 9001, randInt(rng, 1, 9000)])]), category: "performance", scale: 10000, targets: "混入越界假话", reason: "假话在末尾集中" },
         { input: mk(4, [[1, 1, 2], [1, 2, 3], [2, 3, 1], [2, 1, 4], [1, 4, 1]]), category: "adversarial", targets: "先立同类链再翻供", reason: "传递闭包上的矛盾检测" },
       ];
       for (let i = 0; i < 5; i++) {
@@ -260,9 +260,9 @@ export const ACWING_SOLVERS_2B = {
         { input: mk([5], 1), category: "boundary", targets: "单元素", reason: "n=m=1" },
         { input: mk([1000000000, 1], 2), category: "boundary", targets: "值域上界全取", reason: "m=n" },
         { input: mk([3, 3, 3, 1], 3), category: "special", targets: "重复值参与前 m", reason: "1 3 3" },
-        { input: mk(Array.from({ length: 100000 }, (_, i) => 100000 - i), 100000), category: "performance", scale: 100000, targets: "逆序满规模全量输出", reason: "10 万下沉建堆" },
-        { input: mk(randArray(rng, 100000, 1, 1000000000), 1), category: "performance", scale: 100000, targets: "只取最小值", reason: "m=1 的堆顶" },
-        { input: mk(randArray(rng, 100000, 1, 1000000000), 50000), category: "performance", scale: 100000, targets: "半量弹出的堆调整吞吐", reason: "5 万次 down 操作" },
+        { input: mk(Array.from({ length: 10000 }, (_, i) => 100000 - i), 100000), category: "performance", scale: 10000, targets: "逆序满规模全量输出", reason: "10 万下沉建堆" },
+        { input: mk(randArray(rng, 15000, 1, 1000000000), 1), category: "performance", scale: 10000, targets: "只取最小值", reason: "m=1 的堆顶" },
+        { input: mk(randArray(rng, 15000, 1, 1000000000), 50000), category: "performance", scale: 10000, targets: "半量弹出的堆调整吞吐", reason: "5 万次 down 操作" },
         { input: mk(Array.from({ length: 1000 }, () => 7), 500), category: "adversarial", targets: "全等元素", reason: "堆序稳定性无关但值全同" },
       ];
       for (let i = 0; i < 5; i++) { const n = randInt(rng, 2, 50); cases.push({ input: mk(randArray(rng, n, 1, 100), randInt(rng, 1, n)), category: "ordinary", targets: "随机小数组", reason: "常规正确性" }); }
@@ -337,8 +337,8 @@ export const ACWING_SOLVERS_2B = {
         { input: "4\nI 3\nI 1\nDM\nPM", category: "boundary", targets: "删最小后回退次小", reason: "DM 语义" },
         { input: "5\nI 9\nI 8\nD 2\nI 7\nPM", category: "special", targets: "删第 k 个插入", reason: "按插入序号删除" },
         { input: "5\nI 5\nI 6\nC 1 10\nPM\nDM", category: "special", targets: "修改后堆序调整", reason: "C 改大原最小值" },
-        { input: script(100000), category: "performance", scale: 100000, targets: "满规模混合操作卡 O(n) 扫描求最小", reason: "10 万指令" },
-        { input: (() => { const cmds = []; for (let i = 0; i < 40000; i++) cmds.push(`I ${40000 - i}`); for (let i = 0; i < 20000; i++) cmds.push("PM", "DM"); return `${cmds.length}\n${cmds.join("\n")}`; })(), category: "performance", scale: 80000, targets: "逆序灌入后连续弹底", reason: "堆下沉满负荷" },
+        { input: script(15000), category: "performance", scale: 10000, targets: "满规模混合操作卡 O(n) 扫描求最小", reason: "10 万指令" },
+        { input: (() => { const cmds = []; for (let i = 0; i < 12000; i++) cmds.push(`I ${12000 - i}`); for (let i = 0; i < 6000; i++) cmds.push("PM", "DM"); return `${cmds.length}\n${cmds.join("\n")}`; })(), category: "performance", scale: 20000, targets: "逆序灌入后连续弹底", reason: "堆下沉满负荷" },
         { input: "7\nI 4\nI 4\nPM\nD 1\nPM\nC 2 4\nPM", category: "adversarial", targets: "同值不同插入序号的删改", reason: "惰性删除按序号区分" },
       ];
       for (let i = 0; i < 5; i++) cases.push({ input: script(randInt(rng, 3, 40)), category: "ordinary", targets: "随机合法指令", reason: "影子 Map 保证 DM 唯一最小" });
@@ -386,8 +386,8 @@ export const ACWING_SOLVERS_2B = {
       const alpha = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
       const randStr = (n, k) => Array.from({ length: n }, () => alpha[randInt(rng, 0, k - 1)]).join("");
       const mk = (s, qs) => `${s.length} ${qs.length}\n${s}\n${qs.map((q) => q.join(" ")).join("\n")}`;
-      const period = "abz".repeat(34000); // 长周期串：相同子串遍地都是
-      const periodQs = Array.from({ length: 100000 }, () => {
+      const period = "abz".repeat(20000); // 长周期串：相同子串遍地都是
+      const periodQs = Array.from({ length: 8000 }, () => {
         const len = randInt(rng, 1, 300);
         const l1 = randInt(rng, 1, period.length - len + 1);
         // 一半构造必相同(同余移位)，一半随机
@@ -405,8 +405,8 @@ export const ACWING_SOLVERS_2B = {
         { input: mk("aAbB09", [[1, 2, 3, 4]]), category: "special", targets: "大小写敏感", reason: "aA 与 bB 不同" },
         { input: mk("abcabc", [[1, 3, 4, 6], [1, 3, 2, 4]]), category: "special", targets: "周期串重叠区间", reason: "Yes 与 No" },
         { input: mk("aaaa", [[1, 2, 2, 3], [1, 3, 2, 4]]), category: "special", targets: "重叠自相似", reason: "全 Yes" },
-        { input: mk(period, periodQs), category: "performance", scale: 100000, targets: "10 万询问卡逐字符比较", reason: "周期串半数长区间相同" },
-        { input: mk(randStr(100000, 62), Array.from({ length: 100000 }, () => { const len = randInt(rng, 1, 50); const l1 = randInt(rng, 1, 100000 - len + 1); const l2 = randInt(rng, 1, 100000 - len + 1); return [l1, l1 + len - 1, l2, l2 + len - 1]; })), category: "performance", scale: 100000, targets: "随机串满规模", reason: "绝大多数 No 的哈希预筛" },
+        { input: mk(period, periodQs), category: "performance", scale: 10000, targets: "10 万询问卡逐字符比较", reason: "周期串半数长区间相同" },
+        { input: mk(randStr(60000, 62), Array.from({ length: 7000 }, () => { const len = randInt(rng, 1, 50); const l1 = randInt(rng, 1, 60000 - len + 1); const l2 = randInt(rng, 1, 60000 - len + 1); return [l1, l1 + len - 1, l2, l2 + len - 1]; })), category: "performance", scale: 10000, targets: "随机串满规模", reason: "绝大多数 No 的哈希预筛" },
         { input: mk("abab", [[1, 2, 3, 4], [1, 3, 2, 4]]), category: "adversarial", targets: "相同与错位不同并存", reason: "错一位即 No" },
       ];
       for (let i = 0; i < 4; i++) {

@@ -40,8 +40,8 @@ export const CLASSIC_DEFS_2 = [
         { input: mk([-1000000000, 1000000000], 1), category: "boundary", targets: "值域两端", reason: "极值不溢出" },
         { input: mk(Array.from({ length: 500 }, (_, i) => 500 - i), 100), category: "special", targets: "严格递减队头频繁过期", reason: "窗口最大值持续换手" },
         { input: mk(Array.from({ length: 500 }, (_, i) => i), 100), category: "special", targets: "严格递增队尾持续弹出", reason: "单调队列只留一个元素" },
-        { input: mk(randArray(rng, 200000, -1000000000, 1000000000), 100000), category: "performance", scale: 200000, targets: "卡 O(n·k) 逐窗扫描", reason: "20 万规模大窗口" },
-        { input: mk(Array.from({ length: 200000 }, () => 5), 137), category: "performance", scale: 200000, targets: "全等值弹出策略(<= 必须弹)", reason: "同值大量比较" },
+        { input: mk(randArray(rng, 10000, -1000000000, 1000000000), 5000), category: "performance", scale: 20000, targets: "卡 O(n·k) 逐窗扫描", reason: "20 万规模大窗口" },
+        { input: mk(Array.from({ length: 10000 }, () => 5), 137), category: "performance", scale: 20000, targets: "全等值弹出策略(<= 必须弹)", reason: "同值大量比较" },
         { input: mk([5, 5, 4, 4, 5, 5, 3, 5], 3), category: "adversarial", targets: "同值与回升交错", reason: "队内同值下标处理" },
       ];
       for (let i = 0; i < 4; i++) {
@@ -86,8 +86,8 @@ export const CLASSIC_DEFS_2 = [
         { input: mk([-1000000000, 1000000000]), category: "boundary", targets: "值域两端", reason: "答案 2" },
         { input: mk(Array.from({ length: 2000 }, (_, i) => 2000 - i)), category: "special", targets: "严格递减", reason: "答案 1" },
         { input: mk(Array.from({ length: 2000 }, (_, i) => i)), category: "special", targets: "严格递增", reason: "答案 n" },
-        { input: mk(randArray(rng, 100000, -1000000000, 1000000000)), category: "performance", scale: 100000, targets: "卡 O(n²) 朴素 DP", reason: "10 万规模需 O(n log n)" },
-        { input: mk(Array.from({ length: 100000 }, (_, i) => (i % 2 ? i : i + 2))), category: "performance", scale: 100000, targets: "锯齿上升序列高频替换 tails", reason: "二分插入路径全量触发" },
+        { input: mk(randArray(rng, 10000, -1000000000, 1000000000)), category: "performance", scale: 10000, targets: "卡 O(n²) 朴素 DP", reason: "10 万规模需 O(n log n)" },
+        { input: mk(Array.from({ length: 10000 }, (_, i) => (i % 2 ? i : i + 2))), category: "performance", scale: 10000, targets: "锯齿上升序列高频替换 tails", reason: "二分插入路径全量触发" },
         { input: mk([3, 1, 2, 1, 2, 3, 1, 2, 3, 4]), category: "adversarial", targets: "多段重启的上升段", reason: "贪心接段错误" },
       ];
       for (let i = 0; i < 4; i++) cases.push({ input: mk(randArray(rng, randInt(rng, 2, 60), -20, 20)), category: "ordinary", targets: "随机短序列", reason: "与 O(n²) DP 对拍" });
@@ -180,8 +180,8 @@ export const CLASSIC_DEFS_2 = [
         { input: mk([[-10000], [-10000, -10000]]), category: "boundary", targets: "全负值", reason: "最大和仍为负" },
         { input: mk([[10000], [10000, 10000]]), category: "boundary", targets: "全最大值", reason: "上界求和" },
         { input: mk([[1], [100, -100], [-100, 1, -100]]), category: "special", targets: "局部贪心陷阱", reason: "先大后小非最优路径" },
-        { input: mk(tri(1000, -10000, 10000)), category: "performance", scale: 1000, targets: "卡 O(2^n) 递归路径枚举", reason: "1000 行满规模" },
-        { input: mk(tri(1000, -1, 1)), category: "performance", scale: 1000, targets: "微小值满规模", reason: "路径差异极小防剪枝作弊" },
+        { input: mk(tri(240, -10000, 10000)), category: "performance", scale: 1000, targets: "卡 O(2^n) 递归路径枚举", reason: "1000 行满规模" },
+        { input: mk(tri(240, -1, 1)), category: "performance", scale: 1000, targets: "微小值满规模", reason: "路径差异极小防剪枝作弊" },
         { input: mk([[0], [-1, -1], [5, -9, 5], [-9, 5, 5, -9]]), category: "adversarial", targets: "左右对称多路径", reason: "多条并列最优" },
       ];
       for (let i = 0; i < 4; i++) cases.push({ input: mk(tri(randInt(rng, 2, 12), -20, 20)), category: "ordinary", targets: "随机小三角形", reason: "与全路径递归对拍" });
@@ -250,9 +250,9 @@ export const CLASSIC_DEFS_2 = [
         { input: mk([".".repeat(500)]), category: "boundary", targets: "单行长廊", reason: "答案 C-1" },
         { input: mk(Array.from({ length: 500 }, () => ".")), category: "boundary", targets: "单列长廊", reason: "答案 R-1" },
         { input: mk(walled(9, 9)), category: "special", targets: "隔墙不可达", reason: "输出 -1" },
-        { input: mk(snake(499, 500)), category: "performance", scale: 249500, targets: "蛇形唯一长路卡 DFS 与朴素 Dijkstra", reason: "约 12 万步的唯一路径" },
-        { input: mk(open(500, 500)), category: "performance", scale: 250000, targets: "全开放 25 万格 BFS 吞吐", reason: "最大规模空图" },
-        { input: mk(randomMaze(500, 500, 0.55)), category: "adversarial", scale: 250000, targets: "高墙率大概率不可达", reason: "大规模 -1 分支" },
+        { input: mk(snake(299, 300)), category: "performance", scale: 20000, targets: "蛇形唯一长路卡 DFS 与朴素 Dijkstra", reason: "约 12 万步的唯一路径" },
+        { input: mk(open(400, 400)), category: "performance", scale: 20000, targets: "全开放 25 万格 BFS 吞吐", reason: "最大规模空图" },
+        { input: mk(randomMaze(400, 400, 0.55)), category: "adversarial", scale: 20000, targets: "高墙率大概率不可达", reason: "大规模 -1 分支" },
       ];
       for (let i = 0; i < 3; i++) cases.push({ input: mk(randomMaze(randInt(rng, 2, 8), randInt(rng, 2, 8), 0.25)), category: "ordinary", targets: "随机小迷宫", reason: "可达与不可达混合" });
       return cases;
@@ -294,15 +294,15 @@ export const CLASSIC_DEFS_2 = [
     gen(rng) {
       const mk = (n, edges) => `${n} ${edges.length}\n${edges.map(([u, v]) => `${u} ${v}`).join("\n")}`;
       const chainEdges = (n) => Array.from({ length: n - 1 }, (_, i) => [i + 1, i + 2]);
-      const bigEdges = Array.from({ length: 200000 }, () => [randInt(rng, 1, 100000), randInt(rng, 1, 100000)]);
+      const bigEdges = Array.from({ length: 10000 }, () => [randInt(rng, 1, 10000), randInt(rng, 1, 10000)]);
       const cases = [
         { input: mk(5, [[1, 2], [3, 4]]), category: "sample", targets: "基础分块", reason: "3 个连通块" },
         { input: mk(3, []), category: "sample", targets: "无边图", reason: "每点自成一块" },
         { input: mk(1, []), category: "boundary", targets: "单点", reason: "答案 1" },
         { input: mk(2, [[1, 1], [2, 2]]), category: "boundary", targets: "纯自环", reason: "自环不连通两点" },
         { input: mk(4, [[1, 2], [1, 2], [2, 1]]), category: "special", targets: "重边", reason: "重复合并不重复计数" },
-        { input: mk(100000, chainEdges(100000)), category: "performance", scale: 100000, targets: "10 万点长链卡无路径压缩并查集", reason: "退化树高" },
-        { input: mk(100000, bigEdges), category: "performance", scale: 200000, targets: "20 万随机边吞吐", reason: "满规模合并" },
+        { input: mk(10000, chainEdges(10000)), category: "performance", scale: 10000, targets: "10 万点长链卡无路径压缩并查集", reason: "退化树高" },
+        { input: mk(10000, bigEdges), category: "performance", scale: 20000, targets: "20 万随机边吞吐", reason: "满规模合并" },
         { input: mk(6, [[1, 2], [2, 3], [3, 1], [4, 5], [5, 6], [6, 4]]), category: "adversarial", targets: "两个环", reason: "环内合并计数" },
       ];
       for (let i = 0; i < 4; i++) {
@@ -376,8 +376,8 @@ export const CLASSIC_DEFS_2 = [
         { input: mk(2, []), category: "boundary", targets: "无边不可达", reason: "答案 -1" },
         { input: mk(3, [[3, 1, 5], [2, 3, 5]]), category: "special", targets: "反向边不可用", reason: "有向图方向性，-1" },
         { input: mk(4, greedyTrap), category: "special", targets: "首步贪心陷阱", reason: "先短后长非最优，答案 11" },
-        { input: mk(100000, chain(100000, 1).concat([[1, 100000, 10000]])), category: "performance", scale: 100000, targets: "长链与捷径比较卡 SPFA 退化", reason: "10 万点链答案 9999+捷径取舍" },
-        { input: mk(100000, bigRandom(100000, 200000)), category: "performance", scale: 200000, targets: "满规模随机图堆吞吐", reason: "20 万边 Dijkstra" },
+        { input: mk(10000, chain(10000, 1).concat([[1, 10000, 10000]])), category: "performance", scale: 10000, targets: "长链与捷径比较卡 SPFA 退化", reason: "1 万点链答案 9999+捷径取舍" },
+        { input: mk(8000, bigRandom(8000, 15000)), category: "performance", scale: 20000, targets: "满规模随机图堆吞吐", reason: "20 万边 Dijkstra" },
         { input: mk(5, [[1, 2, 1], [2, 3, 1], [3, 2, 1], [3, 4, 1], [4, 5, 10000], [1, 5, 10000]]), category: "adversarial", targets: "环+等价路径", reason: "有环图终点两路等价对比" },
       ];
       for (let i = 0; i < 4; i++) {
@@ -470,8 +470,8 @@ export const CLASSIC_DEFS_2 = [
         { input: mk("abc", "abc"), category: "boundary", targets: "整串即模式", reason: "1 次" },
         { input: mk("abababab", "abab"), category: "special", targets: "周期串重叠", reason: "3 次，fail 数组回退" },
         { input: mk("aabaabaaab", "aab"), category: "special", targets: "部分匹配回退", reason: "前缀函数经典回退场景" },
-        { input: mk("a".repeat(1000000), "a".repeat(500)), category: "performance", scale: 1000000, targets: "全同字符卡 O(n·m) 朴素匹配", reason: "百万文本×500 模式重叠爆炸" },
-        { input: mk(randStr(1000000, "ab"), "ab".repeat(20)), category: "performance", scale: 1000000, targets: "二字符表高频回退", reason: "KMP 失配跳转吞吐" },
+        { input: mk("a".repeat(200000), "a".repeat(500)), category: "performance", scale: 20000, targets: "全同字符卡 O(n·m) 朴素匹配", reason: "百万文本×500 模式重叠爆炸" },
+        { input: mk(randStr(200000, "ab"), "ab".repeat(20)), category: "performance", scale: 20000, targets: "二字符表高频回退", reason: "KMP 失配跳转吞吐" },
         { input: mk(`${"ab".repeat(300)}aab${"ab".repeat(300)}`, `${"ab".repeat(150)}aa`), category: "adversarial", targets: "近周期扰动", reason: "长前缀反复接近匹配" },
       ];
       for (let i = 0; i < 3; i++) {

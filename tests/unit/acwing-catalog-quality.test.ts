@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -47,6 +47,18 @@ describe("AcWing 增强题测试点质量契约", () => {
         expect((p.targets ?? "").length, `${problem.id} 性能点缺 targets`).toBeGreaterThan(4);
       }
     }
+  });
+
+  it("体积契约：单点输入 ≤256KB(判题链路约束)，题库文件总体积受控", () => {
+    for (const problem of catalog) {
+      for (const sample of problem.samples) {
+        expect(sample.input.length, `${problem.id} 单点输入超 256KB`).toBeLessThanOrEqual(256 * 1024);
+      }
+    }
+    const acwingBytes = statSync(resolve(import.meta.dirname, "../../public/acwing-course.json")).size;
+    const classicBytes = statSync(resolve(import.meta.dirname, "../../public/classic-problems.json")).size;
+    expect(acwingBytes, "acwing-course.json 体积失控(87 题全量预算 40MB)").toBeLessThanOrEqual(40 * 1024 * 1024);
+    expect(classicBytes, "classic-problems.json 体积失控").toBeLessThanOrEqual(20 * 1024 * 1024);
   });
 
   it("未增强的题保持原状(不误伤)", () => {

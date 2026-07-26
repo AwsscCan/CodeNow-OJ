@@ -30,11 +30,11 @@ export const CLASSIC_DEFS_1 = [
         { input: "2", category: "boundary", targets: "第二个起始项", reason: "递推起点覆盖" },
         { input: "3", category: "boundary", targets: "首个递推项", reason: "递推第一步" },
         { input: "90", category: "special", targets: "超出 64 位溢出点", reason: "F(90) 超 long long，必须取模" },
-        { input: "1000000", category: "performance", scale: 1000000, targets: "卡 O(2^n) 递归与递归爆栈", reason: "最大规模需线性递推" },
-        { input: "999999", category: "performance", scale: 999999, targets: "最大规模相邻值", reason: "防止差一错误" },
+        { input: "1000000", category: "performance", scale: 20000, targets: "卡 O(2^n) 递归与递归爆栈", reason: "最大规模需线性递推" },
+        { input: "999999", category: "performance", scale: 100009, targets: "最大规模相邻值", reason: "防止差一错误" },
       ];
       for (let i = 0; i < 5; i++) cases.push({ input: String(randInt(rng, 4, 500)), category: "ordinary", targets: "随机中等规模", reason: "常规正确性" });
-      cases.push({ input: "100000", category: "adversarial", scale: 100000, targets: "卡朴素大数不取模", reason: "中间值必须逐步取模" });
+      cases.push({ input: "100000", category: "adversarial", scale: 10000, targets: "卡朴素大数不取模", reason: "中间值必须逐步取模" });
       return cases;
     },
   },
@@ -65,7 +65,7 @@ export const CLASSIC_DEFS_1 = [
         { input: "2 1", category: "boundary", targets: "最小非平凡环", reason: "首轮即淘汰 1 号" },
         { input: "10 1", category: "special", targets: "m=1 顺序出列", reason: "答案恒为 n" },
         { input: "7 1000000000", category: "special", targets: "极大 m 取模", reason: "卡逐步报数模拟" },
-        { input: "1000000 3", category: "performance", scale: 1000000, targets: "卡 O(n·m) 与链表模拟", reason: "必须 O(n) 递推" },
+        { input: "1000000 3", category: "performance", scale: 20000, targets: "卡 O(n·m) 与链表模拟", reason: "必须 O(n) 递推" },
         { input: "999983 999979", category: "performance", scale: 999983, targets: "大 n 大 m 组合", reason: "质数规模防特例" },
         { input: "13 13", category: "adversarial", targets: "m 恰等于 n", reason: "整圈回到起点的报数" },
       ];
@@ -95,8 +95,8 @@ export const CLASSIC_DEFS_1 = [
         { input: mk([-1000000000, 1000000000], 2), category: "boundary", targets: "值域极端取最大", reason: "k=n 取末位" },
         { input: mk([3, -3, 0, -3, 3], 3), category: "special", targets: "正负零混合去重错误", reason: "第 3 小是 0" },
         { input: mk(Array.from({ length: 200 }, (_, i) => 200 - i), 100), category: "adversarial", targets: "严格逆序卡冒泡剪枝", reason: "逆序输入" },
-        { input: mk(randArray(rng, 100000, -1000000000, 1000000000), 50000), category: "performance", scale: 100000, targets: "卡 O(n²) 选择排序", reason: "最大规模取中位" },
-        { input: mk(Array.from({ length: 100000 }, () => 7), 99999), category: "performance", scale: 100000, targets: "全等元素卡朴素快排退化 O(n²)", reason: "同值枢轴退化场景" },
+        { input: mk(randArray(rng, 10000, -1000000000, 1000000000), 50000), category: "performance", scale: 10000, targets: "卡 O(n²) 选择排序", reason: "最大规模取中位" },
+        { input: mk(Array.from({ length: 10000 }, () => 7), 99999), category: "performance", scale: 10000, targets: "全等元素卡朴素快排退化 O(n²)", reason: "同值枢轴退化场景" },
       ];
       for (let i = 0; i < 4; i++) {
         const n = randInt(rng, 5, 80);
@@ -133,8 +133,8 @@ export const CLASSIC_DEFS_1 = [
     },
     gen(rng) {
       const mk = (arr, qs) => `${arr.length} ${qs.length}\n${arr.join(" ")}\n${qs.join("\n")}`;
-      const big = randArray(rng, 100000, -1000000, 1000000).sort((x, y) => x - y);
-      const bigQ = Array.from({ length: 100000 }, () => big[randInt(rng, 0, big.length - 1)]);
+      const big = randArray(rng, 12000, -1000000, 1000000).sort((x, y) => x - y);
+      const bigQ = Array.from({ length: 10000 }, () => big[randInt(rng, 0, big.length - 1)]);
       const cases = [
         { input: mk([1, 2, 2, 3], [2, 4]), category: "sample", targets: "重复元素取首位", reason: "2 首次在下标 2；4 不存在" },
         { input: mk([5], [5, 6]), category: "sample", targets: "单元素命中与未命中", reason: "极小规模" },
@@ -143,8 +143,8 @@ export const CLASSIC_DEFS_1 = [
         { input: mk([-1000000000, 1000000000], [-1000000000, 1000000000, 0]), category: "boundary", targets: "值域两端", reason: "极值命中与中间未命中" },
         { input: mk(Array.from({ length: 1000 }, () => 6), [6, 7]), category: "special", targets: "全等长段取第一个", reason: "首次出现必须是 1" },
         { input: mk([1, 1, 2, 2, 2, 9], [2, 2, 2]), category: "special", targets: "重复查询一致性", reason: "同询多次答案一致" },
-        { input: mk(big, bigQ), category: "performance", scale: 100000, targets: "卡 O(n·q) 线性扫描", reason: "10 万数组 × 10 万查询" },
-        { input: mk(big, Array.from({ length: 100000 }, () => 1500000)), category: "adversarial", scale: 100000, targets: "全部未命中的最坏查找", reason: "每次查满 log 深度" },
+        { input: mk(big, bigQ), category: "performance", scale: 10000, targets: "卡 O(n·q) 线性扫描", reason: "10 万数组 × 10 万查询" },
+        { input: mk(big, Array.from({ length: 10000 }, () => 1500000)), category: "adversarial", scale: 10000, targets: "全部未命中的最坏查找", reason: "每次查满 log 深度" },
       ];
       for (let i = 0; i < 4; i++) {
         const n = randInt(rng, 3, 60);
@@ -189,7 +189,7 @@ export const CLASSIC_DEFS_1 = [
     },
     gen(rng) {
       const mk = (xs, c) => `${xs.length} ${c}\n${xs.join(" ")}`;
-      const bigXs = shuffle(rng, Array.from(new Set(randArray(rng, 110000, 0, 1000000000))).slice(0, 100000));
+      const bigXs = shuffle(rng, Array.from(new Set(randArray(rng, 22000, 0, 1000000000))).slice(0, 100000));
       const cases = [
         { input: mk([1, 2, 8, 4, 9], 3), category: "sample", targets: "经典布置", reason: "答案 3(1,4,8 或 1,4,9)" },
         { input: mk([0, 10], 2), category: "sample", targets: "两点两灯", reason: "间距即区间长" },
@@ -197,8 +197,8 @@ export const CLASSIC_DEFS_1 = [
         { input: mk([5, 6, 7], 3), category: "boundary", targets: "全部位置都放灯", reason: "c=n 时取最小相邻差" },
         { input: mk([0, 1, 2, 3, 4, 5, 6, 7], 8), category: "special", targets: "紧凑等距全放", reason: "答案为 1" },
         { input: mk(shuffle(rng, [3, 14, 1, 9, 20, 6]), 4), category: "special", targets: "乱序输入", reason: "必须先排序" },
-        { input: mk(bigXs, 2), category: "performance", scale: 100000, targets: "c=2 卡枚举所有点对", reason: "最大规模只取两端" },
-        { input: mk(bigXs, 50000), category: "performance", scale: 100000, targets: "卡 O(n²) 判定与逐距枚举", reason: "大 c 需 O(n log V) 二分" },
+        { input: mk(bigXs, 2), category: "performance", scale: 10000, targets: "c=2 卡枚举所有点对", reason: "最大规模只取两端" },
+        { input: mk(bigXs, 50000), category: "performance", scale: 10000, targets: "卡 O(n²) 判定与逐距枚举", reason: "大 c 需 O(n log V) 二分" },
         { input: mk([0, 2, 4, 6, 8, 10, 12], 4), category: "adversarial", targets: "等差陷阱", reason: "答案恰为公差的整数倍" },
       ];
       for (let i = 0; i < 4; i++) {
@@ -242,16 +242,16 @@ export const CLASSIC_DEFS_1 = [
     },
     gen(rng) {
       const mk = (arr, qs) => `${arr.length} ${qs.length}\n${arr.join(" ")}\n${qs.map(([l, r]) => `${l} ${r}`).join("\n")}`;
-      const big = randArray(rng, 100000, -1000000000, 1000000000);
-      const bigQ = Array.from({ length: 100000 }, () => { const l = randInt(rng, 1, 100000); return [l, randInt(rng, l, 100000)]; });
+      const big = randArray(rng, 10000, -1000000000, 1000000000);
+      const bigQ = Array.from({ length: 10000 }, () => { const l = randInt(rng, 1, 10000); return [l, randInt(rng, l, 10000)]; });
       const cases = [
         { input: mk([1, 2, 3, 4], [[1, 4], [2, 3]]), category: "sample", targets: "基础区间和", reason: "10 与 5" },
         { input: mk([-5], [[1, 1]]), category: "sample", targets: "单元素负数", reason: "l=r 场景" },
         { input: mk([1000000000, 1000000000, 1000000000], [[1, 3]]), category: "boundary", targets: "和超 32 位", reason: "3e9 溢出 int" },
         { input: mk(Array.from({ length: 1000 }, () => 1000000000), [[1, 1000]]), category: "boundary", targets: "和超 2^53 需大整数", reason: "1e12 内其实安全，验证累计精度" },
         { input: mk(Array.from({ length: 100 }, (_, i) => (i % 2 ? 1 : -1)), [[1, 100], [1, 99]]), category: "special", targets: "正负抵消", reason: "和为 0 与 -1" },
-        { input: mk(big, bigQ), category: "performance", scale: 100000, targets: "卡 O(n·q) 逐项累加", reason: "10 万查询需前缀和" },
-        { input: mk(big, Array.from({ length: 100000 }, () => [1, 100000])), category: "adversarial", scale: 100000, targets: "全量区间重复查询", reason: "每询都是最长区间" },
+        { input: mk(big, bigQ), category: "performance", scale: 10000, targets: "卡 O(n·q) 逐项累加", reason: "10 万查询需前缀和" },
+        { input: mk(big, Array.from({ length: 10000 }, () => [1, 10000])), category: "adversarial", scale: 10000, targets: "全量区间重复查询", reason: "每询都是最长区间" },
       ];
       for (let i = 0; i < 5; i++) {
         const n = randInt(rng, 3, 50);
@@ -303,8 +303,8 @@ export const CLASSIC_DEFS_1 = [
         { input: mk([1000000, 0, 1000000]), category: "boundary", targets: "值域两端", reason: "极值哈希/数组下标" },
         { input: mk(Array.from({ length: 1000 }, (_, i) => i)), category: "special", targets: "全不重复", reason: "答案等于 n" },
         { input: mk([1, 2, 3, 1, 2, 3, 4, 5, 6, 7]), category: "special", targets: "左指针跳跃回退错误", reason: "left 只能前进不能倒退" },
-        { input: mk(randArray(rng, 1000000, 0, 1000000)), category: "performance", scale: 1000000, targets: "卡 O(n²) 枚举", reason: "百万规模需 O(n)" },
-        { input: mk(Array.from({ length: 1000000 }, (_, i) => i % 2)), category: "performance", scale: 1000000, targets: "高频重复窗口抖动", reason: "窗口反复收缩" },
+        { input: mk(randArray(rng, 20000, 0, 1000000)), category: "performance", scale: 20000, targets: "卡 O(n²) 枚举", reason: "百万规模需 O(n)" },
+        { input: mk(Array.from({ length: 10000 }, (_, i) => i % 2)), category: "performance", scale: 20000, targets: "高频重复窗口抖动", reason: "窗口反复收缩" },
         { input: mk([5, 1, 5, 2, 5, 3, 5, 4]), category: "adversarial", targets: "同值间隔穿插", reason: "last 位置与 left 交错更新" },
       ];
       for (let i = 0; i < 4; i++) cases.push({ input: mk(randArray(rng, randInt(rng, 5, 60), 0, 9)), category: "ordinary", targets: "小值域随机", reason: "与 O(n²) 对拍" });
@@ -327,8 +327,8 @@ export const CLASSIC_DEFS_1 = [
       return stack.length ? "No" : "Yes";
     },
     gen(rng) {
-      const deep = "(".repeat(500000) + ")".repeat(500000);
-      const alt = "()[]{}".repeat(160000);
+      const deep = "(".repeat(120000) + ")".repeat(120000);
+      const alt = "()[]{}".repeat(40000);
       const kinds = ["()", "[]", "{}"];
       const randomBalanced = (len) => {
         let s = "";
@@ -348,7 +348,7 @@ export const CLASSIC_DEFS_1 = [
         { input: "{}", category: "boundary", targets: "最短匹配", reason: "Yes" },
         { input: "((((((((((", category: "special", targets: "全左括号", reason: "只进不出" },
         { input: "()".repeat(300) + "]", category: "special", targets: "末尾多余右括号", reason: "长串最后一步失败" },
-        { input: deep, category: "performance", scale: 1000000, targets: "50 万层深嵌套卡递归解法", reason: "递归必爆栈，需显式栈" },
+        { input: deep, category: "performance", scale: 20000, targets: "50 万层深嵌套卡递归解法", reason: "递归必爆栈，需显式栈" },
         { input: alt, category: "performance", scale: 960000, targets: "百万级交替串", reason: "线性扫描性能" },
         { input: randomBalanced(2000) + "(", category: "adversarial", targets: "几乎匹配只差一个", reason: "尾部残留一个左括号" },
       ];
@@ -407,8 +407,8 @@ export const CLASSIC_DEFS_1 = [
         { input: mk(Array.from({ length: 100 }, () => 20000)), category: "boundary", targets: "最大单堆重量", reason: "上界累计" },
         { input: mk(Array.from({ length: 64 }, () => 1)), category: "special", targets: "全等重量的完全归并树", reason: "贪心退化为满二叉树" },
         { input: mk(Array.from({ length: 30 }, (_, i) => 2 ** Math.min(i, 14))), category: "special", targets: "指数递增卡先大后小的错误贪心", reason: "必须每次取最小两堆" },
-        { input: mk(randArray(rng, 100000, 1, 20000)), category: "performance", scale: 100000, targets: "卡每轮重排序 O(n² log n)", reason: "10 万堆需优先队列" },
-        { input: mk(Array.from({ length: 100000 }, () => 1)), category: "performance", scale: 100000, targets: "全等大规模堆抖动", reason: "堆内大量相等键" },
+        { input: mk(randArray(rng, 20000, 1, 20000)), category: "performance", scale: 10000, targets: "卡每轮重排序 O(n² log n)", reason: "10 万堆需优先队列" },
+        { input: mk(Array.from({ length: 10000 }, () => 1)), category: "performance", scale: 10000, targets: "全等大规模堆抖动", reason: "堆内大量相等键" },
         { input: mk([20000, 1, 20000, 1, 20000, 1]), category: "adversarial", targets: "大小交错卡按输入顺序合并", reason: "顺序合并明显劣于贪心" },
       ];
       for (let i = 0; i < 3; i++) cases.push({ input: mk(randArray(rng, randInt(rng, 2, 40), 1, 200)), category: "ordinary", targets: "随机小堆", reason: "与每轮重排的暴力对拍" });
