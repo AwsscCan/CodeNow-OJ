@@ -160,6 +160,10 @@ export const useProblemStore = create<ProblemStore>()(
         problem: s.problem,
         code: s.code,
         workspaceSplit: s.workspaceSplit,
+        // 提交记录与判题结果永久保存(除非用户手动清除)
+        history: s.history.slice(0, 50),
+        results: s.results,
+        compilerDiagnostic: s.compilerDiagnostic,
       }),
     },
   ),

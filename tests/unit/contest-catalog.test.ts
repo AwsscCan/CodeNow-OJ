@@ -15,14 +15,15 @@ describe("竞赛真题题库数据质量契约", () => {
     expect(catalog.length).toBeGreaterThanOrEqual(7);
     expect(new Set(catalog.map((p) => p.id)).size).toBe(catalog.length);
     for (const p of catalog) {
-      expect(p.id, p.id).toMatch(/^CS\d{3}$/);
+      expect(p.id, p.id).toMatch(/^CS\d{3,4}$/);
       expect(p.folder.startsWith("竞赛真题/"), `${p.id} 应归入竞赛真题/`).toBe(true);
       expect(p.extractionStatus).toBe("complete");
     }
   });
 
-  it("覆盖 CSP-J / NOIP / 蓝桥杯三个来源子文件夹", () => {
+  it("覆盖 CSP 认证 / CSP-J / NOIP / 蓝桥杯来源子文件夹", () => {
     const folders = new Set(catalog.map((p) => p.folder));
+    expect([...folders].some((f) => f.includes("CSP 认证"))).toBe(true);
     expect([...folders].some((f) => f.includes("CSP-J"))).toBe(true);
     expect([...folders].some((f) => f.includes("NOIP"))).toBe(true);
     expect([...folders].some((f) => f.includes("蓝桥杯"))).toBe(true);
