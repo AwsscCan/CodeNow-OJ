@@ -1,6 +1,6 @@
 /* CodeNow OJ · 经典题库定义(下)：数据结构/动态规划/搜索图论/数学字符串 · Bamzc */
 
-import { randArray, randInt, shuffle, tokens } from "./lib.mjs";
+import { randArray, randInt, tokens } from "./lib.mjs";
 
 export const CLASSIC_DEFS_2 = [
   {

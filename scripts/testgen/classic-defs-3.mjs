@@ -1,6 +1,6 @@
 /* CodeNow OJ · 经典题库扩容(下)：进阶 DP/图论/数论/字符串/模拟 · Bamzc */
 
-import { randArray, randInt, shuffle, tokens } from "./lib.mjs";
+import { randInt, shuffle, tokens } from "./lib.mjs";
 
 const MOD = 1000000007n;
 
