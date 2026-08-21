@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /* eslint-disable import/order -- Vitest 要求环境指令先于 import。 */
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { cleanup, createEvent, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/navigation", () => ({
@@ -37,6 +37,7 @@ beforeEach(() => {
     cloudArchives: [],
     cloudFolderIds: {},
     librarySearch: "",
+    builtinFolderOverrides: {},
   });
 });
 
@@ -46,6 +47,12 @@ afterEach(() => {
 });
 
 describe("题库文件夹整行拖动排序", () => {
+  function folderRow(container: HTMLElement, name: string) {
+    return Array.from(container.querySelectorAll(".folder-entry")).find((row) =>
+      row.querySelector(".folder-select span")?.textContent?.trim() === `▱ ${name}`,
+    )!;
+  }
+
   it("文件夹整行(folder-entry)可拖动，不再只有 ⋮ 小按钮", () => {
     const { container } = render(<LibraryPage />);
     const rows = container.querySelectorAll(".folder-entry[draggable='true']");
@@ -110,5 +117,55 @@ describe("题库文件夹整行拖动排序", () => {
     const state = useLibraryStore.getState();
     expect(state.folders).toContain("图论");
     expect(state.folders).toContain("图论/最短路");
+  });
+
+  it("跨父级拖到目标行边缘时成为目标的同级文件夹", async () => {
+    useLibraryStore.setState({ folders: ["默认题库", "动态规划", "图论", "图论/最短路"] });
+    const { container } = render(<LibraryPage />);
+    const source = folderRow(container, "最短路");
+    const target = folderRow(container, "动态规划");
+    (target as HTMLElement).getBoundingClientRect = () => rowRect(0, 30);
+    const dt = dataTransferStub();
+
+    fireEvent.dragStart(source, { dataTransfer: dt });
+    const drop = createEvent.drop(target, { dataTransfer: dt });
+    Object.defineProperty(drop, "clientY", { value: 1 });
+    fireEvent(target, drop);
+
+    await waitFor(() => {
+      const state = useLibraryStore.getState();
+      expect(state.folders).toContain("最短路");
+      expect(state.folders).not.toContain("图论/最短路");
+      expect(state.folderOrder.indexOf("最短路")).toBeLessThan(state.folderOrder.indexOf("动态规划"));
+    });
+  });
+
+  it("拖到全部题目会把子文件夹提升为根级", () => {
+    useLibraryStore.setState({ folders: ["默认题库", "图论", "图论/最短路"] });
+    const { container, getByRole } = render(<LibraryPage />);
+    const source = folderRow(container, "最短路");
+    const root = getByRole("button", { name: /全部题目/ });
+    const dt = dataTransferStub();
+
+    fireEvent.dragStart(source, { dataTransfer: dt });
+    fireEvent.dragOver(root, { dataTransfer: dt });
+    fireEvent.drop(root, { dataTransfer: dt });
+
+    expect(useLibraryStore.getState().folders).toEqual(["默认题库", "图论", "最短路"]);
+  });
+
+  it("内置默认题库可以像普通文件夹一样拖入其他目录", () => {
+    const { container } = render(<LibraryPage />);
+    const source = folderRow(container, "默认题库");
+    const target = folderRow(container, "动态规划");
+    (target as HTMLElement).getBoundingClientRect = () => rowRect(0, 30);
+    const dt = dataTransferStub();
+
+    fireEvent.dragStart(source, { dataTransfer: dt });
+    fireEvent.drop(target, { dataTransfer: dt, clientY: 15 });
+
+    const state = useLibraryStore.getState();
+    expect(state.folders).toContain("动态规划/默认题库");
+    expect(state.builtinFolderOverrides.P1001).toBe("动态规划/默认题库");
   });
 });

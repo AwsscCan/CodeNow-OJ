@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { dissolveFolderLevel, planFolderMove } from "../lib/folder-tree";
 
 // Lazy-loaded bundled catalog INDEX (轻量元数据, 不含测试点; 完整测试点按需从 /problems/<id>.json 取)
 let _acwingCatalog: BundledProblem[] | null = null;
@@ -33,6 +34,26 @@ const nat = new Intl.Collator("zh-CN", { numeric: true, sensitivity: "base" });
 export function folderName(folder: string) { return folder.split("/").pop() || folder; }
 export function folderParent(folder: string) { return folder.includes("/") ? folder.slice(0, folder.lastIndexOf("/")) : ""; }
 export function folderContains(folder: string, parent: string) { return folder === parent || folder.startsWith(`${parent}/`); }
+
+function addFolderParents(target: Set<string>, folder: string) {
+  const parts = folder.split("/").filter(Boolean);
+  for (let index = 1; index <= parts.length; index += 1) target.add(parts.slice(0, index).join("/"));
+}
+
+const ROOT_BUILTIN = { id: "P1001", folder: "默认题库" };
+
+function builtinLocations(overrides: Record<string, string>) {
+  return [ROOT_BUILTIN, ...getAcwingCatalog()].map((problem) => ({
+    id: problem.id,
+    folder: overrides[problem.id] ?? problem.folder,
+  }));
+}
+
+function localTreePaths(folders: string[], overrides: Record<string, string>) {
+  const paths = new Set(folders);
+  for (const problem of builtinLocations(overrides)) addFolderParents(paths, problem.folder);
+  return Array.from(paths);
+}
 
 export function orderFolderTree(paths: string[], manualOrder: string[]) {
   const unique = Array.from(new Set(paths));
@@ -138,6 +159,7 @@ type LibraryStore = {
   cloudArchives: ArchivedProblem[];
   cloudFolderIds: Record<string, string>;
   hiddenBuiltins: string[];
+  builtinFolderOverrides: Record<string, string>;
   catalogVersion: number;
 
   setArchives: (archives: ArchivedProblem[]) => void;
@@ -151,6 +173,8 @@ type LibraryStore = {
   setFolders: (folders: string[]) => void;
   addFolder: (folder: string) => void;
   removeFolder: (folder: string) => void;
+  dissolveFolder: (folder: string) => void;
+  moveFolder: (source: string, destinationParent: string) => void;
   moveFolderInto: (source: string, target: string) => void;
   setSelectedFolder: (folder: string) => void;
   toggleCollapsed: (folder: string) => void;
@@ -177,6 +201,7 @@ export const useLibraryStore = create<LibraryStore>()(
       cloudArchives: [],
       cloudFolderIds: {},
       hiddenBuiltins: [] as string[],
+      builtinFolderOverrides: {} as Record<string, string>,
       catalogVersion: 0,
 
       setArchives: (archives) => set({ archives }),
@@ -194,24 +219,59 @@ export const useLibraryStore = create<LibraryStore>()(
 
       setFolders: (folders) => set({ folders }),
       addFolder: (folder) => set((s) => ({ folders: [...s.folders, folder] })),
+      moveFolder: (source, destinationParent) => set((s) => {
+        const plan = planFolderMove(localTreePaths(s.folders, s.builtinFolderOverrides), source, destinationParent);
+        if (!plan.ok) return s;
+        const builtinFolderOverrides = { ...s.builtinFolderOverrides };
+        for (const item of builtinLocations(s.builtinFolderOverrides)) {
+          if (folderContains(item.folder, source)) builtinFolderOverrides[item.id] = plan.remap(item.folder);
+        }
+        return {
+          folders: s.folders.map(plan.remap),
+          collapsedFolders: s.collapsedFolders.map(plan.remap),
+          folderOrder: s.folderOrder.map(plan.remap),
+          archives: s.archives.map((archive) => ({ ...archive, folder: plan.remap(archive.folder) })),
+          selectedFolder: plan.remap(s.selectedFolder),
+          builtinFolderOverrides,
+        };
+      }),
       // 拖入成为子文件夹：整树路径与归档/折叠/排序/选中同步迁移
       moveFolderInto: (source, target) => set((s) => {
-        const name = folderName(source);
-        const next = `${target}/${name}`;
-        const remap = (path: string) => path === source ? next : path.startsWith(`${source}/`) ? `${next}${path.slice(source.length)}` : path;
+        const plan = planFolderMove(s.folders, source, target);
+        if (!plan.ok) return s;
         return {
-          folders: s.folders.map(remap),
-          collapsedFolders: s.collapsedFolders.map(remap),
-          folderOrder: s.folderOrder.map(remap),
-          archives: s.archives.map((a) => ({ ...a, folder: remap(a.folder) })),
-          selectedFolder: remap(s.selectedFolder),
+          folders: plan.nextPaths,
+          collapsedFolders: s.collapsedFolders.map(plan.remap),
+          folderOrder: s.folderOrder.map(plan.remap),
+          archives: s.archives.map((archive) => ({ ...archive, folder: plan.remap(archive.folder) })),
+          selectedFolder: plan.remap(s.selectedFolder),
+        };
+      }),
+      dissolveFolder: (folder) => set((s) => {
+        const plan = dissolveFolderLevel(localTreePaths(s.folders, s.builtinFolderOverrides), folder);
+        const builtinFolderOverrides = { ...s.builtinFolderOverrides };
+        for (const item of builtinLocations(s.builtinFolderOverrides)) {
+          if (folderContains(item.folder, folder)) builtinFolderOverrides[item.id] = plan.remap(item.folder);
+        }
+        return {
+          folders: s.folders.filter((path) => path !== folder).map(plan.remap).filter(Boolean),
+          collapsedFolders: s.collapsedFolders.filter((path) => path !== folder).map(plan.remap).filter(Boolean),
+          folderOrder: s.folderOrder.filter((path) => path !== folder).map(plan.remap).filter(Boolean),
+          archives: s.archives.map((archive) => ({ ...archive, folder: plan.remap(archive.folder) })),
+          selectedFolder: plan.remap(s.selectedFolder) || "全部题目",
+          builtinFolderOverrides,
         };
       }),
       removeFolder: (folder) => set((s) => ({
         folders: s.folders.filter((f) => !folderContains(f, folder)),
         collapsedFolders: s.collapsedFolders.filter((f) => !folderContains(f, folder)),
         folderOrder: s.folderOrder.filter((f) => !folderContains(f, folder)),
-        archives: s.archives.map((a) => folderContains(a.folder, folder) ? { ...a, folder: folderParent(folder) || "默认题库" } : a),
+        archives: s.archives.filter((archive) => !folderContains(archive.folder, folder)),
+        hiddenBuiltins: Array.from(new Set([
+          ...s.hiddenBuiltins,
+          ...builtinLocations(s.builtinFolderOverrides).filter((item) => folderContains(item.folder, folder)).map((item) => item.id),
+        ])),
+        selectedFolder: folderContains(s.selectedFolder, folder) ? folderParent(folder) || "全部题目" : s.selectedFolder,
       })),
       // Sync test cases back to the library archive when user modifies them in workspace
       syncProblemSamples: (problemId, samples) => set((s) => ({
@@ -245,6 +305,7 @@ export const useLibraryStore = create<LibraryStore>()(
         folderOrder: s.folderOrder,
         includeSubfolders: s.includeSubfolders,
         hiddenBuiltins: s.hiddenBuiltins,
+        builtinFolderOverrides: s.builtinFolderOverrides,
         libraryReady: true,
       }),
     },

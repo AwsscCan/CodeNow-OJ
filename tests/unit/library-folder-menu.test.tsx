@@ -28,6 +28,8 @@ beforeEach(() => {
     cloudArchives: [],
     cloudFolderIds: {},
     librarySearch: "",
+    builtinFolderOverrides: {},
+    hiddenBuiltins: [],
   });
 });
 
@@ -66,8 +68,53 @@ describe("文件夹 ⋮ 操作菜单", () => {
     expect(row.querySelector(".folder-action"), "散/删应收进 ⋮ 菜单").toBeNull();
   });
 
-  it("默认题库不可操作，⋮ 保持非按钮", () => {
+  it("内置默认题库与普通文件夹一样提供操作菜单", () => {
     const row = entryOf("默认题库");
-    expect(row.querySelector("button.folder-drag")).toBeNull();
+    const trigger = row.querySelector("button.folder-drag");
+    expect(trigger).toBeTruthy();
+    fireEvent.click(trigger!);
+    expect(document.querySelector(".folder-menu")?.textContent).toContain("解散");
+  });
+
+  it("永久删除内置目录经确认后隐藏其中内置题", () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const row = entryOf("默认题库");
+    fireEvent.click(row.querySelector("button.folder-drag")!);
+    fireEvent.click(screen.getByText(/永久删除|^删/));
+    expect(useLibraryStore.getState().hiddenBuiltins).toContain("P1001");
+  });
+
+  it("取消永久删除时内置目录和题目保持不变", () => {
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    const row = entryOf("默认题库");
+    fireEvent.click(row.querySelector("button.folder-drag")!);
+    fireEvent.click(screen.getByText(/永久删除|^删/));
+    expect(useLibraryStore.getState().folders).toContain("默认题库");
+    expect(useLibraryStore.getState().hiddenBuiltins).not.toContain("P1001");
+  });
+
+  it("解散只移除本级，内层文件夹与题目测试点提升后仍保留", () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    useLibraryStore.setState({
+      folders: ["默认题库", "图论", "图论/最短路", "图论/最短路/Floyd"],
+      archives: [{
+        folder: "图论/最短路/Floyd",
+        archivedAt: "2026-07-27T00:00:00.000Z",
+        problem: { id: "P1", title: "题", difficulty: "普及", time: "1s", memory: "128MB", description: "", inputFormat: "", outputFormat: "", samples: [{ id: 1, input: "1", output: "1" }] },
+      }],
+    });
+    const { container } = render(<LibraryPage />);
+    const row = Array.from(container.querySelectorAll(".folder-entry")).find((item) =>
+      item.querySelector(".folder-select span")?.textContent?.trim() === "▱ 最短路",
+    )!;
+
+    fireEvent.click(row.querySelector("button.folder-drag")!);
+    fireEvent.click(screen.getByText(/解散并保留题目/));
+
+    const state = useLibraryStore.getState();
+    expect(state.folders).toContain("图论/Floyd");
+    expect(state.folders).not.toContain("图论/最短路");
+    expect(state.archives[0].folder).toBe("图论/Floyd");
+    expect(state.archives[0].problem.samples).toEqual([{ id: 1, input: "1", output: "1" }]);
   });
 });

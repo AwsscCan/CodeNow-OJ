@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "incremental": false
+  },
+  "include": [
+    "./katex-auto-render.typecheck.ts",
+    "../../types/**/*.d.ts"
+  ]
+}

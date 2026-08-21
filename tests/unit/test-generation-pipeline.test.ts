@@ -73,6 +73,371 @@ function obedientFetch() {
 }
 
 describe("test generation pipeline", () => {
+  it("cancels an in-flight AI batch when the caller disconnects", async () => {
+    const controller = new AbortController();
+    const abortError = new DOMException("client disconnected", "AbortError");
+    let notifyFetchStarted!: () => void;
+    const fetchStarted = new Promise<void>((resolve) => {
+      notifyFetchStarted = resolve;
+    });
+    const fetchMock = vi.fn((_url: string | URL, init?: RequestInit) => new Promise<Response>((resolve, reject) => {
+      const signal = init?.signal;
+      const timer = setTimeout(() => {
+        resolve(aiResponse([test("1\n7\n", "7\n", "ordinary")]));
+      }, 30);
+      const onAbort = () => {
+        clearTimeout(timer);
+        reject(signal?.reason || abortError);
+      };
+      notifyFetchStarted();
+      if (signal?.aborted) onAbort();
+      else signal?.addEventListener("abort", onAbort, { once: true });
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const generation = generateComplexityAwareTests({
+      apiKey: "test-key",
+      endpoint: "https://api.deepseek.com",
+      model: "deepseek-v4-flash",
+      problem,
+      count: 1,
+      signal: controller.signal,
+    });
+    await fetchStarted;
+    controller.abort(abortError);
+
+    await expect(generation).rejects.toMatchObject({ name: "AbortError", message: "client disconnected" });
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("stops waiting for in-flight reference verification when the caller disconnects", async () => {
+    const controller = new AbortController();
+    const abortError = new DOMException("client disconnected", "AbortError");
+    let releaseJudge0!: () => void;
+    judge0SubmitMock.mockReset();
+    judge0SubmitMock.mockImplementation(() => new Promise((resolve) => {
+      releaseJudge0 = () => resolve({ accepted: true, stdout: "OK\n", stderr: "", compileError: "", statusId: 3, time: 5 });
+    }));
+    vi.stubGlobal("fetch", vi.fn(async (url: string | URL) => {
+      if (String(url).includes("/languages")) {
+        return new Response(JSON.stringify([{ id: 54, name: "C++ (GCC 9.2.0)" }]), { status: 200 });
+      }
+      return aiResponse([test("1\n7\n", "7\n", "ordinary")]);
+    }));
+
+    const generation = generateComplexityAwareTests({
+      apiKey: "test-key",
+      endpoint: "https://api.deepseek.com",
+      model: "deepseek-v4-flash",
+      problem,
+      count: 1,
+      signal: controller.signal,
+      validatedRef: {
+        solutionCode: "reference",
+        bruteCode: "brute",
+        algorithmSummary: "sum",
+        expectedTimeComplexity: "O(n)",
+        expectedSpaceComplexity: "O(1)",
+        bruteMaxScale: 10,
+        report: { status: "validated", compiled: true, samplesPassed: true, differentialTestsPassed: 4, differentialTestsFailed: 0, errors: [] },
+      },
+    });
+    await vi.waitFor(() => expect(judge0SubmitMock).toHaveBeenCalledOnce());
+
+    try {
+      controller.abort(abortError);
+      const outcome = await Promise.race([
+        generation.then(
+          () => ({ kind: "resolved" as const }),
+          (error) => ({ kind: "error" as const, error }),
+        ),
+        new Promise<{ kind: "timeout" }>((resolve) => setTimeout(() => resolve({ kind: "timeout" }), 40)),
+      ]);
+
+      expect(outcome).toMatchObject({ kind: "error", error: { name: "AbortError", message: "client disconnected" } });
+    } finally {
+      releaseJudge0?.();
+      await generation.catch(() => undefined);
+    }
+  });
+
+  it("stops waiting for in-flight generator execution when the caller disconnects", async () => {
+    const controller = new AbortController();
+    const abortError = new DOMException("client disconnected", "AbortError");
+    let releaseJudge0!: () => void;
+    judge0SubmitMock.mockReset();
+    judge0SubmitMock.mockImplementation(() => new Promise((resolve) => {
+      releaseJudge0 = () => resolve({ accepted: true, stdout: "1\n7\n", stderr: "", compileError: "", statusId: 3, time: 5 });
+    }));
+    vi.stubGlobal("fetch", vi.fn(async (url: string | URL) => {
+      if (String(url).includes("/languages")) {
+        return new Response(JSON.stringify([{ id: 54, name: "C++ (GCC 9.2.0)" }]), { status: 200 });
+      }
+      return aiResponse([test("1\n7\n", "7\n", "ordinary")]);
+    }));
+
+    const generation = generateComplexityAwareTests({
+      apiKey: "test-key",
+      endpoint: "https://api.deepseek.com",
+      model: "deepseek-v4-flash",
+      problem,
+      count: 1,
+      signal: controller.signal,
+      validatedRef: {
+        solutionCode: "reference",
+        bruteCode: "brute",
+        algorithmSummary: "sum",
+        expectedTimeComplexity: "O(n)",
+        expectedSpaceComplexity: "O(1)",
+        bruteMaxScale: 10,
+        generator: { sourceCode: "generator", seeds: [7] },
+        report: { status: "validated", compiled: true, samplesPassed: true, differentialTestsPassed: 4, differentialTestsFailed: 0, errors: [] },
+      },
+    });
+    await vi.waitFor(() => expect(judge0SubmitMock).toHaveBeenCalledOnce());
+
+    try {
+      controller.abort(abortError);
+      const outcome = await Promise.race([
+        generation.then(
+          () => ({ kind: "resolved" as const }),
+          (error) => ({ kind: "error" as const, error }),
+        ),
+        new Promise<{ kind: "timeout" }>((resolve) => setTimeout(() => resolve({ kind: "timeout" }), 40)),
+      ]);
+
+      expect(outcome).toMatchObject({ kind: "error", error: { name: "AbortError", message: "client disconnected" } });
+    } finally {
+      releaseJudge0?.();
+      await generation.catch(() => undefined);
+    }
+  });
+
+  it("stops waiting for in-flight mutation feedback when the caller disconnects", async () => {
+    const controller = new AbortController();
+    const abortError = new DOMException("client disconnected", "AbortError");
+    let notifyMutantStarted!: () => void;
+    const mutantStarted = new Promise<void>((resolve) => {
+      notifyMutantStarted = resolve;
+    });
+    let releaseMutant!: () => void;
+    let firstMutantRun = true;
+    const accepted = { accepted: true, stdout: "OK\n", stderr: "", compileError: "", statusId: 3, time: 5 };
+    judge0SubmitMock.mockReset();
+    judge0SubmitMock.mockImplementation((source: string) => {
+      if (source !== "mutant") return Promise.resolve(accepted);
+      if (!firstMutantRun) return Promise.resolve(accepted);
+      firstMutantRun = false;
+      notifyMutantStarted();
+      return new Promise((resolve) => {
+        releaseMutant = () => resolve(accepted);
+      });
+    });
+    vi.stubGlobal("fetch", vi.fn(async (url: string | URL) => {
+      if (String(url).includes("/languages")) {
+        return new Response(JSON.stringify([{ id: 54, name: "C++ (GCC 9.2.0)" }]), { status: 200 });
+      }
+      return aiResponse([
+        test("1\n7\n", "7\n", "ordinary"),
+        test("1\n8\n", "8\n", "ordinary"),
+        test("1\n9\n", "9\n", "ordinary"),
+      ]);
+    }));
+
+    const generation = generateComplexityAwareTests({
+      apiKey: "test-key",
+      endpoint: "https://api.deepseek.com",
+      model: "deepseek-v4-flash",
+      problem,
+      count: 1,
+      signal: controller.signal,
+      validatedRef: {
+        solutionCode: "reference",
+        bruteCode: "brute",
+        algorithmSummary: "sum",
+        expectedTimeComplexity: "O(n)",
+        expectedSpaceComplexity: "O(1)",
+        bruteMaxScale: 10,
+        mutants: [{ id: "m1", sourceCode: "mutant" }],
+        report: { status: "validated", compiled: true, samplesPassed: true, differentialTestsPassed: 4, differentialTestsFailed: 0, errors: [] },
+      },
+    });
+    await mutantStarted;
+
+    try {
+      controller.abort(abortError);
+      const outcome = await Promise.race([
+        generation.then(
+          () => ({ kind: "resolved" as const }),
+          (error) => ({ kind: "error" as const, error }),
+        ),
+        new Promise<{ kind: "timeout" }>((resolve) => setTimeout(() => resolve({ kind: "timeout" }), 40)),
+      ]);
+
+      expect(outcome).toMatchObject({ kind: "error", error: { name: "AbortError", message: "client disconnected" } });
+    } finally {
+      releaseMutant?.();
+      await generation.catch(() => undefined);
+    }
+  });
+
+  it("propagates an upstream timeout without retrying more generation batches", async () => {
+    const timeoutError = new DOMException("upstream timed out", "TimeoutError");
+    const fetchMock = vi.fn(async () => {
+      throw timeoutError;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(generateComplexityAwareTests({
+      apiKey: "test-key",
+      endpoint: "https://api.deepseek.com",
+      model: "deepseek-v4-flash",
+      problem,
+      count: 1,
+    })).rejects.toMatchObject({ name: "TimeoutError", message: "upstream timed out" });
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("preserves the upstream failure when no test case was generated", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      error: { message: "unsupported parameter: response_format" },
+    }), { status: 400, headers: { "Content-Type": "application/json" } })));
+
+    await expect(generateComplexityAwareTests({
+      apiKey: "test-key",
+      endpoint: "https://api.deepseek.com",
+      model: "deepseek-v4-flash",
+      problem,
+      count: 18,
+    })).rejects.toThrow("unsupported parameter: response_format");
+  });
+
+  it("reports structured rejection counts when every model response is unparseable", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      choices: [{ message: { content: "not json and not a test case" } }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } })));
+
+    await expect(generateComplexityAwareTests({
+      apiKey: "test-key",
+      endpoint: "https://api.deepseek.com",
+      model: "deepseek-v4-flash",
+      problem,
+      count: 18,
+    })).rejects.toThrow(/解析 0.*无效输入 0.*缺少输出 0.*重复 0/);
+  });
+
+  it("prefers a later actionable upstream failure over an earlier empty parse", async () => {
+    let calls = 0;
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      calls += 1;
+      if (calls === 1) {
+        return new Response(JSON.stringify({ choices: [{ message: { content: "not json" } }] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify({ error: { message: "upstream overloaded" } }), {
+        status: 503,
+        headers: { "Content-Type": "application/json" },
+      });
+    }));
+
+    await expect(generateComplexityAwareTests({
+      apiKey: "test-key",
+      endpoint: "https://api.deepseek.com",
+      model: "deepseek-v4-flash",
+      problem,
+      count: 18,
+    })).rejects.toThrow(/upstream overloaded.*解析 0/);
+  });
+
+  it("repairs exact outputs for otherwise valid generated inputs", async () => {
+    let call = 0;
+    const fetchMock = vi.fn(async (_url: string | URL, init?: RequestInit) => {
+      call += 1;
+      if (call === 1) return aiResponse([
+        test("0 0\n", "", "boundary"),
+        test("2 3\n", "", "special"),
+        test("-5 8\n", "", "ordinary"),
+      ]);
+      const body = JSON.parse(String(init?.body)) as { messages: Array<{ content: string }> };
+      const prompt = body.messages.map((message) => message.content).join("\n");
+      const casesMatch = prompt.match(/Cases: (\[[\s\S]*\])$/);
+      const cases = JSON.parse(casesMatch?.[1] || "[]") as Array<{ caseId: string; inputFingerprint?: string }>;
+      expect(cases.every((item) => typeof item.inputFingerprint === "string" && item.inputFingerprint.length > 0)).toBe(true);
+      const expectedOutputs = ["0\n", "5\n", "3\n"];
+      const content = JSON.stringify({ outputs: cases.map((item, index) => ({
+        caseId: item.caseId,
+        inputFingerprint: item.inputFingerprint,
+        output: expectedOutputs[index],
+      })) });
+      return new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await generateComplexityAwareTests({
+      apiKey: "test-key",
+      endpoint: "https://api.deepseek.com",
+      model: "deepseek-v4-flash",
+      problem: { ...problem, id: "A+B", inputFormat: "two integers", outputFormat: "their sum" },
+      count: 3,
+    });
+
+    expect(result.tests.map((item) => item.output)).toEqual(["0\n", "5\n", "3\n"]);
+    expect(result.report.generatedCount).toBe(3);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("never overwrites an existing output while repairing a duplicate input", async () => {
+    const responses = [
+      aiResponse([
+        test("2 3\n", "5\n", "ordinary"),
+        test("2  3\n", "", "ordinary"),
+      ]),
+      new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({
+        outputs: [{ caseId: "R1", output: "999\n" }],
+      }) } }] }), { status: 200, headers: { "Content-Type": "application/json" } }),
+    ];
+    const fetchMock = vi.fn(async () => responses.shift()!);
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await generateComplexityAwareTests({
+      apiKey: "test-key",
+      endpoint: "https://api.deepseek.com",
+      model: "deepseek-v4-flash",
+      problem: { ...problem, id: "A+B", inputFormat: "two integers", outputFormat: "their sum" },
+      count: 1,
+    });
+
+    expect(result.tests).toHaveLength(1);
+    expect(result.tests[0].output).toBe("5\n");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a repaired output whose input fingerprint does not match", async () => {
+    const responses = [
+      aiResponse([test("2 3\n", "", "ordinary")]),
+      new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({
+        outputs: [{ caseId: "R1", inputFingerprint: "wrong-input", output: "999\n" }],
+      }) } }] }), { status: 200, headers: { "Content-Type": "application/json" } }),
+      aiResponse([test("2 3\n", "5\n", "ordinary")]),
+    ];
+    const fetchMock = vi.fn(async () => responses.shift()!);
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await generateComplexityAwareTests({
+      apiKey: "test-key",
+      endpoint: "https://api.deepseek.com",
+      model: "deepseek-v4-flash",
+      problem: { ...problem, id: "A+B", inputFormat: "two integers", outputFormat: "their sum" },
+      count: 1,
+    });
+
+    expect(result.tests[0].output).toBe("5\n");
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
   it("builds an exact quota whose sum matches every supported target", () => {
     for (let count = 1; count <= 50; count += 1) {
       const quota = buildCategoryQuota(count);
@@ -539,6 +904,65 @@ describe("test generation pipeline", () => {
     expect(result.report.categoryCounts).toMatchObject({ adversarial: 1 });
     expect(result.report.unmetQuota.adversarial).toBe(0);
     expect(result.report.qualityOk).toBe(true);
+  });
+
+  it("uses mutant feedback to replace a lower-value quota candidate", async () => {
+    judge0SubmitMock.mockReset();
+    judge0SubmitMock.mockImplementation(async (source: string, input: string) => {
+      if (source === "mutant-1" && (input === "B\n" || input === "D\n")) {
+        return { accepted: true, stdout: "wrong\n", stderr: "", compileError: "", statusId: 3, time: 5 };
+      }
+      return { accepted: true, stdout: "good\n", stderr: "", compileError: "", statusId: 3, time: 5 };
+    });
+    vi.stubGlobal("fetch", vi.fn(async (url: string | URL) => {
+      if (String(url).includes("/languages")) return new Response(JSON.stringify([{ id: 54, name: "C++ (GCC 9.2.0)" }]), { status: 200 });
+      return aiResponse([
+        test("A\n", "good\n", "boundary"),
+        test("B\n", "good\n", "boundary"),
+        test("C\n", "good\n", "ordinary"),
+        test("D\n", "good\n", "ordinary"),
+      ]);
+    }));
+
+    const result = await generateComplexityAwareTests({
+      apiKey: "test-key", endpoint: "https://api.deepseek.com", model: "deepseek-chat",
+      problem, count: 2,
+      validatedRef: {
+        solutionCode: "reference", bruteCode: "brute", algorithmSummary: "sum",
+        expectedTimeComplexity: "O(n)", expectedSpaceComplexity: "O(1)", bruteMaxScale: 10,
+        mutants: [{ id: "m1", sourceCode: "mutant-1" }],
+        report: { status: "validated", compiled: true, samplesPassed: true, differentialTestsPassed: 4, differentialTestsFailed: 0, errors: [] },
+      },
+    });
+
+    expect(result.tests.map((item) => item.input)).toEqual(["B\n", "C\n"]);
+    expect(result.report.mutation).toMatchObject({ attempted: true, usableMutants: 1, killedMutants: 1, score: 1, reducedCandidates: 2 });
+  });
+
+  it("adds deterministic generator artifact inputs before reference verification", async () => {
+    judge0SubmitMock.mockReset();
+    judge0SubmitMock.mockImplementation(async (source: string, _input: string) => {
+      if (source === "generator") return { accepted: true, stdout: "G7\n", stderr: "", compileError: "", statusId: 3, time: 5 };
+      return { accepted: true, stdout: "good\n", stderr: "", compileError: "", statusId: 3, time: 5 };
+    });
+    vi.stubGlobal("fetch", vi.fn(async (url: string | URL) => {
+      if (String(url).includes("/languages")) return new Response(JSON.stringify([{ id: 54, name: "C++ (GCC 9.2.0)" }]), { status: 200 });
+      return aiResponse([test("A\n", "good\n", "ordinary")]);
+    }));
+
+    const result = await generateComplexityAwareTests({
+      apiKey: "test-key", endpoint: "https://api.deepseek.com", model: "deepseek-chat",
+      problem, count: 2,
+      validatedRef: {
+        solutionCode: "reference", bruteCode: "brute", algorithmSummary: "sum",
+        expectedTimeComplexity: "O(n)", expectedSpaceComplexity: "O(1)", bruteMaxScale: 10,
+        generator: { sourceCode: "generator", seeds: [7] },
+        report: { status: "validated", compiled: true, samplesPassed: true, differentialTestsPassed: 4, differentialTestsFailed: 0, errors: [] },
+      },
+    });
+
+    expect(result.tests.map((item) => item.input)).toEqual(["A\n", "G7\n"]);
+    expect(result.tests.some((item) => item.targets.includes("generator seed 7"))).toBe(true);
   });
 });
 

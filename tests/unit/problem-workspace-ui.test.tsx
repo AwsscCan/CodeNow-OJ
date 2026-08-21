@@ -39,7 +39,7 @@ beforeEach(() => {
   // 测试卫生：主题/对话/判题状态互不泄漏
   useThemeStore.setState({ themeMode: "light" });
   useAiStore.setState({ chatMessages: [] });
-  useProblemStore.setState({ results: [], history: [] });
+  useProblemStore.setState({ results: [], history: [], tab: "problem" });
 });
 
 afterEach(() => {
@@ -369,6 +369,57 @@ describe("AI 解题请求瘦身", () => {
   });
 });
 
+describe("AI 测试点生成错误", () => {
+  it("显示真实上游错误且保留已有测试点", async () => {
+    useProblemStore.setState({ problem: { ...INITIAL_PROBLEM }, tab: "problem" });
+    useAiStore.getState().setApiKey("deepseek", "sk-test-key");
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes("/api/generate-tests")) {
+        return new Response(JSON.stringify({ error: "unsupported parameter: response_format" }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify({ history: [] }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }));
+
+    const { container } = render(<ProblemPage />);
+    fireEvent.click(container.querySelectorAll(".panel-tabs button")[1]);
+    fireEvent.click(container.querySelector(".ai-tests-button")!);
+
+    await vi.waitFor(() => {
+      expect(container.querySelector(".toast")?.textContent).toContain("unsupported parameter: response_format");
+    });
+    expect(container.querySelector(".toast")?.textContent).not.toContain("只生成了 0/18");
+    expect(useProblemStore.getState().problem.samples).toEqual(INITIAL_PROBLEM.samples);
+  });
+
+  it("追加生成结果而不覆盖已有测试点", async () => {
+    useProblemStore.setState({ problem: { ...INITIAL_PROBLEM }, tab: "problem" });
+    useAiStore.getState().setApiKey("deepseek", "sk-test-key");
+    let generationBody: Record<string, unknown> | undefined;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).includes("/api/generate-tests")) {
+        generationBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return new Response(JSON.stringify({
+          tests: [{ input: "7 8\n", output: "15\n", category: "ordinary", scale: 1 }],
+          complexityReport: { generatedCount: 1, requestedCount: 18, batches: 2, qualityOk: false },
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      return new Response(JSON.stringify({ history: [] }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }));
+
+    const { container } = render(<ProblemPage />);
+    fireEvent.click(container.querySelectorAll(".panel-tabs button")[1]);
+    fireEvent.click(container.querySelector(".ai-tests-button")!);
+
+    await vi.waitFor(() => expect(useProblemStore.getState().problem.samples).toHaveLength(INITIAL_PROBLEM.samples.length + 1));
+    expect(generationBody).toMatchObject({ qualityMode: "feedback" });
+    expect(useProblemStore.getState().problem.samples.slice(0, INITIAL_PROBLEM.samples.length)).toEqual(INITIAL_PROBLEM.samples);
+    expect(useProblemStore.getState().problem.samples.at(-1)).toMatchObject({ input: "7 8\n", output: "15\n" });
+  });
+});
+
 describe("题面图片渲染", () => {
   it("description 中的 Markdown 图片经安全管线渲染为 img", async () => {
     useProblemStore.setState({ problem: { ...INITIAL_PROBLEM, description: "如图所示：\n\n![示意图](https://example.com/figure.png)" } });
@@ -389,6 +440,44 @@ describe("题面图片渲染", () => {
       expect(md!.querySelector("script")).toBeNull();
       expect(md!.textContent).toContain("正文");
     });
+  });
+});
+
+describe("题面 LaTeX 公式渲染", () => {
+  it("描述、输入格式和输出格式都通过 KaTeX 渲染公式", async () => {
+    useProblemStore.setState({
+      problem: {
+        ...INITIAL_PROBLEM,
+        description: "设序列长度为 $n$。",
+        inputFormat: "输入满足 $$1 \\le n \\le 100$$。",
+        outputFormat: "输出 $\\sum_{i=1}^{n} a_i$。",
+      },
+    });
+
+    const { container } = render(<ProblemPage />);
+    await vi.waitFor(() => {
+      expect(container.querySelectorAll(".problem-md .katex")).toHaveLength(3);
+      expect(container.querySelector(".problem-md .katex-display")).toBeTruthy();
+    });
+  });
+});
+
+describe("题目来源显示", () => {
+  it("CSP 题目详情显示曙梦 OJ 来源而不是 AcWing 固定文案", () => {
+    useProblemStore.setState({
+      problem: {
+        ...INITIAL_PROBLEM,
+        id: "CS0331",
+        sourceUrl: "https://oj.shumeng.tech/p/CSP202403A",
+      },
+    });
+
+    const { container } = render(<ProblemPage />);
+    const banner = container.querySelector(".source-banner");
+
+    expect(banner, "有来源链接的题目应显示来源栏").toBeTruthy();
+    expect(banner!.textContent).toContain("CSP 认证真题 · 曙梦 OJ");
+    expect(banner!.textContent).not.toContain("AcWing 算法基础课题解目录");
   });
 });
 

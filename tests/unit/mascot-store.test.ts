@@ -48,6 +48,22 @@ describe("useMascotStore 状态桥", () => {
     expect(useMascotStore.getState().phase).toBe("ce");
   });
 
+  it("每次判题都会触发一张新的学习反馈卡，关闭只影响当前一次", () => {
+    const initialRequestId = useMascotStore.getState().learningFeedbackRequestId;
+
+    useMascotStore.getState().reactToJudge([result("WA", 1)]);
+    expect(useMascotStore.getState().learningFeedbackRequestId).toBe(initialRequestId + 1);
+
+    useMascotStore.getState().dismissLearningFeedback();
+    expect(useMascotStore.getState().dismissedLearningFeedbackRequestId)
+      .toBe(useMascotStore.getState().learningFeedbackRequestId);
+
+    useMascotStore.getState().reactToJudge([result("AC", 1)]);
+    expect(useMascotStore.getState().learningFeedbackRequestId).toBe(initialRequestId + 2);
+    expect(useMascotStore.getState().dismissedLearningFeedbackRequestId)
+      .not.toBe(useMascotStore.getState().learningFeedbackRequestId);
+  });
+
   it("requestAiSolve 递增触发器（供 problem 页面监听开弹窗）", () => {
     const before = useMascotStore.getState().aiSolveRequestId;
     useMascotStore.getState().requestAiSolve();

@@ -1,12 +1,21 @@
 import { hashPassword } from "better-auth/crypto";
 import { and, eq } from "drizzle-orm";
-import { createLocalDb, type Database } from "../../../db/client";
+import type { PreparedQuery } from "drizzle-orm/session";
+import { createD1Db, createLocalDb, type Database } from "../../../db/client";
 import { accounts, adminAuditLogs, sessions, users } from "../../../db/schema";
 import { adminAuditRow } from "./admin-audit";
 
 type RepositoryDb = ReturnType<typeof createLocalDb>;
+type D1Db = ReturnType<typeof createD1Db>;
 type Failure = { ok: false; status: number; code: string; message: string };
 type Success<T = undefined> = { ok: true; value: T };
+type D1BatchStatement = unknown;
+type NativeD1Client = {
+  prepare(sql: string): { bind(...params: unknown[]): unknown };
+  batch(statements: unknown[]): Promise<unknown>;
+};
+type D1BatchResponse = { success?: unknown; error?: unknown };
+type PreparedD1BatchStatement = { _prepare(): PreparedQuery };
 
 const passwordAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-";
 
@@ -19,8 +28,73 @@ function failure(status: number, code: string, message: string): Failure {
   return { ok: false, status, code, message };
 }
 
-function isD1Database(db: Database): db is Database & { batch: (...queries: never[]) => Promise<unknown> } {
+class D1BatchFailure extends Error {
+  constructor(
+    readonly statementIndex: number,
+    readonly response: unknown,
+  ) {
+    super(batchFailureMessage(statementIndex, response));
+    this.name = "D1BatchFailure";
+  }
+}
+
+function batchFailureMessage(statementIndex: number, response: unknown) {
+  if (response && typeof response === "object") {
+    const error = (response as D1BatchResponse).error;
+    if (typeof error === "string" && error) return error;
+  }
+  return `D1 batch statement ${statementIndex} did not succeed`;
+}
+
+function isD1BatchFailure(error: unknown): error is D1BatchFailure {
+  return error instanceof D1BatchFailure;
+}
+
+function successfulD1BatchResponse(response: unknown): response is D1BatchResponse & { success: true } {
+  return Boolean(response && typeof response === "object" && (response as D1BatchResponse).success === true);
+}
+
+function prepareD1BatchStatement(statement: D1BatchStatement): PreparedQuery {
+  if (!statement || typeof statement !== "object" || typeof (statement as Partial<PreparedD1BatchStatement>)._prepare !== "function") {
+    throw new Error("D1 batch statement cannot be prepared");
+  }
+  return (statement as PreparedD1BatchStatement)._prepare();
+}
+
+export async function executeD1Batch(
+  database: { $client: unknown },
+  statements: readonly D1BatchStatement[],
+): Promise<unknown[]> {
+  const prepared = statements.map(prepareD1BatchStatement);
+  const client = database.$client as NativeD1Client;
+  const bound = prepared.map((statement) => {
+    const query = statement.getQuery();
+    return client.prepare(query.sql).bind(...query.params);
+  });
+  const responses = await client.batch(bound);
+
+  if (!Array.isArray(responses)) throw new D1BatchFailure(-1, responses);
+  for (let index = 0; index < prepared.length; index += 1) {
+    const response = responses[index];
+    if (!successfulD1BatchResponse(response)) throw new D1BatchFailure(index, response);
+  }
+  if (responses.length !== prepared.length) throw new D1BatchFailure(prepared.length, undefined);
+
+  return prepared.map((statement, index) => statement.mapResult(responses[index], true));
+}
+
+function isD1Database(db: Database): db is D1Db {
   return "batch" in db;
+}
+
+function isUserEmailUniqueConstraint(error: unknown) {
+  if (!(error instanceof Error)) return false;
+  const message = error.message.replace(/["`\[\]]/g, "").toLowerCase();
+  const isUserEmailUnique = message.includes("unique constraint failed") && /\busers?\s*\.\s*email\b/.test(message);
+  if (!isUserEmailUnique) return false;
+
+  if (isD1BatchFailure(error)) return error.statementIndex === 0;
+  return (error as Error & { code?: unknown }).code === "SQLITE_CONSTRAINT_UNIQUE";
 }
 
 export function createAdminAccountService(db: Database) {
@@ -68,11 +142,11 @@ export function createAdminAccountService(db: Database) {
 
       try {
         if (isD1Database(db)) {
-          await db.batch([
+          await executeD1Batch(db, [
             db.insert(users).values(userRow),
             db.insert(accounts).values(accountRow),
             db.insert(adminAuditLogs).values(auditRow),
-          ] as never);
+          ]);
         } else {
           database.transaction((tx) => {
             tx.insert(users).values(userRow).run();
@@ -80,8 +154,12 @@ export function createAdminAccountService(db: Database) {
             tx.insert(adminAuditLogs).values(auditRow).run();
           });
         }
-      } catch {
-        return failure(409, "USER_EXISTS", "The invited account already exists");
+      } catch (error) {
+        if (isUserEmailUniqueConstraint(error)) {
+          const [current] = await database.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
+          if (current) return failure(409, "USER_EXISTS", "The invited account already exists");
+        }
+        throw error;
       }
       return { ok: true, value: { user: { id: userId, email, name }, temporaryPassword: password } };
     },
@@ -100,11 +178,11 @@ export function createAdminAccountService(db: Database) {
       const now = new Date();
       const auditRow = adminAuditRow({ adminUserId, action: "user.ban", targetType: "user", targetId: targetUserId, requestId, now });
       if (isD1Database(db)) {
-        await db.batch([
+        await executeD1Batch(db, [
           db.update(users).set({ banned: true, banReason: normalizedReason, banExpires: null, updatedAt: now }).where(eq(users.id, targetUserId)),
           db.delete(sessions).where(eq(sessions.userId, targetUserId)),
           db.insert(adminAuditLogs).values(auditRow),
-        ] as never);
+        ]);
       } else {
         database.transaction((tx) => {
           tx.update(users).set({ banned: true, banReason: normalizedReason, banExpires: null, updatedAt: now }).where(eq(users.id, targetUserId)).run();
@@ -121,10 +199,10 @@ export function createAdminAccountService(db: Database) {
       const now = new Date();
       const auditRow = adminAuditRow({ adminUserId, action: "user.unban", targetType: "user", targetId: targetUserId, requestId, now });
       if (isD1Database(db)) {
-        await db.batch([
+        await executeD1Batch(db, [
           db.update(users).set({ banned: false, banReason: null, banExpires: null, updatedAt: now }).where(eq(users.id, targetUserId)),
           db.insert(adminAuditLogs).values(auditRow),
-        ] as never);
+        ]);
       } else {
         database.transaction((tx) => {
           tx.update(users).set({ banned: false, banReason: null, banExpires: null, updatedAt: now }).where(eq(users.id, targetUserId)).run();
@@ -143,12 +221,12 @@ export function createAdminAccountService(db: Database) {
       const credentialFilter = and(eq(accounts.userId, targetUserId), eq(accounts.providerId, "credential"));
       const auditRow = adminAuditRow({ adminUserId, action: "user.password_reset", targetType: "user", targetId: targetUserId, requestId, now });
       if (isD1Database(db)) {
-        await db.batch([
+        await executeD1Batch(db, [
           db.update(accounts).set({ password: passwordHash, updatedAt: now }).where(credentialFilter),
           db.update(users).set({ mustChangePassword: true, updatedAt: now }).where(eq(users.id, targetUserId)),
           db.delete(sessions).where(eq(sessions.userId, targetUserId)),
           db.insert(adminAuditLogs).values(auditRow),
-        ] as never);
+        ]);
       } else {
         database.transaction((tx) => {
           tx.update(accounts).set({ password: passwordHash, updatedAt: now }).where(credentialFilter).run();
@@ -166,10 +244,10 @@ export function createAdminAccountService(db: Database) {
       const now = new Date();
       const auditRow = adminAuditRow({ adminUserId, action: "user.sessions_revoke", targetType: "user", targetId: targetUserId, requestId, now });
       if (isD1Database(db)) {
-        await db.batch([
+        await executeD1Batch(db, [
           db.delete(sessions).where(eq(sessions.userId, targetUserId)),
           db.insert(adminAuditLogs).values(auditRow),
-        ] as never);
+        ]);
       } else {
         database.transaction((tx) => {
           tx.delete(sessions).where(eq(sessions.userId, targetUserId)).run();

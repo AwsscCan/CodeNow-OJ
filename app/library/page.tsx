@@ -7,9 +7,11 @@ import { Topbar } from "../components/topbar";
 import { useEscapeClose } from "../hooks/use-escape-close";
 import { useToast } from "../hooks/use-toast";
 import { authClient } from "../lib/auth-client";
+import { dissolveFolderLevel, planFolderMove } from "../lib/folder-tree";
 import { buildCloudFolderPaths, ProblemApi } from "../lib/problem-api";
+import { getProblemSourceLabel } from "../lib/problem-source";
 import { useAiStore } from "../stores/ai-store";
-import { useLibraryStore, loadAcwingCatalog, loadBundledSamples, folderName, folderParent, folderContains, orderFolderTree, getAcwingFolders, getAcwingProblems } from "../stores/library-store";
+import { useLibraryStore, loadAcwingCatalog, loadBundledSamples, folderName, folderParent, folderContains, orderFolderTree, getAcwingProblems } from "../stores/library-store";
 import { useProblemStore, INITIAL_PROBLEM, STARTER_CODE } from "../stores/problem-store";
 import { useThemeStore } from "../stores/theme-store";
 
@@ -42,16 +44,23 @@ export default function LibraryPage() {
 
   // 订阅 catalogVersion：bundled 题源异步加载完成后触发重渲染
   void store.catalogVersion;
-  const acwingFolders = getAcwingFolders();
-  const acwingProblems = getAcwingProblems().filter((item) => !store.hiddenBuiltins.includes(item.id));
+  const acwingProblems = getAcwingProblems()
+    .filter((item) => !store.hiddenBuiltins.includes(item.id))
+    .map((item) => ({ ...item, folder: store.builtinFolderOverrides[item.id] ?? item.folder }));
+  const acwingFolders = Array.from(new Set(acwingProblems.flatMap((problem) => {
+    const parts = problem.folder.split("/").filter(Boolean);
+    return parts.map((_, index) => parts.slice(0, index + 1).join("/"));
+  })));
   const builtinVisible = !store.hiddenBuiltins.includes(INITIAL_PROBLEM.id);
+  const builtinFolder = store.builtinFolderOverrides[INITIAL_PROBLEM.id] ?? "默认题库";
 
   // Esc 收起弹窗
   useEscapeClose(showImport, () => setShowImport(false));
   useEscapeClose(Boolean(renamingId), () => setRenamingId(null));
   useEscapeClose(Boolean(menuFolder), () => setMenuFolder(null));
 
-  const folders = [...store.folders, ...(store.cloudArchives.length ? ["云端题库"] : []), ...Object.keys(store.cloudFolderIds), ...acwingFolders];
+  const builtinFolderPaths = builtinVisible && builtinFolder ? builtinFolder.split("/").map((_, index, parts) => parts.slice(0, index + 1).join("/")) : [];
+  const folders = [...store.folders, ...(store.cloudArchives.length ? ["云端题库"] : []), ...Object.keys(store.cloudFolderIds), ...acwingFolders, ...builtinFolderPaths];
   const orderedFolders = orderFolderTree(folders, store.folderOrder);
 
   const visibleFolders = orderedFolders.filter((folder) => {
@@ -68,7 +77,7 @@ export default function LibraryPage() {
   const matchesSearch = (id: string, title: string) => !search || `${id} ${title}`.toLowerCase().includes(search);
   const selectedArchives = [...store.cloudArchives, ...store.archives].filter((item) => matchesSelectedFolder(item.folder) && matchesSearch(item.problem.id, item.problem.title));
   const selectedAcwing = acwingProblems.filter((item) => matchesSelectedFolder(item.folder) && matchesSearch(item.id, item.title));
-  const showBuiltIn = builtinVisible && matchesSelectedFolder("默认题库") && (!store.librarySearch || `${INITIAL_PROBLEM.id} ${INITIAL_PROBLEM.title}`.toLowerCase().includes(store.librarySearch.toLowerCase()));
+  const showBuiltIn = builtinVisible && matchesSelectedFolder(builtinFolder) && (!store.librarySearch || `${INITIAL_PROBLEM.id} ${INITIAL_PROBLEM.title}`.toLowerCase().includes(store.librarySearch.toLowerCase()));
 
   useEffect(() => { store.setLibraryReady(); loadAcwingCatalog(); }, []);
   useEffect(() => {
@@ -157,33 +166,46 @@ export default function LibraryPage() {
 
   async function dissolveFolder(folder: string) {
     const cloudId = store.cloudFolderIds[folder];
-    if (folder === "默认题库" || (!store.folders.includes(folder) && !cloudId)) return;
-    const parent = folder.includes("/") ? folder.slice(0, folder.lastIndexOf("/")) : cloudId ? "云端题库" : "默认题库";
-    const affected = [...store.archives, ...store.cloudArchives].filter((item) => folderContains(item.folder, folder)).length;
+    if (folder === "云端题库" || !orderedFolders.includes(folder)) return;
+    const parentPath = folderParent(folder);
+    const parent = parentPath || (cloudId ? "云端题库" : "全部题目");
+    const affected = [...store.archives, ...store.cloudArchives].filter((item) => item.folder === folder).length
+      + (builtinVisible && builtinFolder === folder ? 1 : 0)
+      + acwingProblems.filter((item) => item.folder === folder).length;
     if (!window.confirm(`确定解散文件夹「${folder}」？其中 ${affected} 道题目会移至「${parent}」`)) return;
     if (cloudId) {
       await ProblemApi.deleteFolder(cloudId);
-      const nextIds = Object.fromEntries(Object.entries(store.cloudFolderIds).filter(([path]) => path !== folder).map(([path, id]) => [path.startsWith(`${folder}/`) ? `${parent}/${path.slice(folder.length + 1)}` : path, id]));
+      const plan = dissolveFolderLevel(Object.keys(store.cloudFolderIds), folder);
+      const nextIds = Object.fromEntries(Object.entries(store.cloudFolderIds).filter(([path]) => path !== folder).map(([path, id]) => [plan.remap(path), id]));
       store.setCloudFolderIds(nextIds);
-      store.setCloudArchives(store.cloudArchives.map((item) => folderContains(item.folder, folder) ? { ...item, folder: parent } : item));
-    } else store.removeFolder(folder);
-    if (folderContains(store.selectedFolder, folder)) store.setSelectedFolder(parent);
+      store.setCloudArchives(store.cloudArchives.map((item) => ({
+        ...item,
+        folder: item.folder === folder ? parent : item.folder.startsWith(`${folder}/`) ? plan.remap(item.folder) : item.folder,
+      })));
+    } else store.dissolveFolder(folder);
+    if (cloudId && folderContains(store.selectedFolder, folder)) store.setSelectedFolder(parent);
     toast(`已解散文件夹「${folder}」`);
   }
 
   async function deleteFolder(folder: string) {
     const cloudId = store.cloudFolderIds[folder];
-    if (folder === "默认题库" || (!store.folders.includes(folder) && !cloudId)) return;
+    if (folder === "云端题库" || !orderedFolders.includes(folder)) return;
     const affected = [...store.archives, ...store.cloudArchives].filter((item) => folderContains(item.folder, folder));
+    const builtinCount = (builtinVisible && folderContains(builtinFolder, folder) ? 1 : 0)
+      + acwingProblems.filter((item) => folderContains(item.folder, folder)).length;
     const prompt = cloudId
       ? `删除云端文件夹「${folder}」？其中 ${affected.length} 道题目会移至上级文件夹。`
-      : `永久删除文件夹「${folder}」及其中 ${affected.length} 道题目？此操作不可恢复。`;
+      : `永久删除文件夹「${folder}」及其中 ${affected.length + builtinCount} 道题目？此操作不可恢复。`;
     if (!window.confirm(prompt)) return;
     if (cloudId) {
       await ProblemApi.deleteFolder(cloudId);
       const parent = folderParent(folder) || "云端题库";
-      store.setCloudFolderIds(Object.fromEntries(Object.entries(store.cloudFolderIds).filter(([path]) => path !== folder).map(([path, id]) => [path.startsWith(`${folder}/`) ? `${parent}/${path.slice(folder.length + 1)}` : path, id])));
-      store.setCloudArchives(store.cloudArchives.map((item) => folderContains(item.folder, folder) ? { ...item, folder: parent } : item));
+      const plan = dissolveFolderLevel(Object.keys(store.cloudFolderIds), folder);
+      store.setCloudFolderIds(Object.fromEntries(Object.entries(store.cloudFolderIds).filter(([path]) => path !== folder).map(([path, id]) => [plan.remap(path), id])));
+      store.setCloudArchives(store.cloudArchives.map((item) => ({
+        ...item,
+        folder: item.folder === folder ? parent : item.folder.startsWith(`${folder}/`) ? plan.remap(item.folder) : item.folder,
+      })));
     } else store.removeFolder(folder);
     if (folderContains(store.selectedFolder, folder)) store.setSelectedFolder(folderParent(folder) || (cloudId ? "云端题库" : "默认题库"));
     toast(`已永久删除`);
@@ -198,7 +220,7 @@ export default function LibraryPage() {
     } else {
       // 内置题(P1001/AcWing)去特权：改题号即物化为普通归档副本
       const builtin = renamingId === INITIAL_PROBLEM.id
-        ? { problem: INITIAL_PROBLEM, folder: "默认题库" }
+        ? { problem: INITIAL_PROBLEM, folder: builtinFolder }
         : (() => { const item = acwingProblems.find((p) => p.id === renamingId); return item ? { problem: item, folder: item.folder } : null; })();
       if (!builtin) return toast("未找到该题目");
       // 索引题 samples 为空，物化前按需补齐完整测试点
@@ -217,44 +239,62 @@ export default function LibraryPage() {
     return ratio < 0.3 ? "before" : ratio > 0.7 ? "after" : "into";
   }
 
+  async function moveFolderToParent(source: string, destinationParent: string) {
+    const plan = planFolderMove(orderedFolders, source, destinationParent);
+    if (!plan.ok) { toast(plan.error); return null; }
+    const sourceCloudId = store.cloudFolderIds[source];
+    const targetCloudId = destinationParent ? store.cloudFolderIds[destinationParent] : undefined;
+    if (destinationParent && (sourceCloudId || targetCloudId) && (!sourceCloudId || !targetCloudId)) {
+      toast("本地与云端文件夹之间暂不支持移动");
+      return null;
+    }
+    if (sourceCloudId) {
+      await ProblemApi.updateFolder(sourceCloudId, { parentId: targetCloudId ?? null });
+      store.setCloudFolderIds(Object.fromEntries(Object.entries(store.cloudFolderIds).map(([path, id]) => [plan.remap(path), id])));
+      store.setCloudArchives(store.cloudArchives.map((item) => folderContains(item.folder, source) ? { ...item, folder: plan.remap(item.folder) } : item));
+    } else {
+      store.moveFolder(source, destinationParent);
+    }
+    return plan;
+  }
+
   async function reparentFolder(target: string) {
     const source = draggedFolder;
     setDragOverFolder(null);
     setDraggedFolder(null);
     if (!source || source === target) return;
-    if (folderContains(target, source)) return toast("不能把文件夹拖进自己的子文件夹");
-    const name = folderName(source);
-    const nextPath = `${target}/${name}`;
-    if (nextPath.split("/").filter(Boolean).length > 5) return toast("最多支持 5 级文件夹");
-    if (orderedFolders.includes(nextPath)) return toast("目标文件夹下已有同名文件夹");
-    const sourceCloudId = store.cloudFolderIds[source];
-    const targetCloudId = store.cloudFolderIds[target];
-    if (sourceCloudId || targetCloudId) {
-      if (!sourceCloudId || !targetCloudId) return toast("本地与云端文件夹之间暂不支持拖入");
-      await ProblemApi.updateFolder(sourceCloudId, { parentId: targetCloudId });
-      const remap = (path: string) => path === source ? nextPath : path.startsWith(`${source}/`) ? `${nextPath}${path.slice(source.length)}` : path;
-      store.setCloudFolderIds(Object.fromEntries(Object.entries(store.cloudFolderIds).map(([path, id]) => [remap(path), id])));
-      store.setCloudArchives(store.cloudArchives.map((item) => folderContains(item.folder, source) ? { ...item, folder: remap(item.folder) } : item));
-    } else {
-      if (!store.folders.includes(source)) return toast("内置目录不支持拖入");
-      if (!store.folders.includes(target)) return toast("目标文件夹不支持拖入");
-      store.moveFolderInto(source, target);
-    }
-    toast(`已将「${name}」移入「${folderName(target)}」`);
+    const plan = await moveFolderToParent(source, target);
+    if (plan) toast(`已将「${folderName(source)}」移入「${folderName(target)}」`);
   }
 
-  function reorderFolder(target: string, placeAfter: boolean) {
+  async function reorderFolder(target: string, placeAfter: boolean) {
     const source = draggedFolder;
     setDragOverFolder(null);
     setDraggedFolder(null);
     if (!source || source === target) return;
-    if (folderParent(source) !== folderParent(target)) return toast("只能在同一级文件夹之间拖动排序");
-    const siblings = orderedFolders.filter((item) => folderParent(item) === folderParent(source));
-    const next = siblings.filter((item) => item !== source);
+    const destinationParent = folderParent(target);
+    const plan = folderParent(source) === destinationParent
+      ? { ok: true as const, remap: (path: string) => path, nextPaths: orderedFolders }
+      : await moveFolderToParent(source, destinationParent);
+    if (!plan) return;
+    const movedSource = plan.remap(source);
+    const movedFolders = orderedFolders.map(plan.remap);
+    const siblings = movedFolders.filter((item) => folderParent(item) === destinationParent);
+    const next = siblings.filter((item) => item !== movedSource);
     const idx = next.indexOf(target);
-    next.splice(idx + (placeAfter ? 1 : 0), 0, source);
-    store.setFolderOrder([...store.folderOrder.filter((item) => !siblings.includes(item)), ...next]);
-    toast(`已调整「${folderName(source)}」的顺序`);
+    next.splice(idx + (placeAfter ? 1 : 0), 0, movedSource);
+    const currentOrder = useLibraryStore.getState().folderOrder;
+    store.setFolderOrder([...currentOrder.filter((item) => !siblings.includes(item)), ...next]);
+    toast(`已调整「${folderName(movedSource)}」的位置`);
+  }
+
+  async function moveFolderToRoot() {
+    const source = draggedFolder;
+    setDragOverFolder(null);
+    setDraggedFolder(null);
+    if (!source || !folderParent(source)) return;
+    const plan = await moveFolderToParent(source, "");
+    if (plan) toast(`已将「${folderName(source)}」移至全部题目`);
   }
 
   async function generateProblemFromText() {
@@ -279,7 +319,7 @@ export default function LibraryPage() {
         return m ? Math.max(max, Number(m[1])) : max;
       }, 0) + 1;
       const nextId = customProblemId.trim() || `CF${String(nextNumber).padStart(4, "0")}`;
-      const archiveFolder = store.selectedFolder === "全部题目" ? "默认题库" : store.selectedFolder;
+      const archiveFolder = store.selectedFolder === "全部题目" ? "" : store.selectedFolder;
       const incoming = data.problem as Record<string, unknown>;
       const numbered = { ...incoming, id: nextId } as typeof INITIAL_PROBLEM;
       if (session.data?.user) {
@@ -327,7 +367,7 @@ export default function LibraryPage() {
           return m ? Math.max(max, Number(m[1])) : max;
         }, 0) + 1;
         const nextId = customProblemId.trim() || `CF${String(nextNumber).padStart(4, "0")}`;
-        const archiveFolder = store.selectedFolder === "全部题目" ? "默认题库" : store.selectedFolder;
+        const archiveFolder = store.selectedFolder === "全部题目" ? "" : store.selectedFolder;
         const numbered = { ...parsed, id: nextId } as typeof INITIAL_PROBLEM;
         if (session.data?.user) {
           const created = await ProblemApi.create({
@@ -370,8 +410,12 @@ export default function LibraryPage() {
           {/* Sidebar */}
           <aside className="library-page-sidebar">
             <h3>题目文件夹</h3>
-            <button className={store.selectedFolder === "全部题目" ? "active" : ""} onClick={() => store.setSelectedFolder("全部题目")}>
-              <span>▦ 全部题目</span><b>{store.archives.length + acwingProblems.length + 1}</b>
+            <button className={`${store.selectedFolder === "全部题目" ? "active" : ""} ${dragOverFolder === "全部题目" ? "drag-into" : ""}`}
+              onClick={() => store.setSelectedFolder("全部题目")}
+              onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; setDragOverFolder("全部题目"); }}
+              onDragLeave={() => setDragOverFolder((item) => item === "全部题目" ? null : item)}
+              onDrop={(event) => { event.preventDefault(); void moveFolderToRoot(); }}>
+              <span>▦ 全部题目</span><b>{store.archives.length + acwingProblems.length + (builtinVisible ? 1 : 0)}</b>
             </button>
             {visibleFolders.map((folder) => {
               const hasChildren = orderedFolders.some((item) => item.startsWith(`${folder}/`));
@@ -384,14 +428,14 @@ export default function LibraryPage() {
                   onDragEnd={() => { setDraggedFolder(null); setDragOverFolder(null); }}
                   onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOverFolder(folder); setDragOverMode(dropZoneOf(e.clientY, e.currentTarget.getBoundingClientRect()) === "into" ? "into" : "sort"); }}
                   onDragLeave={() => setDragOverFolder((item) => item === folder ? null : item)}
-                  onDrop={(e) => { e.preventDefault(); const zone = dropZoneOf(e.clientY, e.currentTarget.getBoundingClientRect()); if (zone === "into") { void reparentFolder(folder); } else { reorderFolder(folder, zone === "after"); } }}>
-                  {folder !== "默认题库" && (store.folders.includes(folder) || Boolean(store.cloudFolderIds[folder]))
+                  onDrop={(e) => { e.preventDefault(); const zone = dropZoneOf(e.clientY, e.currentTarget.getBoundingClientRect()); if (zone === "into") { void reparentFolder(folder); } else { void reorderFolder(folder, zone === "after"); } }}>
+                  {folder !== "云端题库"
                     ? <button className="folder-drag" aria-label={`文件夹操作 ${folder}`} title="点击展开操作 · 按住整行拖动排序" onClick={() => setMenuFolder((m) => m === folder ? null : folder)}>⋮</button>
                     : <span className="folder-drag" aria-hidden="true" title="按住整行拖动排序">⋮</span>}
                   {hasChildren ? <button className="folder-expand" onClick={() => store.toggleCollapsed(folder)}>{collapsed ? "›" : "⌄"}</button> : <span className="folder-spacer" />}
                   <button className={`folder-select ${store.selectedFolder === folder ? "active" : ""}`} onClick={() => store.setSelectedFolder(folder)}>
                     <span>▱ {folderName(folder)}</span>
-                    <b>{store.archives.filter((a) => folderContains(a.folder, folder)).length + acwingProblems.filter((p) => folderContains(p.folder, folder)).length + (folder === "默认题库" ? 1 : 0)}</b>
+                    <b>{store.archives.filter((a) => folderContains(a.folder, folder)).length + acwingProblems.filter((p) => folderContains(p.folder, folder)).length + (builtinVisible && folderContains(builtinFolder, folder) ? 1 : 0)}</b>
                   </button>
                   {menuFolder === folder && <div className="folder-menu" role="menu">
                     <button role="menuitem" onClick={() => { setMenuFolder(null); void dissolveFolder(folder); }}>散：解散并保留题目</button>
@@ -417,12 +461,12 @@ export default function LibraryPage() {
             </div>
             <div className="catalog-header"><span>题目</span><span>难度</span><span>测试点</span><span>分类</span><span></span></div>
             <div className="catalog-list">
-              {showBuiltIn && <article className="catalog-row built-in"><div className="catalog-problem-link"><button className="catalog-id-edit editable" onClick={() => { setRenamingId(INITIAL_PROBLEM.id); setNextProblemId(INITIAL_PROBLEM.id); }}><code>{INITIAL_PROBLEM.id}</code></button><button className="catalog-title-open" onClick={openBuiltIn}><span><b>{INITIAL_PROBLEM.title}</b><small>经典入门题 · 内置题目</small></span></button></div><span className="difficulty beginner">{INITIAL_PROBLEM.difficulty}</span><span>{INITIAL_PROBLEM.samples.length} 个</span><span>默认题库</span><i onClick={openBuiltIn}>进入做题 →</i></article>}
+              {showBuiltIn && <article className="catalog-row built-in"><div className="catalog-problem-link"><button className="catalog-id-edit editable" onClick={() => { setRenamingId(INITIAL_PROBLEM.id); setNextProblemId(INITIAL_PROBLEM.id); }}><code>{INITIAL_PROBLEM.id}</code></button><button className="catalog-title-open" onClick={openBuiltIn}><span><b>{INITIAL_PROBLEM.title}</b><small>经典入门题 · 内置题目</small></span></button></div><span className="difficulty beginner">{INITIAL_PROBLEM.difficulty}</span><span>{INITIAL_PROBLEM.samples.length} 个</span><span>{folderName(builtinFolder) || "全部题目"}</span><i onClick={openBuiltIn}>进入做题 →</i></article>}
               {selectedAcwing.map((item) => (
                 <article className="catalog-row external-problem" key={item.id}>
-                  <div className="catalog-problem-link"><button className="catalog-id-edit editable" onClick={() => { setRenamingId(item.id); setNextProblemId(item.id); }}><code>{item.id}</code></button><button className="catalog-title-open" onClick={() => openBundled(item)}><span><b>{item.title}</b><small>{item.extractionStatus === "complete" ? "题面已自动提取" : "题面需结合来源核对"} · 博客园来源</small></span></button></div>
+                  <div className="catalog-problem-link"><button className="catalog-id-edit editable" onClick={() => { setRenamingId(item.id); setNextProblemId(item.id); }}><code>{item.id}</code></button><button className="catalog-title-open" onClick={() => openBundled(item)}><span><b>{item.title}</b><small>{getProblemSourceLabel(item)}</small></span></button></div>
                   <span className="difficulty normal">{item.difficulty}</span><span>{item.sampleCount ?? item.samples.length} 个</span><span title={item.folder}>{folderName(item.folder)}</span>
-                  <div className="row-actions"><a href={item.sourceUrl} target="_blank" rel="noreferrer">来源</a><i onClick={() => openBundled(item)}>进入 →</i></div>
+                  <div className="row-actions">{item.sourceUrl && <a href={item.sourceUrl} target="_blank" rel="noreferrer">来源</a>}<i onClick={() => openBundled(item)}>进入 →</i></div>
                 </article>
               ))}
               {selectedArchives.map((item) => (

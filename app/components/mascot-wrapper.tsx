@@ -4,7 +4,8 @@
 
 import { useState, useEffect } from "react";
 import { useMascotLine } from "../hooks/use-mascot-line";
-import { useMascotStore } from "../stores/mascot-store";
+import { buildMascotLearningFeedback, useMascotStore } from "../stores/mascot-store";
+import { useMemoryStore } from "../stores/memory-store";
 import { useThemeStore } from "../stores/theme-store";
 import { DesktopMascot } from "./mascot";
 
@@ -17,7 +18,13 @@ export function MascotWrapper() {
 
 function MascotActive() {
   const line = useMascotStore((s) => s.line);
+  const phase = useMascotStore((s) => s.phase);
+  const context = useMascotStore((s) => s.context);
   const requestAiSolve = useMascotStore((s) => s.requestAiSolve);
+  const learningFeedbackRequestId = useMascotStore((s) => s.learningFeedbackRequestId);
+  const dismissedLearningFeedbackRequestId = useMascotStore((s) => s.dismissedLearningFeedbackRequestId);
+  const dismissLearningFeedback = useMascotStore((s) => s.dismissLearningFeedback);
+  const memories = useMemoryStore((s) => s.memories);
   const { refresh } = useMascotLine();
   const [visible, setVisible] = useState(() => {
     if (typeof window === "undefined") return true;
@@ -30,6 +37,10 @@ function MascotActive() {
     localStorage.setItem("codenow-mascot-visible", String(visible));
   }, [visible]);
 
+  const learningFeedback = learningFeedbackRequestId !== dismissedLearningFeedbackRequestId
+    ? buildMascotLearningFeedback(phase, context, memories)
+    : null;
+
   return (
     <DesktopMascot
       visible={visible}
@@ -39,6 +50,8 @@ function MascotActive() {
       onCycle={() => { void refresh(); }}
       onDragDrop={(_dragged, insideEditor) => { if (insideEditor) requestAiSolve(); }}
       onSetVisible={setVisible}
+      learningFeedback={learningFeedback}
+      onDismissLearningFeedback={dismissLearningFeedback}
     />
   );
 }

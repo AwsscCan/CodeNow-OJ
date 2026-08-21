@@ -9,7 +9,7 @@
 CodeNow OJ 是一个面向 GNU C++17 的在线编程判题平台，前端 Next.js，后端 vinext(Cloudflare 适配)，目前全栈运行在 VSCode + Windows 本地环境。
 
 **核心能力**：
-- 内置 158 道编程题目(AcWing 基础课 109 题 + 经典题库 26 题 + 竞赛真题 23 题)
+- 内置 192 道编程题目(AcWing 基础课 109 题 + 经典题库 26 题 + 竞赛真题 57 题，其中第33-42次 CSP 认证每届5题共50题)
 - C++17 在线编译判题(Judge0)
 - AI 对话/解题助手(支持 DeepSeek/OpenAI/自定义 API)
 - 少女主题(高木同学 AI 人设联动、桌宠、台词语料库)
@@ -23,7 +23,7 @@ CodeNow OJ 是一个面向 GNU C++17 的在线编程判题平台，前端 Next.j
 
 pnpm install
 npm run build        # 生产构建
-npm run test:unit    # 558 单元测试
+npm run test:unit    # 596 单元测试
 npm run test:e2e     # Playwright E2E 测试
 
 # 启动生产服务器
@@ -78,7 +78,7 @@ CodeNow-OJ/
 │   │   └── tokens.css            # 设计令牌(唯一被引入的文件)
 │   └── globals.css               # 所有生效样式都在这里(不要怀疑)
 ├── public/                       # 静态资源
-│   ├── catalog-index.json        # 题库轻量索引(112KB,不含 samples)
+│   ├── catalog-index.json        # 题库轻量索引(约217KB,不含 samples)
 │   ├── problems/                 # 按需加载的单题完整 JSON
 │   │   └── CS0331.json           # 例：CSP 认证单题
 │   ├── acwing-course.json        # AcWing 原始数据(生成后不再被前端加载)
@@ -92,9 +92,10 @@ CodeNow-OJ/
 │   ├── enhance-acwing.mjs        # AcWing 测试点增强
 │   ├── classic-defs-{1,2,3}.mjs   # 经典题库定义(26 题)
 │   ├── contest-defs.mjs          # CSP-J/NOIP/蓝桥杯定义(7 题)
-│   ├── csp-cert-{1,2}.mjs        # CSP 认证第33-42次(16 题)
+│   ├── csp-cert-source.json      # 曙梦 OJ 固化的第33-42次 CSP 真实题面与公开样例(50题)
+│   ├── import-csp-shumeng.mjs    # Playwright CSP 权威来源导入脚本
 │   └── acwing-solvers-{1..6}.mjs  # AcWing 参考解(87 题)
-├── tests/unit/                   # 558 个单元测试
+├── tests/unit/                   # 596 个单元测试
 ├── docs/superpowers/specs/       # 设计文档
 │   ├── 2026-07-26-girl-theme-ui-polish-design.md
 │   ├── 2026-07-26-takagi-ai-persona-memory-design.md
@@ -114,7 +115,7 @@ CodeNow-OJ/
 
 ### 4.2 题库加载——轻量索引 + 按需单题
 
-- 题库页加载 `catalog-index.json`（当前约 123KB，仅含元数据+sampleCount）
+- 题库页加载 `catalog-index.json`（当前约 217KB，仅含元数据+sampleCount）
 - 点击进入做题页时按需拉取 `/problems/{id}.json`（完整 samples）
 - `scripts/testgen/split-catalog.mjs` 负责从三个大文件生成索引与单题文件
 - **每次修改/新增题目后必须运行** `node scripts/testgen/split-catalog.mjs` 重新生成
@@ -126,7 +127,8 @@ CodeNow-OJ/
 - 可选 `brute(input)` 用于小规模对拍验证
 - 可选 `skipAnchor: true` 表示跳过原题样例锚点校验
 - 强制约束：单点 input ≤ 256KB（用 `buildSamples` 的防线）
-- 约束：每题 ≥ 12 个测试点，覆盖 sample/boundary/special/ordinary/adversarial/performance 六类
+- 生成题约束：每题 ≥ 12 个测试点，覆盖 sample/boundary/special/ordinary/adversarial/performance 六类
+- 第33-42次 CSP 认证题直接保留曙梦 OJ 公开样例（每题1-6组），不伪造来源站未公开的隐藏评测数据
 
 ### 4.4 高木同学 AI 联动
 
@@ -142,7 +144,7 @@ CodeNow-OJ/
 |---|---|
 | `npm run dev` | 开发服务器 |
 | `npm run build` | 生产构建 |
-| `npm run test:unit` | 558 个单元测试(Vitest) |
+| `npm run test:unit` | 596 个单元测试(Vitest) |
 | `npm run test:e2e` | Playwright E2E |
 | `npm run lint` | ESLint |
 | `node scripts/testgen/generate-bundled.mjs` | 生成经典题库+竞赛题库 JSON |
@@ -158,8 +160,8 @@ CodeNow-OJ/
 4. `node scripts/testgen/split-catalog.mjs` 重建索引
 
 ### 新增经典/竞赛题
-1. 在 `scripts/testgen/classic-defs-*.mjs` 或 `contest-defs.mjs` 或 `csp-cert-*.mjs` 添加定义
-2. 在 `scripts/testgen/generate-bundled.mjs` 确保 import 接线
+1. 经典/CSP-J/NOIP/蓝桥杯：编辑 `classic-defs-*.mjs` 或 `contest-defs.mjs`
+2. 第33-42次 CSP 认证：运行 `node scripts/testgen/import-csp-shumeng.mjs` 更新 `csp-cert-source.json`
 3. `node scripts/testgen/generate-bundled.mjs` 生成
 4. `node scripts/testgen/split-catalog.mjs` 重建索引
 5. 更新对应的 `tests/unit/*-catalog.test.ts` 契约测试
@@ -191,17 +193,16 @@ CodeNow-OJ/
 
 ## 9. 已知问题 / 待办
 
-1. **CSP 认证每届只有 1-2 题，需补齐到 4-5 题**——`scripts/testgen/csp-cert-complete.mjs` 已有补全代码但有语法 bug 待修
-2. **`globals.css` 过长**（300KB+）——建议未来拆分但不影响功能
-3. **`styles/` 目录除 tokens.css 外全是死文件**——考虑清理或接线
-4. **AcWing 题库原始 JSON 29MB** 仍留在 public 目录供 enhance 脚本读取，前端不加载
-5. **生产环境需要 BETTER_AUTH_SECRET 环境变量**，缺它会 500
+1. **`globals.css` 过长**（300KB+）——建议未来拆分但不影响功能
+2. **`styles/` 目录除 tokens.css 外全是死文件**——考虑清理或接线
+3. **AcWing 题库原始 JSON 29MB** 仍留在 public 目录供 enhance 脚本读取，前端不加载
+4. **生产环境需要 BETTER_AUTH_SECRET 环境变量**，缺它会 500
 
 ## 10. 分支状态
 
 - **当前分支**: `feat/local-data-migration`
 - **最新提交**: 轮 1-28 逐轮标注 `opt: 第 N 轮——...`
-- **测试**: 558/558 全绿
+- **测试**: 596/596 全绿
 - **构建**: `npm run build` 通过
 
 ---

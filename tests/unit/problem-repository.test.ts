@@ -84,6 +84,31 @@ describe("user-scoped problem repository", () => {
     expect(saved).toMatchObject({ ok: true, version: 2 });
     expect(saved.ok && saved.value).toHaveLength(2);
   });
+
+  it("dissolves only one cloud folder level without losing problems or test cases", async () => {
+    const parent = await repository.createFolder("user-a", { name: "parent" });
+    if (!parent.ok) throw new Error(parent.message);
+    const current = await repository.createFolder("user-a", { name: "current", parentId: parent.value.id });
+    if (!current.ok) throw new Error(current.message);
+    const child = await repository.createFolder("user-a", { name: "child", parentId: current.value.id });
+    if (!child.ok) throw new Error(child.message);
+    const created = await repository.createProblem("user-a", { ...baseProblem, folderId: current.value.id });
+    if (!created.ok) throw new Error(created.message);
+    const saved = await repository.replaceTestCases("user-a", created.value.id, 1, [
+      { input: "1 2\n", expectedOutput: "3\n", category: "sample", targets: "must survive" },
+    ]);
+    if (!saved.ok) throw new Error(saved.message);
+
+    const deleted = await repository.deleteFolder("user-a", current.value.id);
+
+    expect(deleted.ok).toBe(true);
+    const remainingFolders = await repository.listFolders("user-a");
+    expect(remainingFolders.find((folder) => folder.id === child.value.id)?.parentId).toBe(parent.value.id);
+    const preserved = await repository.getProblem("user-a", created.value.id);
+    expect(preserved?.folderId).toBe(parent.value.id);
+    expect(preserved?.testCases).toHaveLength(1);
+    expect(preserved?.testCases[0]).toMatchObject({ input: "1 2\n", expectedOutput: "3\n", targets: "must survive" });
+  });
 });
 
 describe("problem payload limits", () => {

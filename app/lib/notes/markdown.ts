@@ -1,4 +1,5 @@
 import DOMPurify from "dompurify";
+import renderMathInElement from "katex/contrib/auto-render";
 import { marked } from "marked";
 
 /**
@@ -53,6 +54,16 @@ function escapeHtml(input: string): string {
   return input.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[char] ?? char));
 }
 
+function createEscapedDollarMarker(source: string): string {
+  let marker = "QZNOTEESCAPEDDOLLARQZ";
+  while (source.includes(marker)) marker += "X";
+  return marker;
+}
+
+function restoreEscapedDollarSigns(html: string, marker: string): string {
+  return marker ? html.split(marker).join("$") : html;
+}
+
 /**
  * 把 Markdown 原文渲染为经白名单消毒的安全 HTML。
  * 服务端无 DOM 时退回转义纯文本，真正消毒在客户端挂载后执行（见 SafeMarkdown）。
@@ -61,12 +72,39 @@ export function renderMarkdownToSafeHtml(markdown: string): string {
   const source = typeof markdown === "string" ? markdown : "";
   if (typeof window === "undefined") return `<pre class="note-markdown-fallback">${escapeHtml(source)}</pre>`;
   installHooks();
-  const rawHtml = marked.parse(source, { async: false, breaks: true, gfm: true }) as string;
-  return DOMPurify.sanitize(rawHtml, {
+  const escapedDollarMarker = source.includes("\\$") ? createEscapedDollarMarker(source) : "";
+  const rawHtml = marked.parse(source, {
+    async: false,
+    breaks: true,
+    gfm: true,
+    walkTokens(token) {
+      if (escapedDollarMarker && token.type === "escape" && token.text === "$") {
+        token.text = escapedDollarMarker;
+      }
+    },
+  }) as string;
+  const safeHtml = DOMPurify.sanitize(rawHtml, {
     ALLOWED_TAGS,
     ALLOWED_ATTR,
     FORBID_TAGS: ["script", "iframe", "object", "embed", "style", "link", "meta", "form", "input", "svg", "math"],
     FORBID_ATTR: ["style", "srcset", "formaction", "onerror", "onload", "onclick"],
     ALLOW_DATA_ATTR: false,
   });
+  if (!source.includes("$")) return restoreEscapedDollarSigns(safeHtml, escapedDollarMarker);
+
+  const container = document.createElement("div");
+  container.innerHTML = safeHtml;
+  try {
+    renderMathInElement(container, {
+      delimiters: [
+        { left: "$$", right: "$$", display: true },
+        { left: "$", right: "$", display: false },
+      ],
+      throwOnError: false,
+      ignoredTags: ["script", "noscript", "style", "textarea", "pre", "code", "a"],
+    });
+    return restoreEscapedDollarSigns(container.innerHTML, escapedDollarMarker);
+  } catch {
+    return restoreEscapedDollarSigns(safeHtml, escapedDollarMarker);
+  }
 }

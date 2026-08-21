@@ -4,6 +4,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import type { MascotMood } from "../stores/mascot-lines";
+import type { MascotLearningFeedback } from "../stores/mascot-store";
 
 type MascotPosition = { x: number; y: number };
 
@@ -31,6 +32,8 @@ export function DesktopMascot({
   onCycle,
   onDragDrop,
   onSetVisible,
+  learningFeedback,
+  onDismissLearningFeedback,
 }: {
   visible: boolean;
   message: string;
@@ -39,6 +42,8 @@ export function DesktopMascot({
   onCycle: () => void;
   onDragDrop?: (dragged: boolean, insideEditor: boolean) => void;
   onSetVisible: (v: boolean) => void;
+  learningFeedback?: MascotLearningFeedback | null;
+  onDismissLearningFeedback?: () => void;
 }) {
   const mascotRef = useRef<HTMLElement>(null);
   const [position, setPosition] = useState<MascotPosition | null>(() => {
@@ -149,6 +154,61 @@ export function DesktopMascot({
       style={position ? { left: position.x, top: position.y, right: "auto", bottom: "auto" } : undefined}
     >
       <button className="mascot-close" aria-label="暂时隐藏桌宠" onClick={() => onSetVisible(false)}>×</button>
+      {learningFeedback && (
+        <>
+          <section
+            aria-live="polite"
+            aria-label="本次学习反馈"
+            className="mascot-learning-feedback"
+            style={{
+              position: "absolute",
+              zIndex: 3,
+              top: 2,
+              right: 50,
+              width: 154,
+              maxHeight: 100,
+              overflow: "hidden",
+              overflowWrap: "anywhere",
+              boxSizing: "border-box",
+              border: "1px solid #e9c9bb",
+              borderRadius: "15px 15px 4px 15px",
+              padding: "8px 11px",
+              color: "#694941",
+              background: "#fffaf3e7",
+              boxShadow: "0 7px 20px #6c35232b",
+              pointerEvents: "auto",
+              fontSize: "var(--text-xs)",
+              lineHeight: 1.35,
+            }}
+          >
+            <strong style={{ display: "block", fontSize: "var(--text-2xs)" }}>本次学习反馈</strong>
+            <span style={{ display: "block", marginTop: 2 }}>{learningFeedback.summary}</span>
+            <small style={{ display: "block", marginTop: 4, color: "#b27d6f" }}>下一步：{learningFeedback.nextStep}</small>
+          </section>
+          <button
+            type="button"
+            aria-label="关闭本次学习反馈"
+            onClick={onDismissLearningFeedback}
+            style={{
+              position: "absolute",
+              zIndex: 4,
+              top: 5,
+              right: 55,
+              width: 18,
+              height: 18,
+              border: 0,
+              padding: 0,
+              color: "#9c6658",
+              background: "transparent",
+              cursor: "pointer",
+              fontSize: 14,
+              lineHeight: 1,
+            }}
+          >
+            ×
+          </button>
+        </>
+      )}
       <button className="mascot-bubble" onClick={onCycle} aria-live="polite" aria-atomic={true}>
         {message}<small>点击换台词，按住人物可拖动到编辑器</small>
       </button>

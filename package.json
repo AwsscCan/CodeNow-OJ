@@ -12,7 +12,7 @@
     "start": "vinext start",
     "test": "npm run build && npm run test:unit && node --test tests/rendered-html.test.mjs",
     "test:e2e": "playwright test",
-    "test:unit": "vitest run --exclude tests/e2e/**",
+    "test:unit": "vitest run --exclude tests/e2e/** --exclude tests/unit/split-catalog-safety.test.mjs && node --test tests/unit/split-catalog-safety.test.mjs",
     "test:watch": "vitest",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate",

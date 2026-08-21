@@ -17,6 +17,7 @@ import { useToast } from "../../hooks/use-toast";
 import { authClient } from "../../lib/auth-client";
 import { formatCppCode } from "../../lib/format-cpp";
 import { ProblemApi, ProblemApiError, type CloudProblem } from "../../lib/problem-api";
+import { getProblemSourceLabel } from "../../lib/problem-source";
 import { useAiStore } from "../../stores/ai-store";
 import { useLibraryStore } from "../../stores/library-store";
 import { useMascotStore } from "../../stores/mascot-store";
@@ -416,6 +417,7 @@ export default function ProblemPage() {
           apiKey: key,
           endpoint: aiStore.endpoint,
           model: aiStore.model,
+          qualityMode: "feedback",
           problem: store.problem,
           count: targetTotal,
         }),
@@ -522,7 +524,7 @@ export default function ProblemPage() {
               {store.problem.sourceUrl && (
                 <div className={`source-banner ${store.problem.extractionStatus === "needs_review" ? "review" : ""}`}>
                   <span>{store.problem.extractionStatus === "needs_review" ? "需核对" : "已导入"}</span>
-                  <p>来源于 AcWing 算法基础课题解目录。</p>
+                  <p>来源：{getProblemSourceLabel(store.problem)}</p>
                   <a href={store.problem.sourceUrl} target="_blank" rel="noreferrer">查看来源 ↗</a>
                 </div>
               )}

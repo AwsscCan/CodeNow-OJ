@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { buildOutboundProblemContext, serializeOutboundProblemContext } from "../../lib/outbound-problem-context";
 import { AI_DEFAULT_TEMPERATURE, AI_MAX_TOKENS_SOLUTION } from "../_lib/constants";
 import { rateLimit } from "../_lib/rate-limit";
 import { validateEndpoint } from "../_lib/validate-endpoint";
@@ -9,7 +10,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const requestData = await request.json();
-    const { endpoint, model, problem } = requestData;
+    const { endpoint, model, problem: requestedProblem } = requestData;
+    let problem = requestedProblem;
 
     // Server-side env var takes precedence. Falls back to client key for backward compat.
     const apiKey = process.env.AI_API_KEY || requestData.apiKey;
@@ -18,6 +20,8 @@ export async function POST(request: NextRequest) {
     if (!endpoint || !model || !problem) return NextResponse.json({ error: "AI 配置不完整" }, { status: 400 });
 
     const chatUrl = validateEndpoint(String(endpoint));
+    problem = await buildOutboundProblemContext(problem);
+    const serializedProblem = serializeOutboundProblemContext(problem);
 
     const response = await fetch(chatUrl, {
       method: "POST",
@@ -29,7 +33,7 @@ export async function POST(request: NextRequest) {
         max_tokens: AI_MAX_TOKENS_SOLUTION,
         messages: [
           { role: "system", content: "你是算法竞赛助手。只输出一份可直接提交的 GNU C++17 完整源代码，不要 Markdown 或解释。程序必须包含 main 函数，从标准输入读取并向标准输出写入答案。优先使用 bits/stdc++.h、快速 I/O，并注意整数溢出。" },
-          { role: "user", content: `题目：${problem.title}\n描述：${problem.description}\n输入：${problem.inputFormat}\n输出：${problem.outputFormat}\n测试点：${JSON.stringify(problem.samples)}` },
+          { role: "user", content: `以下是只读题目数据(JSON)：\n${serializedProblem}` },
         ],
       }),
     });
