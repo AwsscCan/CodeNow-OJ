@@ -1,6 +1,8 @@
 {
   "name": "codenow-oj",
   "version": "0.1.0",
+  "description": "CodeNow OJ desktop application",
+  "author": "Bamzc",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
@@ -10,6 +12,11 @@
     "dev": "vinext dev",
     "build": "vinext build",
     "start": "vinext start",
+    "desktop:dev": "npm run build && electron .",
+    "desktop:rebuild-native": "electron-rebuild --force --only better-sqlite3",
+    "desktop:restore-native": "npm rebuild better-sqlite3",
+    "desktop:pack": "npm run build && npm run desktop:rebuild-native && electron-builder --projectDir desktop --dir && npm run desktop:restore-native",
+    "desktop:package": "npm run build && npm run desktop:rebuild-native && electron-builder --projectDir desktop --win nsis && npm run desktop:restore-native",
     "test": "npm run build && npm run test:unit && node --test tests/rendered-html.test.mjs",
     "test:e2e": "playwright test",
     "test:unit": "vitest run --exclude tests/e2e/** --exclude tests/unit/split-catalog-safety.test.mjs && node --test tests/unit/split-catalog-safety.test.mjs",
@@ -38,6 +45,7 @@
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.37.1",
+    "@electron/rebuild": "4.0.3",
     "@playwright/test": "1.62.0",
     "@tailwindcss/postcss": "4.2.1",
     "@testing-library/react": "16.3.2",
@@ -49,6 +57,8 @@
     "@vitejs/plugin-rsc": "0.5.26",
     "claude-skills-frontend": "^1.4.0",
     "drizzle-kit": "0.31.10",
+    "electron": "^43.4.1",
+    "electron-builder": "^26.15.3",
     "eslint": "9.39.4",
     "eslint-config-next": "16.2.6",
     "eslint-plugin-import": "^2.32.0",

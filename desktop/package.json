@@ -1,0 +1,46 @@
+{
+  "name": "codenow-oj-desktop",
+  "version": "0.1.0",
+  "description": "CodeNow OJ desktop application",
+  "author": "Bamzc",
+  "private": true,
+  "main": "main.cjs",
+  "build": {
+    "appId": "com.bamzc.codenowoj",
+    "productName": "CodeNow OJ",
+    "electronVersion": "43.4.1",
+    "asar": true,
+    "npmRebuild": false,
+    "directories": {
+      "output": "../release"
+    },
+    "files": [
+      "**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "../dist",
+        "to": "runtime/dist"
+      },
+      {
+        "from": "../node_modules",
+        "to": "runtime/node_modules"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false
+    }
+  }
+}
