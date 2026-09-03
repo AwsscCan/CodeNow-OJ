@@ -6,7 +6,7 @@ import { pathToFileURL } from "node:url";
 function timestamp() { return new Date().toISOString().replace(/[:.]/g, "-"); }
 
 async function defaultRun(command, args) {
-  const executable = process.platform === "win32" && command === "npx" ? "npx.cmd" : command;
+  const executable = process.platform === "win32" && ["npx", "npm"].includes(command) ? `${command}.cmd` : command;
   await new Promise((resolveRun, reject) => {
     // Windows .cmd shims cannot be spawned with shell:false; keep Unix execution direct.
     const child = spawn(executable, args, { stdio: "inherit", shell: process.platform === "win32" });
@@ -17,15 +17,19 @@ async function defaultRun(command, args) {
 
 export async function smokeWorker(baseUrl) {
   if (!baseUrl) return false;
-  const [home, registration, hiddenAdmin] = await Promise.all([
+  const [home, registration, hiddenAdmin, aiSettings, aiModels, aiCcSwitch] = await Promise.all([
     fetch(new URL("/", baseUrl)),
     fetch(new URL("/api/auth/sign-up/email", baseUrl), {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ email: "smoke@example.test", name: "Smoke", password: "Smoke-password-2026!" }),
     }),
     fetch(new URL("/api/admin/users", baseUrl)),
+    fetch(new URL("/api/ai-settings", baseUrl)),
+    fetch(new URL("/api/ai-settings/models", baseUrl), { method: "POST" }),
+    fetch(new URL("/api/ai-settings/ccswitch", baseUrl), { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }),
   ]);
   return home.ok && registration.status === 404 && hiddenAdmin.status === 404
+    && aiSettings.status === 401 && aiModels.status === 401 && aiCcSwitch.status === 401
     && /private/.test(hiddenAdmin.headers.get("cache-control") ?? "") && /no-store/.test(hiddenAdmin.headers.get("cache-control") ?? "");
 }
 
@@ -41,6 +45,7 @@ export async function releaseCloudflare({ target, run = defaultRun, smokePreview
     await run("npx", ["wrangler", "deploy", "--env", environment]);
   };
 
+  await run("npm", ["run", "build"]);
   await run("node", ["scripts/validate-cloudflare-config.mjs"]);
   await releaseEnvironment("preview");
   const previewOk = await (smokePreview ?? (() => smokeWorker(process.env.ADMIN_BOOTSTRAP_URL_PREVIEW)))();
