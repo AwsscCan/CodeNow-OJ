@@ -39,7 +39,7 @@ describe("Cloudflare release gates", () => {
     const calls: string[] = [];
     const run = vi.fn(async (command: string, args: string[]) => {
       const value = label(command, args); calls.push(value);
-      if (value.includes("wrangler deploy dist/server/index.js") && value.includes("--env preview")) throw new Error("preview failed");
+      if (value.includes("wrangler deploy --config dist/server/wrangler.json") && value.includes("--env preview")) throw new Error("preview failed");
     });
     await expect(releaseCloudflare({ target: "production", run, smokePreview: vi.fn() })).rejects.toThrow("preview failed");
     expect(calls.findIndex((value) => value.includes("d1 export") && value.includes("--env preview")))
