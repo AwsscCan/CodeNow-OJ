@@ -55,6 +55,6 @@ describe("Cloudflare release gates", () => {
 
     calls.length = 0;
     await releaseCloudflare({ target: "production", run, smokePreview: async () => true });
-    expect(calls.some((value) => value.includes("wrangler deploy dist/server/index.js --config wrangler.jsonc --env production --assets dist/client --no-bundle"))).toBe(true);
+    expect(calls.some((value) => value.includes("wrangler deploy --config dist/server/wrangler.json --env production"))).toBe(true);
   });
 });

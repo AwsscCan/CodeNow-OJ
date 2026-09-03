@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -33,6 +33,15 @@ export async function smokeWorker(baseUrl) {
     && /private/.test(hiddenAdmin.headers.get("cache-control") ?? "") && /no-store/.test(hiddenAdmin.headers.get("cache-control") ?? "");
 }
 
+function prepareDeployConfig() {
+  const generatedPath = resolve("dist/server/wrangler.json");
+  const generated = JSON.parse(readFileSync(generatedPath, "utf8"));
+  const source = JSON.parse(readFileSync(resolve("wrangler.jsonc"), "utf8"));
+  generated.name = source.name;
+  generated.env = source.env;
+  writeFileSync(generatedPath, `${JSON.stringify(generated)}\n`);
+}
+
 /**
  * @param {{ target: string, run?: (command: string, args: string[]) => Promise<void>, smokePreview?: () => Promise<boolean>, smokeProduction?: () => Promise<boolean> }} options
  */
@@ -42,10 +51,11 @@ export async function releaseCloudflare({ target, run = defaultRun, smokePreview
   const releaseEnvironment = async (environment) => {
     await run("npx", ["wrangler", "d1", "export", "DB", "--remote", "--env", environment, "--output", backup(environment)]);
     await run("npx", ["wrangler", "d1", "migrations", "apply", "DB", "--remote", "--env", environment]);
-    await run("npx", ["wrangler", "deploy", "dist/server/index.js", "--config", "wrangler.jsonc", "--env", environment, "--assets", "dist/client", "--no-bundle"]);
+    await run("npx", ["wrangler", "deploy", "--config", "dist/server/wrangler.json", "--env", environment]);
   };
 
   await run("npm", ["run", "build"]);
+  prepareDeployConfig();
   await run("node", ["scripts/validate-cloudflare-config.mjs"]);
   await releaseEnvironment("preview");
   const previewOk = await (smokePreview ?? (() => smokeWorker(process.env.ADMIN_BOOTSTRAP_URL_PREVIEW)))();
