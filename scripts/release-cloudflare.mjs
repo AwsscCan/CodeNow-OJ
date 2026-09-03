@@ -15,15 +15,27 @@ async function defaultRun(command, args) {
   });
 }
 
+async function smokeFetch(input, init) {
+  let lastError;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try { return await fetch(input, init); }
+    catch (error) {
+      lastError = error;
+      await new Promise((resolveWait) => setTimeout(resolveWait, 1000 * (attempt + 1)));
+    }
+  }
+  throw lastError;
+}
+
 export async function smokeWorker(baseUrl) {
   if (!baseUrl) return false;
   const [home, session, hiddenAdmin, aiSettings, aiModels, aiCcSwitch] = await Promise.all([
-    fetch(new URL("/", baseUrl)),
-    fetch(new URL("/api/auth/get-session", baseUrl)),
-    fetch(new URL("/api/admin/users", baseUrl)),
-    fetch(new URL("/api/ai-settings", baseUrl)),
-    fetch(new URL("/api/ai-settings/models", baseUrl), { method: "POST" }),
-    fetch(new URL("/api/ai-settings/ccswitch", baseUrl), { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }),
+    smokeFetch(new URL("/", baseUrl)),
+    smokeFetch(new URL("/api/auth/get-session", baseUrl)),
+    smokeFetch(new URL("/api/admin/users", baseUrl)),
+    smokeFetch(new URL("/api/ai-settings", baseUrl)),
+    smokeFetch(new URL("/api/ai-settings/models", baseUrl), { method: "POST" }),
+    smokeFetch(new URL("/api/ai-settings/ccswitch", baseUrl), { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }),
   ]);
   return home.ok && session.status === 200 && hiddenAdmin.status === 404
     && aiSettings.status === 401 && aiModels.status === 401 && aiCcSwitch.status === 401
