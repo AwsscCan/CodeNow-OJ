@@ -8,7 +8,8 @@ function timestamp() { return new Date().toISOString().replace(/[:.]/g, "-"); }
 async function defaultRun(command, args) {
   const executable = process.platform === "win32" && command === "npx" ? "npx.cmd" : command;
   await new Promise((resolveRun, reject) => {
-    const child = spawn(executable, args, { stdio: "inherit", shell: false });
+    // Windows .cmd shims cannot be spawned with shell:false; keep Unix execution direct.
+    const child = spawn(executable, args, { stdio: "inherit", shell: process.platform === "win32" });
     child.once("error", reject);
     child.once("exit", (code) => code === 0 ? resolveRun() : reject(new Error(`${command} exited with code ${code}`)));
   });
