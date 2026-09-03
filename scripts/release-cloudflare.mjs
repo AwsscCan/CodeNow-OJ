@@ -29,6 +29,7 @@ async function smokeFetch(input, init) {
 
 export async function smokeWorker(baseUrl) {
   if (!baseUrl) return false;
+  await new Promise((resolveWait) => setTimeout(resolveWait, 3000));
   const [home, session, hiddenAdmin, aiSettings, aiModels, aiCcSwitch] = await Promise.all([
     smokeFetch(new URL("/", baseUrl)),
     smokeFetch(new URL("/api/auth/get-session", baseUrl)),
