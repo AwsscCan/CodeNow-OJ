@@ -22,8 +22,8 @@ export function useMascotLine() {
     const controller = new AbortController();
     abortRef.current = controller;
     const ai = useAiStore.getState();
-    // 配置了 AI Key 时上游往返有秒级延迟：先即时换一句本地台词反馈点击，AI 台词回来后再覆盖
-    if (ai.apiKeys[ai.provider]?.trim()) {
+    // 配置 AI 时上游往返有秒级延迟：先即时换一句本地台词反馈点击，AI 台词回来后再覆盖
+    if (ai.configured) {
       const current = useMascotStore.getState();
       current.setLine(pickLocalLine(current.phase, current.recentLines));
     }
@@ -33,7 +33,7 @@ export function useMascotLine() {
       context: mascot.context,
       recentLines: mascot.recentLines,
       memories: useMemoryStore.getState().recentMemories(3),
-      ai: { apiKey: ai.apiKeys[ai.provider], endpoint: ai.endpoint, model: ai.model },
+      configured: ai.configured,
       signal: controller.signal,
     });
     if (!controller.signal.aborted) useMascotStore.getState().setLine(line);

@@ -48,12 +48,22 @@ describe("submissions API ownership", () => {
       status: "答案正确",
       passed: "3/3",
       sourceCode: "int main(){}",
+      results: [
+        { id: 1, status: "AC", actual: "3", expected: "3", duration: 12 },
+        { id: 2, status: "WA", actual: "4", expected: "5", duration: 18 },
+      ],
+      totalDurationMs: 30,
       submittedAt: "2000-01-01T00:00:00.000Z",
     }));
     expect(createResponse.status).toBe(201);
-    const created = await createResponse.json() as { record: { id: string; submittedAt: string } };
+    const created = await createResponse.json() as { record: { id: string; submittedAt: string; results: unknown[]; totalDurationMs: number } };
     expect(created.record.id).not.toBe(clientId);
     expect(created.record.submittedAt).not.toBe("2000-01-01T00:00:00.000Z");
+    expect(created.record.results).toMatchObject([
+      { status: "AC", duration: 12 },
+      { status: "WA", actual: "4", expected: "5", duration: 18 },
+    ]);
+    expect(created.record.totalDurationMs).toBe(30);
 
     const own = await handlersA.GET(jsonRequest("http://localhost/api/submissions?problemId=P1001", "GET"));
     expect((await own.json() as { history: unknown[] }).history).toHaveLength(1);

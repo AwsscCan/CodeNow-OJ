@@ -1,11 +1,20 @@
 "use client";
 
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
 import type { ConversationMetadata } from "../lib/conversation-api";
 
-export type AiProvider = "deepseek" | "openai" | "custom";
+export type AiProvider = "deepseek" | "openai" | "custom" | "ccswitch";
 export type ChatMessage = { role: "user" | "assistant"; content: string; reasoning?: string };
+export type PublicAiSettings = {
+  configured: boolean;
+  provider: AiProvider;
+  endpoint: string;
+  model: string;
+  source: "manual" | "ccswitch";
+  hasApiKey: boolean;
+  version: number;
+  updatedAt: string | null;
+};
 
 type ConversationCache = {
   conversationAccountId: string | null;
@@ -15,22 +24,26 @@ type ConversationCache = {
   chatMessages: ChatMessage[];
 };
 
-type AiStore = ConversationCache & {
-  apiKeys: Record<AiProvider, string>;
-  provider: AiProvider;
-  endpoint: string;
-  model: string;
-  setApiKey: (provider: AiProvider, value: string) => void;
-  clearApiKey: (provider: AiProvider) => void;
-  setProvider: (provider: AiProvider) => void;
-  setEndpoint: (endpoint: string) => void;
-  setModel: (model: string) => void;
+type AiStore = ConversationCache & PublicAiSettings & {
+  hydrateSettings: (settings: PublicAiSettings) => void;
+  clearSettings: () => void;
   addChatMessage: (message: ChatMessage) => void;
   clearChat: () => void;
   switchConversationAccount: (userId: string | null) => void;
   hydrateConversation: (userId: string, conversationId: string | null, version: number, messages: ChatMessage[], conversations: ConversationMetadata[]) => void;
   setConversationVersion: (version: number) => void;
   setConversations: (conversations: ConversationMetadata[]) => void;
+};
+
+const EMPTY_SETTINGS: PublicAiSettings = {
+  configured: false,
+  provider: "deepseek",
+  endpoint: "https://api.deepseek.com",
+  model: "deepseek-chat",
+  source: "manual",
+  hasApiKey: false,
+  version: 0,
+  updatedAt: null,
 };
 
 const EMPTY_CACHE: ConversationCache = {
@@ -40,26 +53,6 @@ const EMPTY_CACHE: ConversationCache = {
   conversations: [],
   chatMessages: [],
 };
-
-function loadKeys(): Record<AiProvider, string> {
-  if (typeof localStorage === "undefined") return { deepseek: "", openai: "", custom: "" };
-  try {
-    const saved = localStorage.getItem("codenow-api-keys") || localStorage.getItem("codeforge-api-keys");
-    if (saved) {
-      const keys = JSON.parse(saved);
-      return {
-        deepseek: typeof keys.deepseek === "string" ? keys.deepseek : "",
-        openai: typeof keys.openai === "string" ? keys.openai : "",
-        custom: typeof keys.custom === "string" ? keys.custom : "",
-      };
-    }
-  } catch { /* ignore invalid local configuration */ }
-  return { deepseek: "", openai: "", custom: "" };
-}
-
-function saveKeys(keys: Record<AiProvider, string>) {
-  if (typeof localStorage !== "undefined") localStorage.setItem("codenow-api-keys", JSON.stringify(keys));
-}
 
 function loadConversationCache(): ConversationCache {
   if (typeof localStorage === "undefined") return EMPTY_CACHE;
@@ -83,37 +76,11 @@ function saveConversationCache(cache: ConversationCache) {
   if (typeof localStorage !== "undefined") localStorage.setItem("codenow-ai-conversation-cache", JSON.stringify(cache));
 }
 
-const initialCache = loadConversationCache();
-
-export const useAiStore = create<AiStore>()(
-  persist(
-    (set, get) => ({
-      apiKeys: loadKeys(),
-      provider: "deepseek" as AiProvider,
-      endpoint: "https://api.deepseek.com",
-      model: "deepseek-v4-flash",
-      ...initialCache,
-
-      setApiKey: (provider, value) => {
-        const apiKeys = { ...get().apiKeys, [provider]: value };
-        saveKeys(apiKeys);
-        set({ apiKeys });
-      },
-      clearApiKey: (provider) => {
-        const apiKeys = { ...get().apiKeys, [provider]: "" };
-        saveKeys(apiKeys);
-        set({ apiKeys });
-      },
-      setProvider: (provider) => {
-        const defaults: Record<AiProvider, { endpoint: string; model: string }> = {
-          deepseek: { endpoint: "https://api.deepseek.com", model: "deepseek-v4-flash" },
-          openai: { endpoint: "https://api.openai.com/v1", model: "gpt-4.1-mini" },
-          custom: { endpoint: "", model: "" },
-        };
-        set({ provider, ...defaults[provider] });
-      },
-      setEndpoint: (endpoint) => set({ endpoint }),
-      setModel: (model) => set({ model }),
+export const useAiStore = create<AiStore>((set) => ({
+      ...EMPTY_SETTINGS,
+      ...loadConversationCache(),
+      hydrateSettings: (settings) => set(settings),
+      clearSettings: () => set(EMPTY_SETTINGS),
       addChatMessage: (message) => set((state) => {
         const cache = { ...conversationCache(state), chatMessages: [...state.chatMessages, message].slice(-100) };
         saveConversationCache(cache);
@@ -145,13 +112,7 @@ export const useAiStore = create<AiStore>()(
         saveConversationCache(cache);
         return cache;
       }),
-    }),
-    {
-      name: "codenow-ai-local-config",
-      partialize: (state) => ({ provider: state.provider, endpoint: state.endpoint, model: state.model }),
-    },
-  ),
-);
+    }));
 
 function conversationCache(state: AiStore): ConversationCache {
   return {

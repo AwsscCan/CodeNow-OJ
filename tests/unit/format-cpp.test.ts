@@ -53,3 +53,25 @@ describe("formatCppCode - 字面量与注释保护（当前存在缺陷，必须
     expect(formatCppCode('int n=3;cout<<"x=y";')).toBe('int n = 3;cout << "x=y";');
   });
 });
+
+describe("formatCppCode - 无花括号控制流缩进", () => {
+  it("缩进 if 后的单条语句，随后恢复原层级", () => {
+    expect(formatCppCode("if (ok)\nrun();\ndone();")).toBe("if (ok)\n    run();\ndone();");
+  });
+
+  it("正确处理 else 与 else if 的单条语句", () => {
+    const input = "if (a)\nx();\nelse if (b)\ny();\nelse\nz();";
+    const output = "if (a)\n    x();\nelse if (b)\n    y();\nelse\n    z();";
+    expect(formatCppCode(input)).toBe(output);
+  });
+
+  it("支持嵌套的无花括号控制流", () => {
+    const input = "for (int i=0;i<n;i++)\nif (a[i]>0)\nsum+=a[i];\ncout<<sum;";
+    const output = "for (int i = 0;i<n;i++)\n    if (a[i]>0)\n        sum += a[i];\ncout << sum;";
+    expect(formatCppCode(input)).toBe(output);
+  });
+
+  it("同一行控制语句已有主体时不额外影响下一行", () => {
+    expect(formatCppCode("if (ok) run();\ndone();")).toBe("if (ok) run();\ndone();");
+  });
+});

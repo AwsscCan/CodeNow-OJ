@@ -1,6 +1,9 @@
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { POST } from "../../app/api/chat/route";
+import { createChatHandler } from "../../app/api/chat/route";
+import { resolveMissingAiConfig, resolveTestAiConfig } from "./ai-runtime-fixture";
+
+const POST = createChatHandler(resolveTestAiConfig);
 
 let fetchMock: ReturnType<typeof vi.fn>;
 
@@ -71,8 +74,9 @@ describe("POST /api/chat 高木人设联动", () => {
     expect(sentSystemPrompt()).not.toMatch(/类似场景说过/);
   });
 
-  it("回归：缺少 API Key 返回 400 且不调上游", async () => {
-    const res = await POST(makeRequest({ apiKey: undefined }));
+  it("账户未配置 AI 时返回 400 且不调上游", async () => {
+    const handler = createChatHandler(resolveMissingAiConfig);
+    const res = await handler(makeRequest());
     expect(res.status).toBe(400);
     expect(fetchMock).not.toHaveBeenCalled();
   });

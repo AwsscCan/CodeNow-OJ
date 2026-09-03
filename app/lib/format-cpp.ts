@@ -64,7 +64,7 @@ function spaceOperators(code: string): string {
 }
 
 /**
- * 格式化 C++ 源码：按大括号做四空格缩进，规整运算符周围空白，
+ * 格式化 C++ 源码：按作用域与控制流做四空格缩进，规整运算符周围空白，
  * 且严格保护字符串、字符字面量与注释内部的内容不被改动。
  */
 export function formatCppCode(text: string): string {
@@ -73,6 +73,7 @@ export function formatCppCode(text: string): string {
   const lines = text.split("\n");
   const formatted: string[] = [];
   let indentLevel = 0;
+  let pendingSingleIndent = 0;
   let inBlock = false;
   const INDENT = "    ";
 
@@ -92,16 +93,37 @@ export function formatCppCode(text: string): string {
     const { segments, endInBlock } = tokenizeLine(line, false);
     const codeOnly = segments.filter((s) => s.code).map((s) => s.text).join("");
 
+    const compactCode = codeOnly.trim();
     const closeCount = (codeOnly.match(/}/g) || []).length;
     indentLevel = Math.max(0, indentLevel - closeCount);
 
     const body = segments.map((s) => (s.code ? spaceOperators(s.text) : s.text)).join("");
-    formatted.push((INDENT.repeat(indentLevel) + body).replace(/\s+$/, ""));
+    const singleIndent = compactCode === "{" ? 0 : pendingSingleIndent;
+    formatted.push((INDENT.repeat(indentLevel + singleIndent) + body).replace(/\s+$/, ""));
 
     const openCount = (codeOnly.match(/{/g) || []).length;
     indentLevel += openCount;
+    pendingSingleIndent = opensSingleStatement(compactCode)
+      ? singleIndent + 1
+      : 0;
     inBlock = endInBlock;
   }
 
   return formatted.join("\n");
+}
+
+function opensSingleStatement(code: string): boolean {
+  if (!code || code.includes("{")) return false;
+  if (/^do\s*$/.test(code) || /^else\s*$/.test(code)) return true;
+  const match = /^(?:if|for|while|switch|catch|else\s+if)\s*\(/.exec(code);
+  if (!match) return false;
+  let depth = 0;
+  for (let index = code.indexOf("(", match.index); index < code.length; index += 1) {
+    if (code[index] === "(") depth += 1;
+    if (code[index] === ")") {
+      depth -= 1;
+      if (depth === 0) return code.slice(index + 1).trim().length === 0;
+    }
+  }
+  return false;
 }

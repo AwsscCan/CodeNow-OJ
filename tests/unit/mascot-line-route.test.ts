@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { POST } from "../../app/api/mascot-line/route";
+import { createMascotLineHandler } from "../../app/api/mascot-line/route";
+import { resolveMissingAiConfig, resolveTestAiConfig } from "./ai-runtime-fixture";
+
+const POST = createMascotLineHandler(resolveTestAiConfig);
 
 type JsonRecord = Record<string, unknown>;
 
@@ -36,18 +39,14 @@ afterEach(() => {
 });
 
 describe("POST /api/mascot-line", () => {
-  it("缺少 API Key 时返回 400", async () => {
-    const res = await POST(makeRequest({ endpoint: "https://api.deepseek.com", model: "m", event: baseEvent }) as never);
+  it("账户未配置 AI 时返回 400", async () => {
+    const handler = createMascotLineHandler(resolveMissingAiConfig);
+    const res = await handler(makeRequest({ event: baseEvent }) as never);
     expect(res.status).toBe(400);
   });
 
   it("缺少 event 时返回 400", async () => {
     const res = await POST(makeRequest({ apiKey: "sk-x", endpoint: "https://api.deepseek.com", model: "m" }) as never);
-    expect(res.status).toBe(400);
-  });
-
-  it("拒绝非 HTTPS/内网 endpoint", async () => {
-    const res = await POST(makeRequest({ apiKey: "sk-x", endpoint: "http://localhost", model: "m", event: baseEvent }) as never);
     expect(res.status).toBe(400);
   });
 

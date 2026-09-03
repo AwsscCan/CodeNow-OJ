@@ -69,6 +69,8 @@ export const submissions = sqliteTable("submissions", {
   status: text("status").notNull(),
   passed: text("passed").notNull(),
   sourceCode: text("source_code").notNull(),
+  resultsJson: text("results_json").notNull().default("[]"),
+  totalDurationMs: integer("total_duration_ms"),
   submittedAt: integer("submitted_at", { mode: "timestamp_ms" }).notNull(),
 }, (table) => [
   index("submissions_user_problem_time_idx").on(table.userId, table.problemId, table.submittedAt),
@@ -177,6 +179,18 @@ export const userPreferences = sqliteTable("user_preferences", {
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 }, (table) => [index("user_preferences_updated_at_idx").on(table.updatedAt)]);
+
+export const aiSettings = sqliteTable("ai_settings", {
+  userId: text("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  provider: text("provider", { enum: ["deepseek", "openai", "custom", "ccswitch"] }).notNull(),
+  endpoint: text("endpoint").notNull(),
+  model: text("model").notNull(),
+  apiKeyCiphertext: text("api_key_ciphertext").notNull(),
+  source: text("source", { enum: ["manual", "ccswitch"] }).notNull().default("manual"),
+  version: integer("version").notNull().default(1),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+}, (table) => [index("ai_settings_updated_at_idx").on(table.updatedAt)]);
 
 export const aiConversations = sqliteTable("ai_conversations", {
   id: text("id").primaryKey(),

@@ -12,15 +12,14 @@ import { buildCloudFolderPaths, ProblemApi } from "../lib/problem-api";
 import { getProblemSourceLabel } from "../lib/problem-source";
 import { useAiStore } from "../stores/ai-store";
 import { useLibraryStore, loadAcwingCatalog, loadBundledSamples, folderName, folderParent, folderContains, orderFolderTree, getAcwingProblems } from "../stores/library-store";
-import { useProblemStore, INITIAL_PROBLEM, STARTER_CODE } from "../stores/problem-store";
+import { draftKey, useProblemStore, INITIAL_PROBLEM, STARTER_CODE } from "../stores/problem-store";
 import { useThemeStore } from "../stores/theme-store";
 
 export default function LibraryPage() {
   const router = useRouter();
   const store = useLibraryStore();
-  const { setProblem, setCode, setResults, setCompilerDiagnostic, setCloudState, loadLocalProblem, clearPrivateWorkspace } = useProblemStore();
+  const { setProblem, setCode, setResults, setCompilerDiagnostic, setCloudState, loadLocalProblem, createBlankWorkspace, clearPrivateWorkspace } = useProblemStore();
   const session = authClient.useSession();
-  const aiStore = useAiStore();
   const theme = useThemeStore();
   const { notice, toast } = useToast();
 
@@ -120,7 +119,10 @@ export default function LibraryPage() {
         const draft = await ProblemApi.getDraft("private", item.cloudId, "cpp");
         setCode(draft.draft.sourceCode);
         setCloudState({ draftVersion: draft.version });
-      } catch { setCode(STARTER_CODE); setCloudState({ draftVersion: 0 }); }
+      } catch {
+        setCode(useProblemStore.getState().draftCache[draftKey(selected, item.cloudId)] ?? STARTER_CODE);
+        setCloudState({ draftVersion: 0 });
+      }
     } else {
       loadLocalProblem(selected);
     }
@@ -185,6 +187,11 @@ export default function LibraryPage() {
     } else store.dissolveFolder(folder);
     if (cloudId && folderContains(store.selectedFolder, folder)) store.setSelectedFolder(parent);
     toast(`已解散文件夹「${folder}」`);
+  }
+
+  function openBlank() {
+    createBlankWorkspace();
+    router.push("/problem/NEW");
   }
 
   async function deleteFolder(folder: string) {
@@ -299,16 +306,13 @@ export default function LibraryPage() {
 
   async function generateProblemFromText() {
     if (rawProblemText.trim().length < 20) return toast("请粘贴完整题面，至少 20 个字符");
-    const key = aiStore.apiKeys[aiStore.provider] || process.env.NEXT_PUBLIC_AI_API_KEY;
-    if (!key) return toast("请填写 AI API Key");
-    if (!aiStore.endpoint || !aiStore.model) return toast("请补全 API Endpoint 和模型");
     setGenerateError("");
     setGeneratingProblem(true);
     try {
       const res = await fetch("/api/generate-problem", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ apiKey: key, endpoint: aiStore.endpoint, model: aiStore.model, rawProblem: rawProblemText, withTests }),
+        body: JSON.stringify({ rawProblem: rawProblemText, withTests }),
       });
       const data = await res.json() as { problem?: { id: string; title: string; samples: unknown[] }; error?: string; complexityReport?: { performanceCount: number } };
       if (!res.ok || !data.problem) throw new Error(data.error || "题目解析失败");
@@ -392,7 +396,7 @@ export default function LibraryPage() {
 
   return (
     <main className={`app-shell theme-${theme.themeMode}`}>
-      <Topbar onToast={toast} onSignedOut={() => { aiStore.clearChat(); store.setCloudArchives([]); store.setCloudFolderIds({}); clearPrivateWorkspace(); }} />
+      <Topbar onToast={toast} onSignedOut={() => { useAiStore.getState().clearChat(); store.setCloudArchives([]); store.setCloudFolderIds({}); clearPrivateWorkspace(); }} />
 
       <section className="library-page">
         <div className="library-hero">
@@ -404,6 +408,7 @@ export default function LibraryPage() {
               <img src="/codenow/sunny-selfie.jpg" alt="" loading="lazy" decoding="async" />
             </div>
           )}
+          <button aria-label="新建空白题目" onClick={openBlank}>＋ 空白题目</button>
           <button onClick={() => { if (store.selectedFolder === "全部题目") store.setSelectedFolder("默认题库"); setGenerateError(""); setShowImport(true); }}>＋ 添加题目</button>
         </div>
         <div className="library-page-body">
@@ -494,12 +499,11 @@ export default function LibraryPage() {
         {importMode === "paste" ? <>
           <p>直接复制题目全文，AI 会整理题面与官方样例并快速入库；测试点可入库后到做题页分批生成。</p>
           <label className="raw-problem-label">题目原文<textarea value={rawProblemText} onChange={(e) => setRawProblemText(e.target.value)} placeholder="粘贴题目标题、描述、输入输出格式、数据范围和样例……" /></label>
-          <label className="raw-problem-label">API Key<div className="api-key-input"><input type="password" value={aiStore.apiKeys[aiStore.provider]} onChange={(e) => aiStore.setApiKey(aiStore.provider, e.target.value)} placeholder="输入后会保存在本机浏览器" autoComplete="off" /></div></label>
           <label className="with-tests-toggle">
             <input type="checkbox" checked={withTests} onChange={(e) => setWithTests(e.target.checked)} />
             <span><b>同时生成 AI 测试点</b><small>复杂题目建议关闭：先快速入库，再到做题页分批生成，避免一次性生成超时</small></span>
           </label>
-          {generateError && <div className="generate-error" role="alert"><b>生成失败</b><span>{generateError}</span><small>请检查 API Key、Endpoint 与模型配置后重试；生成较慢时也可能是上游超时，稍后再试。</small></div>}
+          {generateError && <div className="generate-error" role="alert"><b>生成失败</b><span>{generateError}</span><small>请前往设置页检查 AI 服务与模型配置；生成较慢时也可能是上游超时，稍后再试。</small></div>}
           <button className="generate-button" disabled={generatingProblem} onClick={generateProblemFromText}>{generatingProblem ? "正在理解题目…" : withTests ? "✦ 生成题目与测试点" : "✦ 解析题目并入库"}</button>
         </> : <>
           <p>文件必须是 UTF-8 JSON。</p>

@@ -2,8 +2,11 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { POST } from "../../app/api/chat/route";
+import { createChatHandler } from "../../app/api/chat/route";
 import { OUTBOUND_PROBLEM_CONTEXT_LIMITS } from "../../app/lib/outbound-problem-context";
+import { resolveTestAiConfig } from "./ai-runtime-fixture";
+
+const POST = createChatHandler(resolveTestAiConfig);
 
 let fetchMock: ReturnType<typeof vi.fn>;
 

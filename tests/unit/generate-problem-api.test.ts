@@ -1,6 +1,9 @@
 import { NextRequest } from "next/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { POST } from "../../app/api/generate-problem/route";
+import { createGenerateProblemHandler } from "../../app/api/generate-problem/route";
+import { resolveTestAiConfig } from "./ai-runtime-fixture";
+
+const POST = createGenerateProblemHandler(resolveTestAiConfig);
 
 afterEach(() => vi.unstubAllGlobals());
 

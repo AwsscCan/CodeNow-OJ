@@ -5,6 +5,8 @@ import { rateLimit } from "../_lib/rate-limit";
 import { buildTakagiChatPrompt } from "../_lib/takagi-persona";
 import { formatQuoteContext, pickTakagiQuotes, tagsForQuestion } from "../_lib/takagi-quotes";
 import { validateEndpoint } from "../_lib/validate-endpoint";
+import { resolveAiRuntime, type AiRuntimeResolution } from "../../server/ai/ai-runtime";
+import { redactSensitiveText } from "../../server/ai/redact";
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -25,19 +27,21 @@ function safeJudgeProgress(value: unknown) {
   return typeof value === "string" && /^\d{1,4}\/\d{1,4}$/.test(value.trim()) ? value.trim() : "";
 }
 
-export async function POST(request: NextRequest) {
+type ResolveAiConfig = (request: Request) => Promise<AiRuntimeResolution>;
+
+export function createChatHandler(resolveConfig: ResolveAiConfig = resolveAiRuntime) {
+  return async function handleChat(request: NextRequest) {
   const rl = rateLimit(request, "ai");
   if (!rl.allowed) return NextResponse.json({ error: "请求过于频繁，请稍后重试" }, { status: 429 });
 
   try {
     const requestData = await request.json();
-    const { endpoint, model, problem: requestedProblem, code, messages } = requestData;
+    const { problem: requestedProblem, code, messages } = requestData;
     let problem = requestedProblem;
-
-    const apiKey = process.env.AI_API_KEY || requestData.apiKey;
-    if (!apiKey) return NextResponse.json({ error: "未配置 AI API Key" }, { status: 400 });
-
-    if (!endpoint || !model || !problem) return NextResponse.json({ error: "AI 配置不完整" }, { status: 400 });
+    const resolved = await resolveConfig(request);
+    if (!resolved.ok) return NextResponse.json({ error: resolved.message }, { status: resolved.status });
+    const { apiKey, endpoint, model } = resolved.config;
+    if (!problem) return NextResponse.json({ error: "题目数据不完整" }, { status: 400 });
 
     const chatUrl = validateEndpoint(String(endpoint));
     problem = await buildOutboundProblemContext(problem);
@@ -125,7 +129,7 @@ export async function POST(request: NextRequest) {
     });
 
     const data = await response.json() as { choices?: { message?: { content?: string; reasoning_content?: string } }[]; error?: { message?: string } };
-    if (!response.ok) return NextResponse.json({ error: data.error?.message || "上游 AI 服务请求失败" }, { status: response.status });
+    if (!response.ok) return NextResponse.json({ error: redactSensitiveText(data.error?.message || "上游 AI 服务请求失败", [apiKey]) }, { status: response.status });
     let reasoning = data.choices?.[0]?.message?.reasoning_content;
     // 高木人设下思维链会被展示为"小心思"：原生思维链不受人设约束，含穿帮字眼时宁缺毋滥直接丢弃
     if (requestData.persona === "takagi" && typeof reasoning === "string"
@@ -140,6 +144,9 @@ export async function POST(request: NextRequest) {
     if (error instanceof Error && error.message.startsWith("不支持的 API")) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
-    return NextResponse.json({ error: error instanceof Error ? error.message : "AI 对话失败" }, { status: 500 });
+    return NextResponse.json({ error: redactSensitiveText(error instanceof Error ? error : "AI 对话失败", []) }, { status: 500 });
   }
+  };
 }
+
+export const POST = createChatHandler();

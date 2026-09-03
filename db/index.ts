@@ -10,12 +10,31 @@ export type SubmissionRecord = {
   status: string;
   passed: string;
   sourceCode: string;
+  results: SubmissionTestResult[];
+  totalDurationMs: number | null;
   submittedAt: string;
+};
+
+export type SubmissionTestResult = {
+  id: number;
+  status: "AC" | "WA" | "RE" | "CE" | "TLE";
+  actual: string;
+  expected: string;
+  duration: number;
 };
 
 export type NewSubmission = Omit<SubmissionRecord, "id" | "submittedAt">;
 
 type RepositoryDb = ReturnType<typeof createLocalDb>;
+
+function parseResults(value: string): SubmissionTestResult[] {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed) ? parsed as SubmissionTestResult[] : [];
+  } catch {
+    return [];
+  }
+}
 
 function toRecord(row: typeof submissions.$inferSelect): SubmissionRecord {
   return {
@@ -25,6 +44,8 @@ function toRecord(row: typeof submissions.$inferSelect): SubmissionRecord {
     status: row.status,
     passed: row.passed,
     sourceCode: row.sourceCode,
+    results: parseResults(row.resultsJson),
+    totalDurationMs: row.totalDurationMs,
     submittedAt: row.submittedAt.toISOString(),
   };
 }
@@ -48,7 +69,13 @@ export function createSubmissionRepository(db: Database) {
       const [row] = await database.insert(submissions).values({
         id: crypto.randomUUID(),
         userId,
-        ...input,
+        problemId: input.problemId,
+        problemTitle: input.problemTitle,
+        status: input.status,
+        passed: input.passed,
+        sourceCode: input.sourceCode,
+        resultsJson: JSON.stringify(input.results),
+        totalDurationMs: input.totalDurationMs,
         submittedAt: new Date(),
       }).returning();
       return toRecord(row);

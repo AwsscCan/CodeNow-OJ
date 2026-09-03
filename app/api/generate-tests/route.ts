@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { rateLimit } from "../_lib/rate-limit";
 import { resolveValidatedReference } from "../_lib/reference-resolution";
 import { generateComplexityAwareTests } from "../_lib/test-generation-pipeline";
+import { resolveAiRuntime, type AiRuntimeResolution } from "../../server/ai/ai-runtime";
+import { redactSensitiveText } from "../../server/ai/redact";
 
 type GenerateOptions = Parameters<typeof generateComplexityAwareTests>[0];
 type GenerateResult = Awaited<ReturnType<typeof generateComplexityAwareTests>>;
@@ -11,6 +13,7 @@ type ResolveResult = Awaited<ReturnType<typeof resolveValidatedReference>>;
 export type GenerateTestsHandlerDependencies = {
   resolveReference?: (options: ResolveOptions) => Promise<ResolveResult>;
   generateTests?: (options: GenerateOptions) => Promise<GenerateResult>;
+  resolveConfig?: (request: Request) => Promise<AiRuntimeResolution>;
 };
 
 function abortReason(signal: AbortSignal): unknown {
@@ -28,21 +31,31 @@ function throwIfAborted(signal: AbortSignal): void {
 export function createGenerateTestsHandler(dependencies: GenerateTestsHandlerDependencies = {}) {
   const resolveReference = dependencies.resolveReference || resolveValidatedReference;
   const generateTests = dependencies.generateTests || generateComplexityAwareTests;
+  const resolveConfig = dependencies.resolveConfig || resolveAiRuntime;
 
   return async function handleGenerateTests(request: NextRequest) {
     const rl = rateLimit(request, "ai");
     if (!rl.allowed) return NextResponse.json({ error: "Too many requests. Please retry later." }, { status: 429 });
 
+    let activeApiKey = "";
     try {
       const requestData = await request.json() as Record<string, unknown>;
-      const { apiKey, endpoint, model, problem, count } = requestData;
+      const { problem, count } = requestData;
+      const resolved = await resolveConfig(request);
+      if (!resolved.ok) return NextResponse.json({ error: resolved.message }, { status: resolved.status });
+      const { apiKey, endpoint, model } = resolved.config;
+      activeApiKey = apiKey;
       const requested = Math.floor(Number(count));
       const target = Number.isFinite(requested) ? Math.max(1, Math.min(50, requested)) : 12;
-      if (!apiKey || !endpoint || !model || !problem || typeof problem !== "object") {
-        return NextResponse.json({ error: "AI configuration and problem data are required." }, { status: 400 });
+      if (!problem || typeof problem !== "object" || Array.isArray(problem)) {
+        return NextResponse.json({ error: "Problem data is required." }, { status: 400 });
       }
 
       const problemRecord = problem as Record<string, unknown>;
+      if (typeof problemRecord.title !== "string" || !problemRecord.title.trim()
+        || typeof problemRecord.description !== "string" || !problemRecord.description.trim()) {
+        return NextResponse.json({ error: "Problem title and description are required." }, { status: 400 });
+      }
       const digest = buildDigest(problemRecord);
       const qualityMode = requestData.qualityMode === "feedback";
       let validatedRef: ResolveResult["validatedRef"];
@@ -92,7 +105,7 @@ export function createGenerateTestsHandler(dependencies: GenerateTestsHandlerDep
         complexityReport: { ...generated.report, referenceStatus },
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "AI test generation failed.";
+      const message = redactSensitiveText(error instanceof Error ? error : "AI test generation failed.", [activeApiKey]);
       const errorName = error && typeof error === "object" && "name" in error
         ? String((error as { name?: unknown }).name)
         : "";

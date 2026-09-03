@@ -10,8 +10,8 @@ import { useAiStore } from "../../app/stores/ai-store";
 beforeEach(() => {
   localStorage.clear();
   useAiStore.setState({
-    apiKeys: { deepseek: "", openai: "", custom: "" }, provider: "deepseek",
-    endpoint: "https://api.deepseek.com", model: "deepseek-v4-flash", chatMessages: [],
+    configured: false, hasApiKey: false, provider: "deepseek", source: "manual", version: 0, updatedAt: null,
+    endpoint: "https://api.deepseek.com", model: "deepseek-chat", chatMessages: [],
     conversationAccountId: null, conversationId: null, conversationVersion: 0, conversations: [],
   });
   vi.stubGlobal("fetch", vi.fn());
@@ -24,18 +24,19 @@ afterEach(() => {
 });
 
 describe("AI conversation sync boundaries", () => {
-  it("persists provider configuration separately from the conversation cache", () => {
+  it("keeps account AI settings in memory and persists only the conversation cache", () => {
     const store = useAiStore.getState();
-    store.setApiKey("openai", "sk-local-only");
-    store.setProvider("openai");
-    store.setEndpoint("https://example.invalid");
-    store.setModel("local-model");
+    store.hydrateSettings({
+      configured: true, hasApiKey: true, provider: "openai", endpoint: "https://api.openai.com/v1",
+      model: "gpt-5", source: "manual", version: 3, updatedAt: "2026-09-03T00:00:00.000Z",
+    });
     store.addChatMessage({ role: "user", content: "guest message" });
 
-    expect(localStorage.getItem("codenow-api-keys")).toContain("sk-local-only");
+    expect(localStorage.getItem("codenow-api-keys")).toBeNull();
+    expect(localStorage.getItem("codenow-ai-local-config")).toBeNull();
     expect(localStorage.getItem("codenow-ai-conversation-cache")).toContain("guest message");
-    expect(localStorage.getItem("codenow-ai-conversation-cache")).not.toContain("sk-local-only");
-    expect(localStorage.getItem("codenow-ai-local-config")).not.toContain("guest message");
+    expect(localStorage.getItem("codenow-ai-conversation-cache")).not.toContain("gpt-5");
+    expect(localStorage.getItem("codenow-ai-conversation-cache")).not.toContain("api.openai.com");
   });
 
   it("clears prior cloud conversations when accounts switch while guests remain local", () => {

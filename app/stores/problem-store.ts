@@ -19,22 +19,36 @@ type Problem = {
   extractionStatus?: "complete" | "needs_review";
 };
 type Result = { id: number; status: "AC" | "WA" | "RE" | "CE" | "TLE"; actual: string; expected: string; duration: number };
-type SubmissionRecord = { id: string; problemId: string; problemTitle: string; status: string; passed: string; sourceCode: string; submittedAt: string; localOnly?: boolean };
+type SubmissionRecord = {
+  id: string; problemId: string; problemTitle: string; status: string; passed: string; sourceCode: string; submittedAt: string;
+  results?: Result[]; totalDurationMs?: number | null; localOnly?: boolean;
+};
 
 export type { Problem, Result, SubmissionRecord, TestCase };
 
-export const STARTER_CODE = `#include <bits/stdc++.h>
+export const BLANK_STARTER_CODE = `#include <bits/stdc++.h>
 using namespace std;
 
 int main() {
     ios::sync_with_stdio(false);
     cin.tie(nullptr);
 
-    long long a, b;
-    cin >> a >> b;
-    cout << a + b << '\\n';
     return 0;
 }`;
+
+export const STARTER_CODE = BLANK_STARTER_CODE;
+
+export const BLANK_PROBLEM: Problem = {
+  id: "NEW",
+  title: "空白题目",
+  difficulty: "入门",
+  time: "1000 ms",
+  memory: "128 MB",
+  description: "",
+  inputFormat: "",
+  outputFormat: "",
+  samples: [],
+};
 
 export const INITIAL_PROBLEM: Problem = {
   id: "P1001",
@@ -69,6 +83,7 @@ type ProblemStore = {
   version: number;
   draftVersion: number;
   syncStatus: SyncStatus;
+  draftCache: Record<string, string>;
 
   setProblem: (problem: Problem) => void;
   setCode: (code: string) => void;
@@ -84,6 +99,7 @@ type ProblemStore = {
   setNotice: (msg: string) => void;
   setCloudState: (state: Partial<Pick<ProblemStore, "cloudId" | "version" | "draftVersion" | "syncStatus">>) => void;
   loadLocalProblem: (problem: Problem) => void;
+  createBlankWorkspace: () => void;
   clearPrivateWorkspace: () => void;
   addTest: () => void;
   removeTest: (id: number) => void;
@@ -95,7 +111,7 @@ type ProblemStore = {
 export const useProblemStore = create<ProblemStore>()(
   persist(
     (set) => ({
-      problem: INITIAL_PROBLEM,
+      problem: BLANK_PROBLEM,
       code: STARTER_CODE,
       results: [],
       compilerDiagnostic: "",
@@ -111,9 +127,14 @@ export const useProblemStore = create<ProblemStore>()(
       version: 0,
       draftVersion: 0,
       syncStatus: "local-only",
+      draftCache: {},
 
       setProblem: (problem) => set({ problem }),
-      setCode: (code) => { set({ code, compilerDiagnostic: "" }); },
+      setCode: (code) => set((state) => ({
+        code,
+        compilerDiagnostic: "",
+        draftCache: { ...state.draftCache, [draftKey(state.problem, state.cloudId)]: code },
+      })),
       setResults: (results) => set({ results }),
       setCompilerDiagnostic: (compilerDiagnostic) => set({ compilerDiagnostic }),
       setTab: (tab) => set({ tab }),
@@ -125,14 +146,25 @@ export const useProblemStore = create<ProblemStore>()(
       setCursor: (line, column) => set((s) => s.cursor.line === line && s.cursor.column === column ? s : { cursor: { line, column } }),
       setNotice: (notice) => set({ notice }),
       setCloudState: (state) => set(state),
-      loadLocalProblem: (problem) => set({
-        problem, code: STARTER_CODE, results: [], compilerDiagnostic: "",
-        cloudId: null, version: 0, draftVersion: 0, syncStatus: "local-only",
+      loadLocalProblem: (problem) => set((state) => {
+        const draftCache = { ...state.draftCache, [draftKey(state.problem, state.cloudId)]: state.code };
+        return {
+          problem, code: draftCache[draftKey(problem, null)] ?? STARTER_CODE, draftCache,
+          results: [], compilerDiagnostic: "", cloudId: null, version: 0, draftVersion: 0, syncStatus: "local-only",
+        };
       }),
-      clearPrivateWorkspace: () => set({
-        problem: INITIAL_PROBLEM, code: STARTER_CODE, results: [], compilerDiagnostic: "", history: [], selectedSubmission: null,
-        cloudId: null, version: 0, draftVersion: 0, syncStatus: "local-only",
+      createBlankWorkspace: () => set((state) => {
+        const draftCache = { ...state.draftCache, [draftKey(state.problem, state.cloudId)]: state.code };
+        return {
+          problem: BLANK_PROBLEM, code: draftCache[draftKey(BLANK_PROBLEM, null)] ?? BLANK_STARTER_CODE, draftCache,
+          results: [], compilerDiagnostic: "", cloudId: null, version: 0, draftVersion: 0, syncStatus: "local-only",
+        };
       }),
+      clearPrivateWorkspace: () => set((state) => ({
+        problem: BLANK_PROBLEM, code: BLANK_STARTER_CODE, results: [], compilerDiagnostic: "", history: [], selectedSubmission: null,
+        cloudId: null, version: 0, draftVersion: 0, syncStatus: "local-only",
+        draftCache: Object.fromEntries(Object.entries(state.draftCache).filter(([key]) => key.startsWith("public:"))),
+      })),
 
       addTest: () => set((s) => ({
         problem: { ...s.problem, samples: [...s.problem.samples, { id: Date.now(), input: "", output: "" }] },
@@ -152,7 +184,11 @@ export const useProblemStore = create<ProblemStore>()(
           samples: s.problem.samples.map((t) => t.id === id ? { ...t, category } : t),
         },
       })),
-      resetCode: () => set({ code: STARTER_CODE, compilerDiagnostic: "" }),
+      resetCode: () => set((state) => ({
+        code: STARTER_CODE,
+        compilerDiagnostic: "",
+        draftCache: { ...state.draftCache, [draftKey(state.problem, state.cloudId)]: STARTER_CODE },
+      })),
     }),
     {
       name: "codenow-workspace",
@@ -164,7 +200,12 @@ export const useProblemStore = create<ProblemStore>()(
         history: s.history.slice(0, 50),
         results: s.results,
         compilerDiagnostic: s.compilerDiagnostic,
+        draftCache: s.draftCache,
       }),
     },
   ),
 );
+
+export function draftKey(problem: Pick<Problem, "id">, cloudId: string | null): string {
+  return `${cloudId ? "private" : "public"}:${cloudId ?? problem.id}:cpp`;
+}

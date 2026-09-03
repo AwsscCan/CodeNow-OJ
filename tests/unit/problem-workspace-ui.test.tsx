@@ -34,11 +34,18 @@ import { useMemoryStore } from "../../app/stores/memory-store";
 import { INITIAL_PROBLEM, useProblemStore } from "../../app/stores/problem-store";
 import { useThemeStore } from "../../app/stores/theme-store";
 
+function configureAi() {
+  useAiStore.setState({
+    configured: true, hasApiKey: true, provider: "deepseek", endpoint: "https://api.deepseek.com",
+    model: "deepseek-chat", source: "manual", version: 1, updatedAt: "2026-09-03T00:00:00.000Z",
+  });
+}
+
 beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ history: [] }), { status: 200, headers: { "Content-Type": "application/json" } })));
   // 测试卫生：主题/对话/判题状态互不泄漏
   useThemeStore.setState({ themeMode: "light" });
-  useAiStore.setState({ chatMessages: [] });
+  useAiStore.setState({ configured: false, hasApiKey: false, chatMessages: [] });
   useProblemStore.setState({ results: [], history: [], tab: "problem" });
 });
 
@@ -98,6 +105,54 @@ describe("同步状态徽章", () => {
   });
 });
 
+describe("工作区职责边界", () => {
+  it("做题页不提供导入题目或 API 配置表单", () => {
+    const { container, queryByText } = render(<ProblemPage />);
+    expect(queryByText("⇧ 导入题目")).toBeNull();
+    expect(container.querySelector('input[placeholder*="API"]')).toBeNull();
+    expect(container.textContent).not.toContain("API Endpoint");
+  });
+
+  it("AI 请求只发送任务上下文，不发送凭据或模型路由", async () => {
+    configureAi();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+      if (String(input).includes("/api/ai")) return new Response(JSON.stringify({ code: "int main(){}" }), { status: 200 });
+      return new Response(JSON.stringify({ history: [] }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { getByText } = render(<ProblemPage />);
+    fireEvent.click(getByText("✦ AI 解题"));
+    fireEvent.click(getByText(/生成 C\+\+17 解答/));
+    await vi.waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/api/ai"))).toBe(true));
+    const call = fetchMock.mock.calls.find(([input]) => String(input).includes("/api/ai"))!;
+    const body = JSON.parse(String((call[1] as RequestInit).body));
+    expect(body).not.toHaveProperty("apiKey");
+    expect(body).not.toHaveProperty("endpoint");
+    expect(body).not.toHaveProperty("model");
+  });
+});
+
+describe("提交快照详情", () => {
+  it("展示提交总耗时和逐测试点结果", () => {
+    const { container } = render(<ProblemPage />);
+    act(() => useProblemStore.setState({
+      selectedSubmission: {
+        id: "snapshot-1", problemId: "P1001", problemTitle: "A+B", status: "未通过", passed: "1/2",
+        sourceCode: "int main(){}", submittedAt: "2026-09-03T12:00:00.000Z", totalDurationMs: 31,
+        results: [
+          { id: 1, status: "AC", actual: "3", expected: "3", duration: 11 },
+          { id: 2, status: "WA", actual: "4", expected: "5", duration: 20 },
+        ],
+      },
+    }));
+    const modal = container.querySelector(".submission-modal")!;
+    expect(modal.textContent).toContain("总耗时 31 ms");
+    expect(modal.textContent).toContain("测试点 2");
+    expect(modal.textContent).toContain("WA");
+    expect(modal.textContent).toContain("20 ms");
+  });
+});
+
 describe("少女主题 AI 对话高木化", () => {
   afterEach(() => {
     useThemeStore.setState({ themeMode: "light" });
@@ -146,8 +201,8 @@ describe("少女主题 AI 对话高木化", () => {
 
   it("少女主题下发送消息携带 persona=takagi", async () => {
     useThemeStore.setState({ themeMode: "girl" });
-    useAiStore.getState().setApiKey("deepseek", "sk-test-key");
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    configureAi();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
       const url = String(input);
       if (url.includes("/api/chat")) return new Response(JSON.stringify({ answer: "ふふ，先讲思路哦。" }), { status: 200 });
       return new Response(JSON.stringify({ history: [] }), { status: 200 });
@@ -166,8 +221,8 @@ describe("少女主题 AI 对话高木化", () => {
   });
 
   it("亮色主题聊天保持 AI 助教，不带 persona", async () => {
-    useAiStore.getState().setApiKey("deepseek", "sk-test-key");
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    configureAi();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
       const url = String(input);
       if (url.includes("/api/chat")) return new Response(JSON.stringify({ answer: "先看思路。" }), { status: 200 });
       return new Response(JSON.stringify({ history: [] }), { status: 200 });
@@ -198,7 +253,7 @@ describe("聊天新消息自动滚动", () => {
     expect(messages).toBeTruthy();
     act(() => { useAiStore.getState().addChatMessage({ role: "assistant", content: "新消息来了" }); });
     await vi.waitFor(() => expect(messages.scrollTop).toBe(500));
-    delete (HTMLElement.prototype as Record<string, unknown>)["scrollHeight" as never];
+    delete (HTMLElement.prototype as unknown as Record<string, unknown>)["scrollHeight"];
   });
 });
 
@@ -240,8 +295,8 @@ describe("高木读取判题动态(提交记录/测试状态)", () => {
       ],
       history: [{ id: "h1", problemId: "P1001", problemTitle: "A + B Problem", status: "部分通过", passed: "1/2", sourceCode: "int main(){}", submittedAt: "2026-07-26T12:00:00.000Z" }],
     });
-    useAiStore.getState().setApiKey("deepseek", "sk-test-key");
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    configureAi();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
       const url = String(input);
       if (url.includes("/api/chat")) return new Response(JSON.stringify({ answer: "看第 2 个点哦。" }), { status: 200 });
       return new Response(JSON.stringify({ history: [] }), { status: 200 });
@@ -321,8 +376,8 @@ describe("用户记忆池：沉淀与注入", () => {
 
   it("提问沉淀习惯记忆，且 chat 请求携带记忆池", async () => {
     useMemoryStore.getState().remember("mistake", "在「P1001」WA 过(1/2)");
-    useAiStore.getState().setApiKey("deepseek", "sk-test-key");
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    configureAi();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
       const url = String(input);
       if (url.includes("/api/chat")) return new Response(JSON.stringify({ answer: "先看边界哦。" }), { status: 200 });
       return new Response(JSON.stringify({ history: [] }), { status: 200 });
@@ -348,7 +403,7 @@ describe("AI 解题请求瘦身", () => {
   it("只发送题面与前 2 个样例，不携带全部测试点", async () => {
     const manySamples = Array.from({ length: 20 }, (_, i) => ({ id: i + 1, input: `${i}`, output: `${i}` }));
     useProblemStore.setState({ problem: { ...INITIAL_PROBLEM, samples: manySamples } });
-    useAiStore.getState().setApiKey("deepseek", "sk-test-key");
+    configureAi();
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes("/api/ai")) return new Response(JSON.stringify({ code: "int main(){}" }), { status: 200 });
@@ -363,7 +418,7 @@ describe("AI 解题请求瘦身", () => {
     await vi.waitFor(() => {
       const aiCall = fetchMock.mock.calls.find(([input]) => String(input).includes("/api/ai"));
       expect(aiCall, "应发出 /api/ai 请求").toBeTruthy();
-      const body = JSON.parse((aiCall![1] as { body: string }).body) as { problem: { samples: unknown[] } };
+      const body = JSON.parse((((aiCall as unknown as [unknown, { body: string }])[1]).body)) as { problem: { samples: unknown[] } };
       expect(body.problem.samples.length, "AI 解题不应携带全部测试点").toBeLessThanOrEqual(2);
     });
   });
@@ -372,7 +427,7 @@ describe("AI 解题请求瘦身", () => {
 describe("AI 测试点生成错误", () => {
   it("显示真实上游错误且保留已有测试点", async () => {
     useProblemStore.setState({ problem: { ...INITIAL_PROBLEM }, tab: "problem" });
-    useAiStore.getState().setApiKey("deepseek", "sk-test-key");
+    configureAi();
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       if (String(input).includes("/api/generate-tests")) {
         return new Response(JSON.stringify({ error: "unsupported parameter: response_format" }), {
@@ -396,7 +451,7 @@ describe("AI 测试点生成错误", () => {
 
   it("追加生成结果而不覆盖已有测试点", async () => {
     useProblemStore.setState({ problem: { ...INITIAL_PROBLEM }, tab: "problem" });
-    useAiStore.getState().setApiKey("deepseek", "sk-test-key");
+    configureAi();
     let generationBody: Record<string, unknown> | undefined;
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       if (String(input).includes("/api/generate-tests")) {

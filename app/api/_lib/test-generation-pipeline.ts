@@ -6,6 +6,7 @@ import { evaluateMutantFeedback } from "./mutant-feedback";
 import { judge0Submit, type ValidatedReference } from "./reference-solution";
 import { selectMutationEffectiveTests } from "./test-quality-selection";
 import { validateEndpoint } from "./validate-endpoint";
+import { redactSensitiveText } from "../../server/ai/redact";
 
 type UpstreamData = { choices?: { message?: { content?: string } }[]; error?: { message?: string } };
 type Category = "boundary" | "special" | "ordinary" | "adversarial" | "performance";
@@ -197,14 +198,7 @@ function jsonObject(content: string): Record<string, unknown> | null {
 }
 
 function safeDiagnostic(error: unknown, apiKey: string) {
-  let message = error instanceof Error ? error.message : String(error);
-  if (apiKey) message = message.replaceAll(apiKey, "[REDACTED]");
-  return message
-    .replace(/(?:authorization\s*:\s*)?bearer\s+[^\s;,]+/gi, "Bearer [REDACTED]")
-    .replace(/[\u0000-\u001f\u007f]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 500);
+  return redactSensitiveText(error, [apiKey]);
 }
 
 function profileFrom(content: string, fallback?: ProblemProfile): ProblemProfile {

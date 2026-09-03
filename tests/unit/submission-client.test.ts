@@ -10,6 +10,8 @@ describe("submission client", () => {
       expect(body).not.toHaveProperty("id");
       expect(body).not.toHaveProperty("submittedAt");
       expect(body).not.toHaveProperty("userId");
+      expect(body.results).toMatchObject([{ status: "AC", duration: 14 }]);
+      expect(body.totalDurationMs).toBe(14);
       return Response.json({ error: { code: "AUTH_REQUIRED", message: "请先登录" } }, { status: 401 });
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -20,6 +22,8 @@ describe("submission client", () => {
       status: "答案正确",
       passed: "1/1",
       sourceCode: "int main(){}",
+      results: [{ id: 1, status: "AC", actual: "3", expected: "3", duration: 14 }],
+      totalDurationMs: 14,
       submittedAt: new Date().toISOString(),
     });
 

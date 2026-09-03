@@ -16,13 +16,11 @@ vi.mock("../../app/lib/problem-api", () => ({
 }));
 
 import LibraryPage from "../../app/library/page";
-import { useAiStore } from "../../app/stores/ai-store";
+import { BLANK_PROBLEM, useProblemStore } from "../../app/stores/problem-store";
 
 const LONG_PROBLEM = "给定一个长度为 n 的整数序列，找出最大连续子段和。输入 n 与序列，输出答案。";
 
 beforeEach(() => {
-  useAiStore.setState({ provider: "deepseek", endpoint: "https://api.deepseek.com", model: "deepseek-v4-flash" });
-  useAiStore.getState().setApiKey("deepseek", "sk-test-key");
   vi.stubGlobal("fetch", vi.fn(async () => new Response(
     JSON.stringify({ error: "Authentication Fails, Your api key: ****2345 is invalid" }),
     { status: 500, headers: { "Content-Type": "application/json" } },
@@ -70,6 +68,28 @@ describe("AI 解析添加练习题：失败反馈", () => {
 });
 
 describe("AI 解析与测试点生成解耦(复杂题目先入库)", () => {
+  it("题库导入弹窗不再包含 API 配置，生成请求也不发送路由或密钥", async () => {
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => new Promise<Response>(() => {}));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LibraryPage />);
+    fireEvent.click(screen.getByText("＋ 添加题目"));
+    expect(document.querySelector('input[type="password"]')).toBeNull();
+    expect(document.body.textContent).not.toContain("API Endpoint");
+    fireEvent.change(document.querySelector(".raw-problem-label textarea")!, { target: { value: LONG_PROBLEM } });
+    fireEvent.click(screen.getByText(/生成题目|解析题目/));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+    expect(body).not.toHaveProperty("apiKey");
+    expect(body).not.toHaveProperty("endpoint");
+    expect(body).not.toHaveProperty("model");
+  });
+
+  it("题库提供空白模板入口", () => {
+    render(<LibraryPage />);
+    fireEvent.click(screen.getByRole("button", { name: "新建空白题目" }));
+    expect(useProblemStore.getState().problem).toEqual(BLANK_PROBLEM);
+  });
+
   it("弹窗提供「同时生成测试点」开关且默认关闭", () => {
     render(<LibraryPage />);
     fireEvent.click(screen.getByText("＋ 添加题目"));
@@ -79,7 +99,7 @@ describe("AI 解析与测试点生成解耦(复杂题目先入库)", () => {
   });
 
   it("默认请求体 withTests 为 false，勾选后为 true", async () => {
-    const fetchMock = vi.fn(() => new Promise<Response>(() => { /* 挂起，仅断言请求体 */ }));
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => new Promise<Response>(() => { /* 挂起，仅断言请求体 */ }));
     vi.stubGlobal("fetch", fetchMock);
     render(<LibraryPage />);
     fireEvent.click(screen.getByText("＋ 添加题目"));

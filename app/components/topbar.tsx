@@ -19,6 +19,7 @@ export function Topbar({ onToast, onSignedOut = () => {} }: { onToast: (msg: str
     if (page === "library") return pathname === "/library" || pathname.startsWith("/library");
     if (page === "workspace") return pathname === "/" || pathname.startsWith("/problem");
     if (page === "notes") return pathname === "/notes" || pathname.startsWith("/notes");
+    if (page === "settings") return pathname === "/settings" || pathname.startsWith("/settings");
     return false;
   };
 
@@ -39,6 +40,7 @@ export function Topbar({ onToast, onSignedOut = () => {} }: { onToast: (msg: str
         <button className={isActive("notes") ? "nav-active" : ""} onClick={() => router.push("/notes")}>讨论</button>
       </nav>
       <div className="header-actions">
+        <button className={`icon-button ${isActive("settings") ? "active" : ""}`} aria-label="设置" title="设置" onClick={() => router.push("/settings")}>⚙</button>
         <div className="theme-switch" role="radiogroup" aria-label="网站主题" title="切换网站主题">
           {THEME_OPTIONS.map((option) => (
             <button

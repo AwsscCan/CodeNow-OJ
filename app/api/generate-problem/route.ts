@@ -4,17 +4,23 @@ import { rateLimit } from "../_lib/rate-limit";
 import { getCachedReference } from "../_lib/reference-solution";
 import { generateComplexityAwareTests } from "../_lib/test-generation-pipeline";
 import { validateEndpoint } from "../_lib/validate-endpoint";
+import { resolveAiRuntime, type AiRuntimeResolution } from "../../server/ai/ai-runtime";
+import { redactSensitiveText } from "../../server/ai/redact";
 
-export async function POST(request: NextRequest) {
+type ResolveAiConfig = (request: Request) => Promise<AiRuntimeResolution>;
+
+export function createGenerateProblemHandler(resolveConfig: ResolveAiConfig = resolveAiRuntime) {
+  return async function handleGenerateProblem(request: NextRequest) {
   const rl = rateLimit(request, "ai");
   if (!rl.allowed) return NextResponse.json({ error: "Too many requests. Please retry later." }, { status: 429 });
 
   try {
     const requestData = await request.json();
-    const { endpoint, model, rawProblem } = requestData;
-    const apiKey = process.env.AI_API_KEY || requestData.apiKey;
-    if (!apiKey) return NextResponse.json({ error: "AI API Key is not configured." }, { status: 400 });
-    if (!endpoint || !model || !rawProblem) return NextResponse.json({ error: "AI configuration and raw problem text are required." }, { status: 400 });
+    const { rawProblem } = requestData;
+    const resolved = await resolveConfig(request);
+    if (!resolved.ok) return NextResponse.json({ error: resolved.message }, { status: resolved.status });
+    const { apiKey, endpoint, model } = resolved.config;
+    if (!rawProblem) return NextResponse.json({ error: "Raw problem text is required." }, { status: 400 });
     if (typeof rawProblem !== "string" || rawProblem.trim().length < 20) return NextResponse.json({ error: "Problem text is too short." }, { status: 400 });
     if (rawProblem.length > AI_MAX_RAW_PROBLEM_LENGTH) return NextResponse.json({ error: `Problem text cannot exceed ${AI_MAX_RAW_PROBLEM_LENGTH} characters.` }, { status: 400 });
 
@@ -70,7 +76,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ problem, complexityReport: { ...generated.report, referenceStatus } });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "AI problem generation failed.";
+    const message = redactSensitiveText(error instanceof Error ? error : "AI problem generation failed.", []);
     if (/timeout|timed out|abort/i.test(message) || (error instanceof Error && error.name === "TimeoutError")) {
       return NextResponse.json({ error: "AI response timed out. Try smaller batches, DeepSeek V4 Flash, or retry later." }, { status: 504 });
     }
@@ -80,7 +86,10 @@ export async function POST(request: NextRequest) {
     if (message.includes("API Endpoint")) return NextResponse.json({ error: message }, { status: 400 });
     return NextResponse.json({ error: message }, { status: 500 });
   }
+  };
 }
+
+export const POST = createGenerateProblemHandler();
 
 async function structureProblem(chatUrl: URL, apiKey: string, model: string, rawProblem: string, isDeepSeek: boolean): Promise<string> {
   const body: Record<string, unknown> = {

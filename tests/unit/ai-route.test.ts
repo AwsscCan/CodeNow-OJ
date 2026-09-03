@@ -1,7 +1,10 @@
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { POST } from "../../app/api/ai/route";
+import { createAiHandler } from "../../app/api/ai/route";
 import { OUTBOUND_PROBLEM_CONTEXT_LIMITS } from "../../app/lib/outbound-problem-context";
+import { resolveTestAiConfig } from "./ai-runtime-fixture";
+
+const POST = createAiHandler(resolveTestAiConfig);
 
 let fetchMock: ReturnType<typeof vi.fn>;
 

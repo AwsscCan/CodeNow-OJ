@@ -3,11 +3,18 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GeneratedTest } from "../../app/api/_lib/complexity-tests";
 import type { ValidatedReference } from "../../app/api/_lib/reference-solution";
 import type { GenerationReport } from "../../app/api/_lib/test-generation-pipeline";
-import { createGenerateTestsHandler, POST, type GenerateTestsHandlerDependencies } from "../../app/api/generate-tests/route";
+import { createGenerateTestsHandler, type GenerateTestsHandlerDependencies } from "../../app/api/generate-tests/route";
+import { resolveTestAiConfig } from "./ai-runtime-fixture";
 
 type ResolveReference = NonNullable<GenerateTestsHandlerDependencies["resolveReference"]>;
 type GenerateTests = NonNullable<GenerateTestsHandlerDependencies["generateTests"]>;
 type GenerateResult = Awaited<ReturnType<GenerateTests>>;
+
+function createHandler(dependencies: GenerateTestsHandlerDependencies = {}) {
+  return createGenerateTestsHandler({ ...dependencies, resolveConfig: resolveTestAiConfig });
+}
+
+const POST = createHandler();
 
 function validatedReference(): ValidatedReference {
   return {
@@ -84,7 +91,7 @@ describe("POST /api/generate-tests", () => {
       return { status: { ok: false, cached: false, message: "unavailable" } };
     });
     const generateTests: GenerateTests = vi.fn(async () => generatedResult());
-    const handler = createGenerateTestsHandler({ resolveReference, generateTests });
+    const handler = createHandler({ resolveReference, generateTests });
     const request = new NextRequest("http://localhost/api/generate-tests", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -104,7 +111,7 @@ describe("POST /api/generate-tests", () => {
       generationSignal = options.signal as AbortSignal | undefined;
       return generatedResult();
     });
-    const handler = createGenerateTestsHandler({ generateTests });
+    const handler = createHandler({ generateTests });
     const request = new NextRequest("http://localhost/api/generate-tests", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -122,7 +129,7 @@ describe("POST /api/generate-tests", () => {
     const generateTests = vi.fn(async () => {
       throw new DOMException("client disconnected", "AbortError");
     });
-    const handler = createGenerateTestsHandler({ generateTests });
+    const handler = createHandler({ generateTests });
     const response = await handler(new NextRequest("http://localhost/api/generate-tests", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -139,7 +146,7 @@ describe("POST /api/generate-tests", () => {
     const generateTests: GenerateTests = vi.fn(() => new Promise<GenerateResult>((resolve) => {
       finishGeneration = resolve;
     }));
-    const handler = createGenerateTestsHandler({ generateTests });
+    const handler = createHandler({ generateTests });
     const request = new NextRequest("http://localhost/api/generate-tests", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -164,7 +171,7 @@ describe("POST /api/generate-tests", () => {
     const generateTests: GenerateTests = vi.fn(async (options) => generatedResult({
       referenceValidated: Boolean(options.validatedRef),
     }));
-    const handler = createGenerateTestsHandler({ resolveReference, generateTests });
+    const handler = createHandler({ resolveReference, generateTests });
     const request = new NextRequest("http://localhost/api/generate-tests", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -189,7 +196,7 @@ describe("POST /api/generate-tests", () => {
     const generateTests: GenerateTests = vi.fn(async (options) => generatedResult({
       referenceValidated: Boolean(options.validatedRef),
     }));
-    const handler = createGenerateTestsHandler({ resolveReference, generateTests });
+    const handler = createHandler({ resolveReference, generateTests });
     const request = new NextRequest("http://localhost/api/generate-tests", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ apiKey: "key", endpoint: "https://example.com", model: "model", qualityMode: "feedback", count: 1, problem: { id: "P", title: "P", description: "desc", samples: [] } }),
@@ -206,7 +213,7 @@ describe("POST /api/generate-tests", () => {
   it("does not resolve a reference in fast mode", async () => {
     const resolveReference = vi.fn();
     const generateTests: GenerateTests = vi.fn(async () => generatedResult());
-    const handler = createGenerateTestsHandler({ resolveReference, generateTests });
+    const handler = createHandler({ resolveReference, generateTests });
     const request = new NextRequest("http://localhost/api/generate-tests", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ apiKey: "key", endpoint: "https://example.com", model: "model", count: 1, problem: { id: "P", title: "P", description: "desc", samples: [] } }),

@@ -92,6 +92,20 @@
       "when": 1785066720852,
       "tag": "0012_uneven_millenium_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1788437120172,
+      "tag": "0013_ai_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1788437664777,
+      "tag": "0014_submission_snapshots",
+      "breakpoints": true
     }
   ]
 }

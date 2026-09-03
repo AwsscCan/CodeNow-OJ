@@ -16,6 +16,7 @@ const AI_LINE = { text: "AI 生成的调侃台词", mood: "smug" as const, sprit
 
 beforeEach(() => {
   useMascotStore.getState().reset();
+  useAiStore.setState({ configured: false, hasApiKey: false });
 });
 
 afterEach(() => {
@@ -25,7 +26,7 @@ afterEach(() => {
 
 describe("useMascotLine 点击即时反馈", () => {
   it("配置了 AI Key 时点击立即换本地台词，AI 台词回来后再覆盖", async () => {
-    useAiStore.getState().setApiKey("deepseek", "sk-with-key");
+    useAiStore.setState({ configured: true, hasApiKey: true });
     let resolveAi: (line: typeof AI_LINE) => void;
     requestMascotLine.mockImplementation(() => new Promise((resolve) => { resolveAi = resolve; }));
 
@@ -42,7 +43,7 @@ describe("useMascotLine 点击即时反馈", () => {
   });
 
   it("未配置 AI Key 时不垫场，直接等取词结果", async () => {
-    useAiStore.getState().clearApiKey("deepseek");
+    useAiStore.setState({ configured: false, hasApiKey: false });
     const local = MASCOT_LINE_POOL.idle[1];
     requestMascotLine.mockResolvedValue(local);
 

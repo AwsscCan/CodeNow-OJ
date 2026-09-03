@@ -16,6 +16,7 @@ import { rateLimit } from "../_lib/rate-limit";
 import { buildTakagiMascotPrompt } from "../_lib/takagi-persona";
 import { formatQuoteContext, pickTakagiQuotes, tagsForPhase } from "../_lib/takagi-quotes";
 import { validateEndpoint } from "../_lib/validate-endpoint";
+import { resolveAiRuntime, type AiRuntimeResolution } from "../../server/ai/ai-runtime";
 
 /** 每种情境对应的表情与给模型的语气指引 */
 const PHASE_STYLE: Record<string, { mood: string; sprite: number; brief: string }> = {
@@ -72,13 +73,16 @@ function buildUserPrompt(event: Record<string, unknown>, recentLines: string[], 
   return lines.join("\n");
 }
 
-export async function POST(request: NextRequest) {
+type ResolveAiConfig = (request: Request) => Promise<AiRuntimeResolution>;
+
+export function createMascotLineHandler(resolveConfig: ResolveAiConfig = resolveAiRuntime) {
+  return async function handleMascotLine(request: NextRequest) {
   const rl = rateLimit(request, "mascot");
   if (!rl.allowed) return NextResponse.json({ error: "请求过于频繁，请稍后重试" }, { status: 429 });
 
   try {
     const requestData = await request.json();
-    const { endpoint, model, event } = requestData;
+    const { event } = requestData;
     const recentLines: string[] = Array.isArray(requestData.recentLines)
       ? requestData.recentLines
           .filter((item: unknown): item is string => typeof item === "string" && item.trim().length > 0)
@@ -92,9 +96,10 @@ export async function POST(request: NextRequest) {
           .map((item: string) => sanitizeField(item, 60))
       : [];
 
-    const apiKey = process.env.AI_API_KEY || requestData.apiKey;
-    if (!apiKey) return NextResponse.json({ error: "未配置 AI API Key" }, { status: 400 });
-    if (!endpoint || !model || !event || typeof event !== "object") {
+    const resolved = await resolveConfig(request);
+    if (!resolved.ok) return NextResponse.json({ error: resolved.message }, { status: resolved.status });
+    const { apiKey, endpoint, model } = resolved.config;
+    if (!event || typeof event !== "object") {
       return NextResponse.json({ error: "桌宠台词请求参数不完整" }, { status: 400 });
     }
 
@@ -136,4 +141,7 @@ export async function POST(request: NextRequest) {
     }
     return NextResponse.json({ error: "桌宠台词生成失败" }, { status: 500 });
   }
+  };
 }
+
+export const POST = createMascotLineHandler();

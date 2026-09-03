@@ -297,7 +297,6 @@ export default function ProblemPage() {
         useMemoryStore.getState().forgetProblemMistakes(store.problem.id);
       }
 
-      // Always add to local history (both run and submit)
       if (result.submission) {
         store.setHistory([result.submission, ...store.history]);
       }
@@ -347,14 +346,13 @@ export default function ProblemPage() {
   }
 
   async function handleAskAi() {
-    const key = aiStore.apiKeys[aiStore.provider];
-    if (!key.trim()) return toast("请先填写 API Key");
+    if (!aiStore.configured) return toast("请先在设置中完成 AI 配置");
     setAiBusy(true);
     try {
       const res = await fetch("/api/ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ apiKey: key, endpoint: aiStore.endpoint, model: aiStore.model, problem: slimProblem() }),
+        body: JSON.stringify({ problem: slimProblem() }),
       });
       const data = await res.json() as { code?: string; error?: string };
       if (!res.ok || !data.code) throw new Error(data.error || "生成失败");
@@ -371,8 +369,7 @@ export default function ProblemPage() {
   async function handleSendChat() {
     const question = chatInput.trim();
     if (!question || chatBusy) return;
-    const key = aiStore.apiKeys[aiStore.provider];
-    if (!key.trim()) return toast("请先配置 API Key");
+    if (!aiStore.configured) return toast("请先在设置中完成 AI 配置");
     const next = [...aiStore.chatMessages, { role: "user" as const, content: question }];
     aiStore.addChatMessage({ role: "user", content: question });
     void conversationSync.append({ role: "user", content: question }).catch(() => undefined);
@@ -386,7 +383,7 @@ export default function ProblemPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          apiKey: key, endpoint: aiStore.endpoint, model: aiStore.model, problem: slimProblem(), code: store.code, messages: next,
+          problem: slimProblem(), code: store.code, messages: next,
           memories: useMemoryStore.getState().recentMemories(8),
           judge: buildJudgeContext(),
           ...(isTakagi ? { persona: "takagi" } : {}),
@@ -404,8 +401,7 @@ export default function ProblemPage() {
   }
 
   async function handleGenerateTests() {
-    const key = aiStore.apiKeys[aiStore.provider];
-    if (!key.trim()) return toast("请先配置 API Key");
+    if (!aiStore.configured) return toast("请先在设置中完成 AI 配置");
     setGeneratingTests(true);
     setTestGenStatus("正在分析题型并分批补齐覆盖…");
     try {
@@ -414,9 +410,6 @@ export default function ProblemPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          apiKey: key,
-          endpoint: aiStore.endpoint,
-          model: aiStore.model,
           qualityMode: "feedback",
           problem: store.problem,
           count: targetTotal,
@@ -490,7 +483,6 @@ export default function ProblemPage() {
         <div className="workspace-actions">
           <span className={`sync-status ${store.syncStatus}`}><i className="sync-dot" aria-hidden="true" />{store.syncStatus === "local-only" ? "本地保存" : store.syncStatus === "saving" ? "正在保存…" : store.syncStatus === "synced" ? "已同步" : store.syncStatus === "failed" ? "保存失败" : "版本冲突"}</span>
           {store.syncStatus === "failed" && <button onClick={retryFailedSaves}>重试保存</button>}
-          <button onClick={() => router.push("/library")}>⇧ 导入题目</button>
           <button className="ask-button" onClick={() => setShowChat(true)}>{isTakagi ? "◈ 问高木" : "◈ 问 AI"}</button>
           <button className="ai-button" onClick={() => setShowAi(true)}>{isTakagi ? "✦ 高木解题" : "✦ AI 解题"}</button>
           <button className="run-button" disabled={running} onClick={() => handleRun(false)}>{running ? "运行中…" : "▷ 运行测试"}</button>
@@ -652,7 +644,13 @@ export default function ProblemPage() {
       {store.selectedSubmission && <div className="modal-backdrop" onMouseDown={() => store.setSelectedSubmission(null)}><div className="modal submission-modal" onMouseDown={(e) => e.stopPropagation()}>
         <button className="modal-close" onClick={() => store.setSelectedSubmission(null)}>×</button>
         <span className="modal-kicker">SUBMISSION SNAPSHOT</span><h2>{store.selectedSubmission.problemId} · 提交代码</h2>
-        <p>{new Date(store.selectedSubmission.submittedAt).toLocaleString("zh-CN")} · {store.selectedSubmission.status} · 通过 {store.selectedSubmission.passed}</p>
+        <p>{new Date(store.selectedSubmission.submittedAt).toLocaleString("zh-CN")} · {store.selectedSubmission.status} · 通过 {store.selectedSubmission.passed} · {store.selectedSubmission.totalDurationMs == null ? "耗时未记录" : `总耗时 ${store.selectedSubmission.totalDurationMs} ms`}</p>
+        {store.selectedSubmission.results?.length ? <div className="submission-results">
+          {store.selectedSubmission.results.map((result, index) => <div className="submission-result" key={`${result.id}-${index}`}>
+            <b>测试点 {index + 1}</b><code>{result.status}</code><span>{result.duration} ms</span>
+            <small>{result.status === "AC" ? "输出正确" : result.status === "CE" ? result.actual : `期望 ${result.expected}，得到 ${result.actual}`}</small>
+          </div>)}
+        </div> : <div className="submission-results-empty">旧提交未记录逐测试点结果</div>}
         <pre><code>{store.selectedSubmission.sourceCode}</code></pre>
         <div className="submission-actions"><button onClick={() => store.setSelectedSubmission(null)}>关闭</button><button onClick={() => { store.setCode(store.selectedSubmission!.sourceCode); store.setSelectedSubmission(null); toast("已载入编辑器"); }}>载入到编辑器</button></div>
       </div></div>}
@@ -672,21 +670,17 @@ export default function ProblemPage() {
         {isTakagi ? <>
           <img className="mascot-ai-portrait" src="/codenow/portrait-sailor.jpg" alt="" aria-hidden="true" loading="lazy" decoding="async" />
           <span className="modal-kicker">TAKAGI SOLVER</span><h2>让高木同学出手</h2>
-          <p>勝負しよ？我来写一份 C++17，你负责挑错——要是找不出毛病，就算我赢。密钥只保存在你这台浏览器里。</p>
+          <p>勝負しよ？我来写一份 C++17，你负责挑错——要是找不出毛病，就算我赢。</p>
         </> : <>
           <span className="modal-kicker purple">AI COPILOT</span><h2>让 AI 编写解答</h2>
-          <p>选择 API 服务商。每个服务商的密钥会分别保存在当前浏览器中，下次可直接使用。</p>
+          <p>使用账户中已保存的 AI 服务与模型生成解答。</p>
         </>}
-        <div className="provider-switch">
-          <button className={aiStore.provider === "deepseek" ? "active deepseek" : ""} onClick={() => aiStore.setProvider("deepseek")}><b>DeepSeek</b><small>DS 官方 API</small></button>
-          <button className={aiStore.provider === "openai" ? "active" : ""} onClick={() => aiStore.setProvider("openai")}><b>OpenAI</b><small>官方兼容接口</small></button>
-          <button className={aiStore.provider === "custom" ? "active" : ""} onClick={() => aiStore.setProvider("custom")}><b>自定义</b><small>兼容服务</small></button>
+        <div className="ai-settings-summary">
+          <div><span>当前模型</span><b>{aiStore.configured ? aiStore.model : "尚未配置"}</b><small>{aiStore.configured ? `${aiStore.provider} · ${aiStore.source === "ccswitch" ? "CCSwitch 导入" : "账户设置"}` : "保存后可在所有登录设备上使用"}</small></div>
+          <button type="button" onClick={() => router.push("/settings")}>前往设置</button>
         </div>
-        <label>API Endpoint<input value={aiStore.endpoint} onChange={(e) => aiStore.setEndpoint(e.target.value)} placeholder="https://api.deepseek.com" /></label>
-        <label>API Key<div className="api-key-input"><input type="password" value={aiStore.apiKeys[aiStore.provider]} onChange={(e) => aiStore.setApiKey(aiStore.provider, e.target.value)} placeholder="输入后会保存在本机浏览器" autoComplete="off" />{aiStore.apiKeys[aiStore.provider] && <button onClick={() => aiStore.clearApiKey(aiStore.provider)}>清除</button>}</div><small className="storage-note">仅保存在当前浏览器，不会写入网站服务器</small></label>
-        <label>模型{aiStore.provider === "deepseek" ? <select value={aiStore.model} onChange={(e) => aiStore.setModel(e.target.value)}><option value="deepseek-v4-flash">DeepSeek V4 Flash · 快速</option><option value="deepseek-v4-pro">DeepSeek V4 Pro · 高质量</option></select> : <input value={aiStore.model} onChange={(e) => aiStore.setModel(e.target.value)} placeholder="模型 ID" />}</label>
         <div className="ai-summary"><span>当前题目</span><b>{store.problem.id} · {store.problem.title}</b><small>仅发送题面与前 2 个样例，测试点不随请求发送，生成更快</small></div>
-        <button className="generate-button" disabled={aiBusy} onClick={handleAskAi}>{aiBusy ? "正在思考并编写 C++…" : `✦ 使用 ${aiStore.provider === "deepseek" ? "DeepSeek" : aiStore.provider === "openai" ? "OpenAI" : "自定义 API"} 生成 C++17 解答`}</button>
+        <button className="generate-button" disabled={aiBusy || !aiStore.configured} onClick={handleAskAi}>{aiBusy ? "正在思考并编写 C++…" : aiStore.configured ? `✦ 使用 ${aiStore.model} 生成 C++17 解答` : "请先完成 AI 设置"}</button>
       </div></div>}
 
       {/* Chat Drawer */}

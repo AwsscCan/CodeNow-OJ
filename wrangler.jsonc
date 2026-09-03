@@ -1,0 +1,34 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "codenow-oj",
+  "main": "./worker/index.ts",
+  "compatibility_date": "2026-08-22",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "env": {
+    "preview": {
+      "name": "codenow-oj-preview",
+      "workers_dev": true,
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "codenow-oj-preview",
+          "database_id": "99f11da7-63a7-4726-8e68-70adcdd0b343",
+          "migrations_dir": "drizzle"
+        }
+      ]
+    },
+    "production": {
+      "name": "codenow-oj-production",
+      "workers_dev": true,
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "codenow-oj-production",
+          "database_id": "3418caa2-4500-4d85-985f-76e63f7af395",
+          "migrations_dir": "drizzle"
+        }
+      ]
+    }
+  }
+}

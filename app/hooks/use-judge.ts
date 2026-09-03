@@ -25,6 +25,8 @@ export function useJudge() {
       status: "判题中",
       passed: "0/0",
       sourceCode,
+      results: [],
+      totalDurationMs: null,
       submittedAt: new Date().toISOString(),
     };
 
@@ -38,7 +40,7 @@ export function useJudge() {
       if (!response.ok || !data.results) {
         record.status = "判题失败";
         record.passed = "0/0";
-        await saveRecord(record).catch(() => {});
+        if (submit) await saveRecord(record).catch(() => {});
         throw new Error(data.error || "C++ 判题服务暂时不可用");
       }
 
@@ -47,14 +49,18 @@ export function useJudge() {
       const ok = results.filter((r) => r.status === "AC").length;
       record.status = ok === results.length ? "答案正确" : "未通过";
       record.passed = `${ok}/${results.length}`;
+      record.results = results;
+      record.totalDurationMs = results.reduce((total, result) => total + result.duration, 0);
 
       if (submit) onMascotReact(results);
 
-      let savedRecord = record;
-      try {
-        savedRecord = await saveRecord(record);
-      } catch (saveError) {
-        console.warn("保存提交记录失败，但判题结果已保留在当前页面。", saveError);
+      let savedRecord: SubmissionRecord | null = null;
+      if (submit) {
+        try {
+          savedRecord = await saveRecord(record);
+        } catch (saveError) {
+          console.warn("保存提交记录失败，但判题结果已保留在当前页面。", saveError);
+        }
       }
 
       return { results, diagnostic, submission: savedRecord };
@@ -62,7 +68,7 @@ export function useJudge() {
       if (record.status === "判题中") {
         record.status = "判题失败";
         record.passed = "0/0";
-        await saveRecord(record).catch(() => {});
+        if (submit) await saveRecord(record).catch(() => {});
       }
       throw error;
     } finally {
@@ -80,6 +86,8 @@ export async function saveRecord(record: SubmissionRecord): Promise<SubmissionRe
     status: record.status,
     passed: record.passed,
     sourceCode: record.sourceCode,
+    results: record.results,
+    totalDurationMs: record.totalDurationMs,
   };
   const res = await fetch("/api/submissions", {
     method: "POST",

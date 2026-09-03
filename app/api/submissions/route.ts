@@ -21,12 +21,30 @@ async function resolveRuntimeContext(request: Request): Promise<SubmissionContex
 }
 
 function normalizeInput(data: Record<string, unknown>): NewSubmission {
+  const statuses = new Set(["AC", "WA", "RE", "CE", "TLE"]);
+  const results = Array.isArray(data.results) ? data.results.slice(0, 100).flatMap((value, index) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+    const item = value as Record<string, unknown>;
+    const status = String(item.status ?? "");
+    const duration = Number(item.duration);
+    if (!statuses.has(status) || !Number.isFinite(duration) || duration < 0) return [];
+    return [{
+      id: Number.isFinite(Number(item.id)) ? Number(item.id) : index + 1,
+      status: status as "AC" | "WA" | "RE" | "CE" | "TLE",
+      actual: String(item.actual ?? "").slice(0, 20_000),
+      expected: String(item.expected ?? "").slice(0, 20_000),
+      duration: Math.round(duration),
+    }];
+  }) : [];
+  const totalDuration = Number(data.totalDurationMs);
   return {
     problemId: String(data.problemId ?? "").trim(),
     problemTitle: String(data.problemTitle ?? "").trim(),
     status: String(data.status ?? "").trim(),
     passed: String(data.passed ?? "").trim(),
     sourceCode: typeof data.sourceCode === "string" ? data.sourceCode : "",
+    results,
+    totalDurationMs: Number.isFinite(totalDuration) && totalDuration >= 0 ? Math.round(totalDuration) : null,
   };
 }
 

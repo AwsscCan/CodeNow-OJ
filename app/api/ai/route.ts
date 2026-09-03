@@ -3,21 +3,24 @@ import { buildOutboundProblemContext, serializeOutboundProblemContext } from "..
 import { AI_DEFAULT_TEMPERATURE, AI_MAX_TOKENS_SOLUTION } from "../_lib/constants";
 import { rateLimit } from "../_lib/rate-limit";
 import { validateEndpoint } from "../_lib/validate-endpoint";
+import { resolveAiRuntime, type AiRuntimeResolution } from "../../server/ai/ai-runtime";
+import { redactSensitiveText } from "../../server/ai/redact";
 
-export async function POST(request: NextRequest) {
+type ResolveAiConfig = (request: Request) => Promise<AiRuntimeResolution>;
+
+export function createAiHandler(resolveConfig: ResolveAiConfig = resolveAiRuntime) {
+  return async function handleAi(request: NextRequest) {
   const rl = rateLimit(request, "ai");
   if (!rl.allowed) return NextResponse.json({ error: "请求过于频繁，请稍后重试" }, { status: 429 });
 
   try {
     const requestData = await request.json();
-    const { endpoint, model, problem: requestedProblem } = requestData;
+    const { problem: requestedProblem } = requestData;
     let problem = requestedProblem;
-
-    // Server-side env var takes precedence. Falls back to client key for backward compat.
-    const apiKey = process.env.AI_API_KEY || requestData.apiKey;
-    if (!apiKey) return NextResponse.json({ error: "未配置 AI API Key" }, { status: 400 });
-
-    if (!endpoint || !model || !problem) return NextResponse.json({ error: "AI 配置不完整" }, { status: 400 });
+    const resolved = await resolveConfig(request);
+    if (!resolved.ok) return NextResponse.json({ error: resolved.message }, { status: resolved.status });
+    const { apiKey, endpoint, model } = resolved.config;
+    if (!problem) return NextResponse.json({ error: "题目数据不完整" }, { status: 400 });
 
     const chatUrl = validateEndpoint(String(endpoint));
     problem = await buildOutboundProblemContext(problem);
@@ -39,12 +42,15 @@ export async function POST(request: NextRequest) {
     });
 
     const data = await response.json() as { choices?: { message?: { content?: string } }[]; error?: { message?: string } };
-    if (!response.ok) return NextResponse.json({ error: data.error?.message || "上游 AI 服务请求失败" }, { status: response.status });
+    if (!response.ok) return NextResponse.json({ error: redactSensitiveText(data.error?.message || "上游 AI 服务请求失败", [apiKey]) }, { status: response.status });
     return NextResponse.json({ code: data.choices?.[0]?.message?.content || "" });
   } catch (error) {
     if (error instanceof Error && error.message.startsWith("不支持的 API")) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
-    return NextResponse.json({ error: error instanceof Error ? error.message : "AI 请求失败" }, { status: 500 });
+    return NextResponse.json({ error: redactSensitiveText(error instanceof Error ? error : "AI 请求失败") }, { status: 500 });
   }
+  };
 }
+
+export const POST = createAiHandler();

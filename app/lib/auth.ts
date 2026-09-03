@@ -99,6 +99,8 @@ type RuntimeBindings = {
   RESEND_API_KEY?: string;
   AUTH_EMAIL_FROM?: string;
   ADMIN_BOOTSTRAP_TOKEN?: string;
+  VOICE_SERVICE_URL?: string;
+  VOICE_SERVICE_TOKEN?: string;
 };
 
 type CloudflareRuntime = {
@@ -106,7 +108,16 @@ type CloudflareRuntime = {
   waitUntil?: (promise: Promise<unknown>) => void;
 };
 
-export type RuntimeServices = { auth: Auth; db: Database; rateLimitPepper: string; adminBootstrapToken?: string };
+export type VoiceService = { url: string; token: string };
+
+export type RuntimeServices = {
+  auth: Auth;
+  db: Database;
+  rateLimitPepper: string;
+  credentialSecret: string;
+  adminBootstrapToken?: string;
+  voiceService?: VoiceService;
+};
 
 let localServices: RuntimeServices | null = null;
 
@@ -141,13 +152,27 @@ function authEnvironment(request: Request, bindings: RuntimeBindings): AuthEnvir
   };
 }
 
+function voiceServiceEnvironment(bindings: RuntimeBindings): VoiceService | undefined {
+  const url = bindings.VOICE_SERVICE_URL ?? process.env.VOICE_SERVICE_URL;
+  const token = bindings.VOICE_SERVICE_TOKEN ?? process.env.VOICE_SERVICE_TOKEN;
+  if (!url?.trim() || !token?.trim()) return undefined;
+  return { url: url.trim(), token: token.trim() };
+}
+
 export function createLocalRuntimeServices(request: Request, filename: string): RuntimeServices {
   const absolutePath = resolve(filename);
   mkdirSync(dirname(absolutePath), { recursive: true });
   const db = createLocalDb(absolutePath);
   migrate(db, { migrationsFolder: "drizzle" });
   const env = authEnvironment(request, {});
-  return { db, rateLimitPepper: env.secret, adminBootstrapToken: process.env.ADMIN_BOOTSTRAP_TOKEN, auth: createAuth({ db, env }) };
+  return {
+    db,
+    rateLimitPepper: env.secret,
+    credentialSecret: env.secret,
+    adminBootstrapToken: process.env.ADMIN_BOOTSTRAP_TOKEN,
+    voiceService: voiceServiceEnvironment({}),
+    auth: createAuth({ db, env }),
+  };
 }
 
 export async function getRuntimeServices(request: Request): Promise<RuntimeServices> {
@@ -157,7 +182,7 @@ export async function getRuntimeServices(request: Request): Promise<RuntimeServi
 
   if (bindings.DB) {
     const db = createD1Db(bindings.DB);
-    return { db, rateLimitPepper: env.secret, adminBootstrapToken: bindings.ADMIN_BOOTSTRAP_TOKEN, auth: createAuth({
+    return { db, rateLimitPepper: env.secret, credentialSecret: env.secret, adminBootstrapToken: bindings.ADMIN_BOOTSTRAP_TOKEN, voiceService: voiceServiceEnvironment(bindings), auth: createAuth({
       db,
       env,
       waitUntil: runtime?.waitUntil,

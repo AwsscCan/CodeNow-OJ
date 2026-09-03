@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { AiSettingsSync } from "./components/ai-settings-sync";
 import { InvitationPasswordGate } from "./components/invitation-password-gate";
 import { LocalDataMigration } from "./components/local-data-migration";
 import { MascotWrapper } from "./components/mascot-wrapper";
@@ -12,5 +13,5 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="zh-CN"><body>{children}<InvitationPasswordGate /><PreferenceSync /><LocalDataMigration /><MascotWrapper /></body></html>;
+  return <html lang="zh-CN"><body>{children}<InvitationPasswordGate /><PreferenceSync /><AiSettingsSync /><LocalDataMigration /><MascotWrapper /></body></html>;
 }
