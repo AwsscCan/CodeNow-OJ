@@ -17,18 +17,15 @@ async function defaultRun(command, args) {
 
 export async function smokeWorker(baseUrl) {
   if (!baseUrl) return false;
-  const [home, registration, hiddenAdmin, aiSettings, aiModels, aiCcSwitch] = await Promise.all([
+  const [home, session, hiddenAdmin, aiSettings, aiModels, aiCcSwitch] = await Promise.all([
     fetch(new URL("/", baseUrl)),
-    fetch(new URL("/api/auth/sign-up/email", baseUrl), {
-      method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: "smoke@example.test", name: "Smoke", password: "Smoke-password-2026!" }),
-    }),
+    fetch(new URL("/api/auth/get-session", baseUrl)),
     fetch(new URL("/api/admin/users", baseUrl)),
     fetch(new URL("/api/ai-settings", baseUrl)),
     fetch(new URL("/api/ai-settings/models", baseUrl), { method: "POST" }),
     fetch(new URL("/api/ai-settings/ccswitch", baseUrl), { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }),
   ]);
-  return home.ok && registration.status === 404 && hiddenAdmin.status === 404
+  return home.ok && session.status === 200 && hiddenAdmin.status === 404
     && aiSettings.status === 401 && aiModels.status === 401 && aiCcSwitch.status === 401
     && /private/.test(hiddenAdmin.headers.get("cache-control") ?? "") && /no-store/.test(hiddenAdmin.headers.get("cache-control") ?? "");
 }
@@ -62,7 +59,8 @@ export async function releaseCloudflare({ target, run = defaultRun, smokePreview
   if (!previewOk) throw new Error("Preview smoke gate failed; production was not changed");
   if (target === "preview") return;
   await releaseEnvironment("production");
-  if (smokeProduction && !await smokeProduction()) throw new Error("Production smoke failed; retain the backup and roll back the Worker version");
+  const productionOk = await (smokeProduction ?? (() => smokeWorker(process.env.ADMIN_BOOTSTRAP_URL_PRODUCTION)))();
+  if (!productionOk) throw new Error("Production smoke failed; retain the backup and roll back the Worker version");
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

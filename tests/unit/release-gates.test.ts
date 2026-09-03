@@ -10,7 +10,7 @@ describe("Cloudflare release gates", () => {
       const request = new Request(input, init);
       requests.push(request);
       if (request.url.endsWith("/")) return new Response("ok", { status: 200 });
-      if (request.url.includes("/api/auth/sign-up/email")) return new Response("", { status: 404 });
+      if (request.url.includes("/api/auth/get-session")) return new Response("null", { status: 200 });
       if (request.url.includes("/api/admin/users")) return new Response("", { status: 404, headers: { "cache-control": "private, no-store" } });
       return new Response(JSON.stringify({ error: { code: "AUTH_REQUIRED" } }), { status: 401 });
     }));
@@ -54,7 +54,7 @@ describe("Cloudflare release gates", () => {
     expect(calls.some((value) => value.includes("--env production"))).toBe(false);
 
     calls.length = 0;
-    await releaseCloudflare({ target: "production", run, smokePreview: async () => true });
+    await releaseCloudflare({ target: "production", run, smokePreview: async () => true, smokeProduction: async () => true });
     expect(calls.some((value) => value.includes("wrangler deploy --config dist/server/wrangler.json --env production"))).toBe(true);
   });
 });
