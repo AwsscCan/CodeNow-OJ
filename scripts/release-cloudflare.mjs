@@ -42,7 +42,7 @@ export async function releaseCloudflare({ target, run = defaultRun, smokePreview
   const releaseEnvironment = async (environment) => {
     await run("npx", ["wrangler", "d1", "export", "DB", "--remote", "--env", environment, "--output", backup(environment)]);
     await run("npx", ["wrangler", "d1", "migrations", "apply", "DB", "--remote", "--env", environment]);
-    await run("npx", ["wrangler", "deploy", "--env", environment]);
+    await run("npx", ["wrangler", "deploy", "dist/server/index.js", "--config", "wrangler.jsonc", "--env", environment, "--assets", "dist/client", "--no-bundle"]);
   };
 
   await run("npm", ["run", "build"]);

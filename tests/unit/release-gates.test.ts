@@ -39,7 +39,7 @@ describe("Cloudflare release gates", () => {
     const calls: string[] = [];
     const run = vi.fn(async (command: string, args: string[]) => {
       const value = label(command, args); calls.push(value);
-      if (value.includes("deploy --env preview")) throw new Error("preview failed");
+      if (value.includes("wrangler deploy dist/server/index.js") && value.includes("--env preview")) throw new Error("preview failed");
     });
     await expect(releaseCloudflare({ target: "production", run, smokePreview: vi.fn() })).rejects.toThrow("preview failed");
     expect(calls.findIndex((value) => value.includes("d1 export") && value.includes("--env preview")))
@@ -55,6 +55,6 @@ describe("Cloudflare release gates", () => {
 
     calls.length = 0;
     await releaseCloudflare({ target: "production", run, smokePreview: async () => true });
-    expect(calls.some((value) => value.includes("deploy --env production"))).toBe(true);
+    expect(calls.some((value) => value.includes("wrangler deploy dist/server/index.js --config wrangler.jsonc --env production --assets dist/client --no-bundle"))).toBe(true);
   });
 });
