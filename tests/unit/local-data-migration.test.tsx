@@ -95,31 +95,28 @@ describe("LocalDataMigration", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("marks a successful import without immediately deleting source keys and does not prompt again", async () => {
+  it("marks a successful import per account and does not prompt again after local hydration changes", async () => {
     seedLocalData();
     vi.mocked(fetch)
       .mockImplementationOnce(() => jsonResponse({
         counts: { folders: 1, problems: 1, testCases: 1, drafts: 0, conversations: 0 },
         conflicts: [], previewFingerprint: "fp-success", expiresAt: new Date(Date.now() + 60_000).toISOString(),
       }))
-      .mockImplementationOnce(() => jsonResponse({ fingerprint: "fp-success", counts: { problems: 1 } }))
-      .mockImplementationOnce(() => jsonResponse({
-        counts: { folders: 1, problems: 1, testCases: 1, drafts: 0, conversations: 0 },
-        conflicts: [], previewFingerprint: "fp-success", expiresAt: new Date(Date.now() + 60_000).toISOString(),
-      }));
+      .mockImplementationOnce(() => jsonResponse({ fingerprint: "fp-success", counts: { problems: 1 } }));
     const first = render(<LocalDataMigration />);
     fireEvent.click(await screen.findByRole("button", { name: "导入并合并" }));
     await screen.findByText("导入完成");
-    expect(JSON.parse(localStorage.getItem("codenow-local-migration-state") || "null")).toMatchObject({ fingerprint: "fp-success" });
+    expect(JSON.parse(localStorage.getItem("codenow-local-migration-state:user-a") || "null")).toMatchObject({ fingerprint: "fp-success" });
     expect(localStorage.getItem(libraryKey)).not.toBeNull();
 
     first.unmount();
+    localStorage.setItem("codenow-theme", JSON.stringify({ state: { themeMode: "dark", editorTheme: "girl" } }));
     render(<LocalDataMigration />);
-    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(3));
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("cleans up after seven days only while the source fingerprint is unchanged", async () => {
+  it("cleans up unchanged source data after seven days without prompting again for changed data", async () => {
     seedLocalData();
     localStorage.setItem("codenow-local-migration-state", JSON.stringify({
       fingerprint: "fp-1", importedAt: new Date(Date.now() - 8 * 86_400_000).toISOString(),
@@ -135,7 +132,22 @@ describe("LocalDataMigration", () => {
       conflicts: [], previewFingerprint: "fp-modified", expiresAt: new Date(Date.now() + 60_000).toISOString(),
     }));
     render(<LocalDataMigration />);
-    expect(await screen.findByRole("dialog", { name: "导入本地数据" })).toBeTruthy();
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole("dialog")).toBeNull();
     expect(localStorage.getItem(libraryKey)).not.toBeNull();
+  });
+
+  it("does not reuse another account's completed migration", async () => {
+    seedLocalData();
+    localStorage.setItem("codenow-local-migration-state:user-a", JSON.stringify({
+      fingerprint: "fp-user-a", importedAt: new Date().toISOString(),
+      cleanupAfter: new Date(Date.now() + 86_400_000).toISOString(),
+    }));
+    useSession.mockReturnValue({ data: { user: { id: "user-b" } }, isPending: false });
+
+    render(<LocalDataMigration />);
+
+    expect(await screen.findByRole("dialog", { name: "导入本地数据" })).toBeTruthy();
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 });

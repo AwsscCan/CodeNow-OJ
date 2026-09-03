@@ -25,6 +25,7 @@ type Preview = {
 };
 type Decision = { action: "overwrite" | "duplicate" | "skip"; cloudVersion: number };
 type MigrationState = { fingerprint: string; importedAt: string; cleanupAfter: string };
+type LegacyMigrationState = MigrationState & { userId?: string };
 type View = "hidden" | "scanning" | "preview" | "committing" | "success" | "error";
 
 function collectLocalData() {
@@ -34,15 +35,36 @@ function collectLocalData() {
   }));
 }
 
-function readMigrationState(): MigrationState | null {
+function parseMigrationState(raw: string | null): LegacyMigrationState | null {
   try {
-    const value = JSON.parse(localStorage.getItem(MIGRATION_STATE_KEY) || "null") as Partial<MigrationState> | null;
+    const value = JSON.parse(raw || "null") as Partial<LegacyMigrationState> | null;
     return value && typeof value.fingerprint === "string" && typeof value.importedAt === "string" && typeof value.cleanupAfter === "string"
-      ? value as MigrationState
+      ? value as LegacyMigrationState
       : null;
   } catch {
     return null;
   }
+}
+
+function migrationStateKey(userId: string) {
+  return `${MIGRATION_STATE_KEY}:${userId}`;
+}
+
+function readMigrationState(userId: string): MigrationState | null {
+  const accountState = parseMigrationState(localStorage.getItem(migrationStateKey(userId)));
+  if (accountState) return accountState;
+
+  const legacyState = parseMigrationState(localStorage.getItem(MIGRATION_STATE_KEY));
+  if (!legacyState || (legacyState.userId && legacyState.userId !== userId)) return null;
+
+  const state = {
+    fingerprint: legacyState.fingerprint,
+    importedAt: legacyState.importedAt,
+    cleanupAfter: legacyState.cleanupAfter,
+  } satisfies MigrationState;
+  localStorage.setItem(migrationStateKey(userId), JSON.stringify(state));
+  if (!legacyState.userId) localStorage.setItem(MIGRATION_STATE_KEY, JSON.stringify({ ...state, userId }));
+  return state;
 }
 
 function wasDismissed(userId: string) {
@@ -89,6 +111,12 @@ export function LocalDataMigration() {
     if (session.isPending || !userId) return;
     void (async () => {
       await Promise.resolve();
+      const saved = readMigrationState(userId);
+      const cleanupAt = saved ? Date.parse(saved.cleanupAfter) : Number.NaN;
+      if (saved && (!Number.isFinite(cleanupAt) || cleanupAt > Date.now())) {
+        setView("hidden");
+        return;
+      }
       const parsed = parseLocalData(collectLocalData());
       if (generation !== scanGeneration.current) return;
       if (!parsed.ok || !hasImportableData(parsed.manifest)) {
@@ -106,9 +134,10 @@ export function LocalDataMigration() {
         const body = await response.json() as Preview | { message?: string };
         if (generation !== scanGeneration.current) return;
         if (!response.ok || !("previewFingerprint" in body)) throw new Error(errorMessage(body, "无法预览本地数据"));
-        const saved = readMigrationState();
-        if (saved?.fingerprint === body.previewFingerprint) {
-          if (Date.parse(saved.cleanupAfter) <= Date.now()) SOURCE_KEYS.forEach((key) => localStorage.removeItem(key));
+        if (saved) {
+          if (saved.fingerprint === body.previewFingerprint && cleanupAt <= Date.now()) {
+            SOURCE_KEYS.forEach((key) => localStorage.removeItem(key));
+          }
           setView("hidden");
           return;
         }
@@ -133,7 +162,7 @@ export function LocalDataMigration() {
   const allDecided = useMemo(() => preview?.conflicts.every((item) => Boolean(decisions[item.localProblemKey])) ?? false, [decisions, preview]);
 
   async function commit() {
-    if (!manifest || !preview || !allDecided) return;
+    if (!userId || !manifest || !preview || !allDecided) return;
     setView("committing");
     try {
       const response = await fetch("/api/imports/local-data/commit", {
@@ -144,7 +173,7 @@ export function LocalDataMigration() {
       const body = await response.json() as { message?: string };
       if (!response.ok) throw new Error(errorMessage(body, "导入失败，请重试"));
       const importedAt = new Date();
-      localStorage.setItem(MIGRATION_STATE_KEY, JSON.stringify({
+      localStorage.setItem(migrationStateKey(userId), JSON.stringify({
         fingerprint: preview.previewFingerprint,
         importedAt: importedAt.toISOString(),
         cleanupAfter: new Date(importedAt.getTime() + CLEANUP_DELAY_MS).toISOString(),
