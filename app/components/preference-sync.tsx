@@ -2,22 +2,23 @@
 
 import { useEffect, useRef } from "react";
 import { authClient } from "../lib/auth-client";
-import { useThemeStore, type EditorTheme, type ThemeMode } from "../stores/theme-store";
+import { useThemeStore, type CppFormatMode, type EditorTheme, type ThemeMode } from "../stores/theme-store";
 
 type PreferenceResponse = {
-  preferences: { themeMode: ThemeMode; editorTheme: EditorTheme };
+  preferences: { themeMode: ThemeMode; editorTheme: EditorTheme; formatMode: CppFormatMode };
   version: number;
   updatedAt: string | null;
 };
 
 function preferenceKey(preferences: PreferenceResponse["preferences"]) {
-  return `${preferences.themeMode}:${preferences.editorTheme}`;
+  return `${preferences.themeMode}:${preferences.editorTheme}:${preferences.formatMode}`;
 }
 export function PreferenceSync({ delay = 600 }: { delay?: number }) {
   const session = authClient.useSession();
   const userId = session.data?.user.id ?? null;
   const themeMode = useThemeStore((state) => state.themeMode);
   const editorTheme = useThemeStore((state) => state.editorTheme);
+  const formatMode = useThemeStore((state) => state.formatMode);
   const version = useRef(0);
   const hydratedUser = useRef<string | null>(null);
   const lastSynced = useRef("");
@@ -41,8 +42,9 @@ export function PreferenceSync({ delay = 600 }: { delay?: number }) {
         if (generation.current !== currentGeneration) return;
         version.current = body.version;
         hydratedUser.current = userId;
-        lastSynced.current = preferenceKey(body.preferences);
-        useThemeStore.setState(body.preferences);
+        const preferences = { ...body.preferences, formatMode: body.preferences.formatMode ?? "preserve" as CppFormatMode };
+        lastSynced.current = preferenceKey(preferences);
+        useThemeStore.setState(preferences);
       } catch {
         // Local persistence remains authoritative while the cloud is unavailable.
       }
@@ -51,7 +53,7 @@ export function PreferenceSync({ delay = 600 }: { delay?: number }) {
 
   useEffect(() => {
     if (!userId || hydratedUser.current !== userId) return;
-    const preferences = { themeMode, editorTheme };
+    const preferences = { themeMode, editorTheme, formatMode };
     const key = preferenceKey(preferences);
     if (key === lastSynced.current) return;
     const currentGeneration = generation.current;
@@ -68,8 +70,9 @@ export function PreferenceSync({ delay = 600 }: { delay?: number }) {
           if (!latest.ok || generation.current !== currentGeneration) return;
           const body = await latest.json() as PreferenceResponse;
           version.current = body.version;
-          lastSynced.current = preferenceKey(body.preferences);
-          useThemeStore.setState(body.preferences);
+          const preferences = { ...body.preferences, formatMode: body.preferences.formatMode ?? "preserve" as CppFormatMode };
+          lastSynced.current = preferenceKey(preferences);
+          useThemeStore.setState(preferences);
           return;
         }
         if (!response.ok) return;
@@ -81,7 +84,7 @@ export function PreferenceSync({ delay = 600 }: { delay?: number }) {
       }
     }, delay);
     return () => clearTimeout(timer);
-  }, [delay, editorTheme, themeMode, userId]);
+  }, [delay, editorTheme, formatMode, themeMode, userId]);
 
   return null;
 }

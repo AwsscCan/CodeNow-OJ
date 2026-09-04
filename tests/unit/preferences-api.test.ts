@@ -35,7 +35,7 @@ describe("safe preference API", () => {
     const response = await createPreferenceHandlers(resolve).GET(request());
     expect(response.status).toBe(200);
     expect(response.headers.get("Cache-Control")).toBe("private, no-store");
-    expect(await response.json()).toEqual({ preferences: { themeMode: "light", editorTheme: "light" }, version: 0, updatedAt: null });
+    expect(await response.json()).toEqual({ preferences: { themeMode: "light", editorTheme: "light", formatMode: "preserve" }, version: 0, updatedAt: null });
   });
 
   it("conditionally creates and updates isolated user preferences", async () => {
@@ -57,6 +57,14 @@ describe("safe preference API", () => {
     const stale = await handlers.PATCH(request("PATCH", { version: 0, patch: { themeMode: "girl" } }));
     expect(stale.status).toBe(409);
     expect(await stale.json()).toMatchObject({ error: { code: "VERSION_CONFLICT", currentVersion: 1 } });
+  });
+
+  it("把格式化默认模式写入安全偏好并在读取时保留", async () => {
+    const handlers = createPreferenceHandlers(resolve);
+    const created = await handlers.PATCH(request("PATCH", { version: 0, patch: { formatMode: "full" } }));
+    expect(created.status).toBe(200);
+    expect((await created.json()).preferences).toMatchObject({ formatMode: "full" });
+    expect(await (await handlers.GET(request())).json()).toMatchObject({ preferences: { formatMode: "full" } });
   });
 
   it.each([

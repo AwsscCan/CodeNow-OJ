@@ -35,6 +35,7 @@ describe("AI settings page", () => {
     expect(await screen.findByDisplayValue("https://llm.example.com/v1")).toBeTruthy();
     expect(screen.getByLabelText("API Key")).toHaveProperty("value", "");
     expect(screen.getByText("已保存密钥")).toBeTruthy();
+    expect(screen.getByLabelText("默认代码格式化")).toBeTruthy();
   });
 
   it("saves the selected model separately and can refresh the model list", async () => {

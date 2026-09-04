@@ -19,6 +19,7 @@ const encoder = new TextEncoder();
 const difficulties = ["入门", "普及", "提高"] as const;
 const testCategories = ["boundary", "special", "ordinary", "adversarial", "performance", "sample", "manual"] as const;
 const themes = ["light", "dark", "girl"] as const;
+const formatModes = ["preserve", "full"] as const;
 const aiProviders = ["deepseek", "openai", "custom"] as const;
 const messageRoles = ["user", "assistant"] as const;
 const extractionStatuses = ["complete", "needs_review"] as const;
@@ -284,6 +285,10 @@ export function parseLocalData(raw: unknown): LocalDataParseResult {
     if (preferences.editorTheme === undefined) {
       const editorTheme = readStore(root, "codenow-editor-theme", "codeforge-editor-theme", true);
       readThemePreference(editorTheme, "editorTheme", preferences, warnings);
+    }
+    if (isRecord(theme) && theme.formatMode !== undefined) {
+      if (isEnum(theme.formatMode, formatModes)) preferences.formatMode = theme.formatMode;
+      else warnings.push("formatMode was ignored because it has an invalid value");
     }
 
     const selectedFolder = typeof libraryState.selectedFolder === "string" ? normalizeFolderPath(libraryState.selectedFolder) : null;

@@ -333,6 +333,21 @@ describe("对话框展示思考内容(reasoning)", () => {
   });
 });
 
+describe("AI 回复 Markdown 渲染", () => {
+  it("assistant 回复渲染标题、列表和代码块，且不再作为纯文本 p", () => {
+    useAiStore.setState({ chatMessages: [{ role: "assistant", content: "## 修复建议\n\n- 检查边界\n\n```cpp\nint answer = 1;\n```" }] });
+    const { container, getByText } = render(<ProblemPage />);
+    fireEvent.click(getByText("◈ 问 AI"));
+    const markdown = container.querySelector(".chat-message.assistant .chat-markdown");
+    expect(markdown, "assistant 回复应通过 SafeMarkdown 渲染").toBeTruthy();
+    expect(markdown!.querySelector("h2")?.textContent).toBe("修复建议");
+    expect(markdown!.querySelector("li")?.textContent).toContain("检查边界");
+    expect(markdown!.querySelector("pre code")?.textContent).toContain("int answer = 1;");
+    expect(markdown!.querySelector("script")).toBeNull();
+    useAiStore.setState({ chatMessages: [] });
+  });
+});
+
 describe("用户记忆池：沉淀与注入", () => {
   beforeEach(() => {
     useMemoryStore.setState({ memories: [] });

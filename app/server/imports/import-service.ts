@@ -72,14 +72,16 @@ function validateManifest(manifest: LocalDataManifestV1): ManifestValidationErro
   const problemKeys = new Set<string>();
   const preferences = record(manifest.preferences);
   const allowedPreferenceKeys = new Set([
-    "themeMode", "editorTheme", "aiProvider", "aiEndpoint", "aiModel", "workspaceSplit",
+    "themeMode", "editorTheme", "formatMode", "aiProvider", "aiEndpoint", "aiModel", "workspaceSplit",
     "selectedFolder", "collapsedFolders", "folderOrder", "includeSubfolders",
   ]);
   const themes = new Set(["light", "dark", "girl"]);
+  const formatModes = new Set(["preserve", "full"]);
   const providers = new Set(["deepseek", "openai", "custom"]);
   if (!preferences || Object.keys(preferences).some((key) => !allowedPreferenceKeys.has(key))
     || (preferences.themeMode !== undefined && !themes.has(String(preferences.themeMode)))
     || (preferences.editorTheme !== undefined && !themes.has(String(preferences.editorTheme)))
+    || (preferences.formatMode !== undefined && !formatModes.has(String(preferences.formatMode)))
     || (preferences.aiProvider !== undefined && !providers.has(String(preferences.aiProvider)))
     || [preferences.aiEndpoint, preferences.aiModel, preferences.selectedFolder].some((value) => value !== undefined && typeof value !== "string")
     || (preferences.workspaceSplit !== undefined && (typeof preferences.workspaceSplit !== "number" || !Number.isFinite(preferences.workspaceSplit)))
@@ -318,11 +320,11 @@ export function createImportService(db: Database) {
         },
       };
       const importRow = { id: crypto.randomUUID(), userId, idempotencyKey, fingerprint, resultJson: JSON.stringify(summary), createdAt: now };
-      const preferenceRow = input.preferences.themeMode || input.preferences.editorTheme ? {
+      const preferenceRow = input.preferences.themeMode || input.preferences.editorTheme || input.preferences.formatMode ? {
         userId,
         themeMode: input.preferences.themeMode ?? "light",
         editorTheme: input.preferences.editorTheme ?? "light",
-        settingsJson: "{}",
+        settingsJson: JSON.stringify(input.preferences.formatMode ? { formatMode: input.preferences.formatMode } : {}),
         version: 1,
         createdAt: now,
         updatedAt: now,

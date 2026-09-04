@@ -6,7 +6,7 @@ import { Toast } from "../components/toast";
 import { useToast } from "../hooks/use-toast";
 import { authClient } from "../lib/auth-client";
 import { useAiStore, type AiProvider, type PublicAiSettings } from "../stores/ai-store";
-import { useThemeStore } from "../stores/theme-store";
+import { useThemeStore, type CppFormatMode } from "../stores/theme-store";
 import { applyCcSwitchProvider, fetchCcSwitchCatalog, type CcSwitchCatalog } from "../lib/ccswitch-client";
 
 const presets: Record<Exclude<AiProvider, "ccswitch">, { endpoint: string; model: string }> = {
@@ -206,6 +206,13 @@ export default function SettingsPage() {
             <div className="ccswitch-link-head"><div><b>CCSwitch 本机联动</b><small>{ccSwitchStatus}</small></div><button type="button" disabled={busy} onClick={() => void connectCcSwitch()}>{ccSwitchCatalog ? "重新读取" : "连接本机"}</button></div>
             {ccSwitchCatalog && <><div className="ccswitch-kind-switch" role="tablist" aria-label="CCSwitch 协议"><button type="button" className={ccSwitchKind === "claude" ? "active" : ""} onClick={() => { setCcSwitchKind("claude"); setCcSwitchProviderId(""); setCcSwitchModel(""); }}>Claude</button><button type="button" className={ccSwitchKind === "codex" ? "active" : ""} onClick={() => { setCcSwitchKind("codex"); setCcSwitchProviderId(""); setCcSwitchModel(""); }}>Codex</button></div><div className="ccswitch-link-controls"><select aria-label="CCSwitch Provider" value={ccSwitchProviderId} onChange={(event) => { const provider = ccSwitchCatalog.providers?.find((item) => item.id === event.target.value); setCcSwitchProviderId(event.target.value); setCcSwitchModel(provider?.model_id ?? provider?.models?.[0] ?? ""); setCcSwitchKind(provider?.kind ?? ccSwitchKind); }}><option value="">选择 Provider</option>{(ccSwitchCatalog.providers ?? []).filter((provider) => (provider.kind ?? "claude") === ccSwitchKind).map((provider) => <option key={`${provider.kind ?? "claude"}-${provider.id}`} value={provider.id} disabled={provider.available === false}>{provider.name}{provider.is_current ? " · 当前" : ""}</option>)}</select><select aria-label="CCSwitch 模型" value={ccSwitchModel} onChange={(event) => setCcSwitchModel(event.target.value)}><option value="">选择模型</option>{[...new Set((ccSwitchCatalog.providers?.find((item) => item.id === ccSwitchProviderId)?.models ?? []).concat(ccSwitchModel).filter(Boolean))].map((model) => <option key={model}>{model}</option>)}</select><button type="button" disabled={busy || !ccSwitchProviderId || !ccSwitchModel} onClick={() => void applyConnectedCcSwitch()}>验证并应用</button></div></>}
             <small className="ccswitch-link-note">从本机 CCSwitch 数据库读取当前 Provider，并由 CCSwitch 自己验证路由；不会把密钥展示在页面。</small>
+          </section>
+          <section className="format-preference-card" aria-label="代码格式化偏好">
+            <div className="field-caption"><label htmlFor="cpp-format-mode">默认代码格式化</label><small>编辑器工具栏将使用此模式，也可随时切换</small></div>
+            <select id="cpp-format-mode" value={theme.formatMode} onChange={(event) => theme.setFormatMode(event.target.value as CppFormatMode)}>
+              <option value="preserve">保留风格：只整理空白与缩进</option>
+              <option value="full">完全规范：拆分逻辑句并统一排版</option>
+            </select>
           </section>
           <div className="settings-actions"><button type="button" onClick={() => fileRef.current?.click()}>兼容导入 JSON</button><button type="submit" disabled={busy}>{busy ? "处理中…" : "保存设置"}</button></div>
           <input ref={fileRef} className="visually-hidden" type="file" accept="application/json,.json" aria-label="导入 CCSwitch 配置" onChange={(event) => void importCcSwitch(event.target.files?.[0])} />

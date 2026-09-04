@@ -25,7 +25,7 @@ import { useMascotStore } from "../../stores/mascot-store";
 import { distillJudgeMemory, distillQuestionMemory, useMemoryStore } from "../../stores/memory-store";
 import { useProblemStore } from "../../stores/problem-store";
 import type { Problem, SubmissionRecord } from "../../stores/problem-store";
-import { useThemeStore } from "../../stores/theme-store";
+import { useThemeStore, type CppFormatMode } from "../../stores/theme-store";
 
 const CppEditor = lazy(() => import("../../CppEditor").then((m) => ({ default: m.CppEditor })));
 
@@ -601,7 +601,10 @@ export default function ProblemPage() {
             <div className="file-tab"><span>C++</span> main.cpp <i>●</i></div>
             <div>
               <select aria-label="编程语言" value="cpp17" disabled><option value="cpp17">GNU C++17 · GCC</option></select>
-              <button title="格式化代码 (Shift+Alt+F)" onClick={() => { store.setCode(formatCppCode(store.code)); toast("代码已格式化"); }}>↻ 格式化</button>
+              <select aria-label="格式化模式" value={theme.formatMode} onChange={(event) => theme.setFormatMode(event.target.value as CppFormatMode)} title="选择默认格式化模式">
+                <option value="preserve">保留风格</option><option value="full">完全规范</option>
+              </select>
+              <button title="格式化代码 (Shift+Alt+F)" onClick={() => { store.setCode(formatCppCode(store.code, { mode: theme.formatMode })); toast(theme.formatMode === "full" ? "代码已完全规范化" : "代码已按原风格整理"); }}>↻ 格式化</button>
               <button title="重置 C++ 模板" onClick={() => { store.resetCode(); toast("C++ 模板已重置"); }}>↺</button>
               <label className="editor-theme-picker" title="切换编辑器主题">
                 <span aria-hidden="true">◐</span>
@@ -613,7 +616,7 @@ export default function ProblemPage() {
           </div>
           <div ref={editorAreaRef} data-mascot-drop-zone="editor" className="editor-area">
             <Suspense fallback={<div className="monaco-loading"><span>C++</span><b>正在加载智能编辑器…</b></div>}>
-              <CppEditor value={store.code} themeMode={theme.editorTheme} compilerDiagnostic={store.compilerDiagnostic} onChange={handleEditorChange} onCursorChange={handleCursorChange} />
+              <CppEditor value={store.code} themeMode={theme.editorTheme} formatMode={theme.formatMode} compilerDiagnostic={store.compilerDiagnostic} onChange={handleEditorChange} onCursorChange={handleCursorChange} />
             </Suspense>
           </div>
           <div className="console-panel">
@@ -729,7 +732,7 @@ export default function ProblemPage() {
             <span>{msg.role === "user" ? "我" : isTakagi ? <img src="/codenow/study-smile.jpg" alt="" aria-hidden="true" loading="lazy" decoding="async" /> : "AI"}</span>
             <div className="chat-message-body">
               {msg.role === "assistant" && msg.reasoning && <details className="chat-reasoning"><summary>{isTakagi ? "高木的小心思" : "思考过程"}</summary><p>{msg.reasoning}</p></details>}
-              <p>{msg.content}</p>
+              {msg.role === "assistant" ? <SafeMarkdown className="chat-markdown" value={msg.content} /> : <p>{msg.content}</p>}
             </div>
           </div>)}
           {chatBusy && <div className="chat-message assistant"><span>{isTakagi ? <img src="/codenow/study-smile.jpg" alt="" aria-hidden="true" /> : "AI"}</span><p className="thinking">{isTakagi ? "……让我想想。" : "正在思考…"}</p></div>}

@@ -13,6 +13,53 @@ type DiffOp =
   | { type: "removed"; value: string; line: number }
   | { type: "added"; value: string; line: number };
 
+type LogicalLine = { value: string; line: number };
+
+function expandLogicalLines(source: string): LogicalLine[] {
+  const result: LogicalLine[] = [];
+  let inBlockComment = false;
+  for (const [lineIndex, raw] of source.replace(/\r\n/g, "\n").split("\n").entries()) {
+    let buffer = "";
+    let state: "normal" | "string" | "char" | "block" = inBlockComment ? "block" : "normal";
+    let parenDepth = 0;
+    let bracketDepth = 0;
+    let emitted = false;
+    const flush = () => {
+      if (buffer.trim()) {
+        result.push({ value: buffer.trim(), line: lineIndex + 1 });
+        emitted = true;
+      }
+      buffer = "";
+    };
+    for (let index = 0; index < raw.length; index += 1) {
+      const ch = raw[index];
+      const next = raw[index + 1];
+      const prev = raw[index - 1];
+      if (state === "block") {
+        buffer += ch;
+        if (ch === "*" && next === "/") { buffer += next; index += 1; state = "normal"; }
+        continue;
+      }
+      if (state === "string") { buffer += ch; if (ch === '"' && prev !== "\\") state = "normal"; continue; }
+      if (state === "char") { buffer += ch; if (ch === "'" && prev !== "\\") state = "normal"; continue; }
+      if (ch === '"') { buffer += ch; state = "string"; continue; }
+      if (ch === "'") { buffer += ch; state = "char"; continue; }
+      if (ch === "/" && next === "/") { buffer += raw.slice(index); break; }
+      if (ch === "/" && next === "*") { buffer += ch + next; index += 1; state = "block"; continue; }
+      if (ch === "(") parenDepth += 1;
+      else if (ch === ")") parenDepth = Math.max(0, parenDepth - 1);
+      else if (ch === "[") bracketDepth += 1;
+      else if (ch === "]") bracketDepth = Math.max(0, bracketDepth - 1);
+      buffer += ch;
+      if (ch === ";" && parenDepth === 0 && bracketDepth === 0 && !/^\s*(?:\/\/|\/\*)/.test(raw.slice(index + 1))) flush();
+    }
+    flush();
+    if (!emitted) result.push({ value: raw, line: lineIndex + 1 });
+    inBlockComment = state === "block";
+  }
+  return result;
+}
+
 type BlockAlignment =
   | { type: "changed"; left: Extract<DiffOp, { type: "removed" }>; right: Extract<DiffOp, { type: "added" }> }
   | { type: "removed"; left: Extract<DiffOp, { type: "removed" }> }
@@ -116,41 +163,41 @@ function alignChangedBlock(
   return alignment.reverse();
 }
 
-function greedyDiff(left: string[], right: string[]): CodeDiffRow[] {
+function greedyDiff(left: LogicalLine[], right: LogicalLine[]): CodeDiffRow[] {
   const rows: CodeDiffRow[] = [];
   let i = 0;
   let j = 0;
   while (i < left.length || j < right.length) {
-    if (left[i] === right[j]) {
-      rows.push({ kind: "equal", left: left[i] ?? "", right: right[j] ?? "", leftLine: i + 1, rightLine: j + 1 });
+    if (left[i]?.value === right[j]?.value) {
+      rows.push({ kind: "equal", left: left[i]?.value ?? "", right: right[j]?.value ?? "", leftLine: left[i]?.line ?? null, rightLine: right[j]?.line ?? null });
       i += 1;
       j += 1;
-    } else if (i < left.length && j < right.length && left[i + 1] === right[j]) {
-      rows.push({ kind: "removed", left: left[i], right: null, leftLine: i + 1, rightLine: null });
+    } else if (i < left.length && j < right.length && left[i + 1]?.value === right[j]?.value) {
+      rows.push({ kind: "removed", left: left[i].value, right: null, leftLine: left[i].line, rightLine: null });
       i += 1;
-    } else if (i < left.length && j < right.length && left[i] === right[j + 1]) {
-      rows.push({ kind: "added", left: null, right: right[j], leftLine: null, rightLine: j + 1 });
+    } else if (i < left.length && j < right.length && left[i]?.value === right[j + 1]?.value) {
+      rows.push({ kind: "added", left: null, right: right[j].value, leftLine: null, rightLine: right[j].line });
       j += 1;
     } else if (i < left.length && j < right.length) {
-      rows.push({ kind: "changed", left: left[i], right: right[j], leftLine: i + 1, rightLine: j + 1 });
+      rows.push({ kind: "changed", left: left[i].value, right: right[j].value, leftLine: left[i].line, rightLine: right[j].line });
       i += 1;
       j += 1;
     } else if (i < left.length) {
       i += 1;
-      rows.push({ kind: "removed", left: left[i - 1], right: null, leftLine: i, rightLine: null });
+      rows.push({ kind: "removed", left: left[i - 1].value, right: null, leftLine: left[i - 1].line, rightLine: null });
     } else {
       j += 1;
-      rows.push({ kind: "added", left: null, right: right[j - 1], leftLine: null, rightLine: j });
+      rows.push({ kind: "added", left: null, right: right[j - 1].value, leftLine: null, rightLine: right[j - 1].line });
     }
   }
   return rows;
 }
 
-function lcsOperations(left: string[], right: string[]): DiffOp[] {
+function lcsOperations(left: LogicalLine[], right: LogicalLine[]): DiffOp[] {
   const table = Array.from({ length: left.length + 1 }, () => new Uint32Array(right.length + 1));
   for (let i = left.length - 1; i >= 0; i -= 1) {
     for (let j = right.length - 1; j >= 0; j -= 1) {
-      table[i][j] = left[i] === right[j]
+      table[i][j] = left[i].value === right[j].value
         ? table[i + 1][j + 1] + 1
         : Math.max(table[i + 1][j], table[i][j + 1]);
     }
@@ -160,27 +207,27 @@ function lcsOperations(left: string[], right: string[]): DiffOp[] {
   let i = 0;
   let j = 0;
   while (i < left.length && j < right.length) {
-    if (left[i] === right[j]) {
-      operations.push({ type: "equal", value: left[i], leftLine: i + 1, rightLine: j + 1 });
+    if (left[i].value === right[j].value) {
+      operations.push({ type: "equal", value: left[i].value, leftLine: left[i].line, rightLine: right[j].line });
       i += 1;
       j += 1;
     } else if (table[i + 1][j] >= table[i][j + 1]) {
-      operations.push({ type: "removed", value: left[i], line: i + 1 });
+      operations.push({ type: "removed", value: left[i].value, line: left[i].line });
       i += 1;
     } else {
-      operations.push({ type: "added", value: right[j], line: j + 1 });
+      operations.push({ type: "added", value: right[j].value, line: right[j].line });
       j += 1;
     }
   }
-  while (i < left.length) operations.push({ type: "removed", value: left[i], line: i++ + 1 });
-  while (j < right.length) operations.push({ type: "added", value: right[j], line: j++ + 1 });
+  while (i < left.length) operations.push({ type: "removed", value: left[i].value, line: left[i++].line });
+  while (j < right.length) operations.push({ type: "added", value: right[j].value, line: right[j++].line });
   return operations;
 }
 
 /** 生成稳定的行级差异；连续插入/删除按最小范围配对，保持两栏锚点对齐。 */
 export function buildCodeDiff(before: string, after: string): CodeDiffRow[] {
-  const left = before.replace(/\r\n/g, "\n").split("\n");
-  const right = after.replace(/\r\n/g, "\n").split("\n");
+  const left = expandLogicalLines(before);
+  const right = expandLogicalLines(after);
   if ((left.length + 1) * (right.length + 1) > MAX_LCS_CELLS) return greedyDiff(left, right);
 
   const operations = lcsOperations(left, right);

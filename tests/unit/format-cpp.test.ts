@@ -50,7 +50,7 @@ describe("formatCppCode - 字面量与注释保护（当前存在缺陷，必须
   });
 
   it("字符串外照常格式化，字符串内保持原样", () => {
-    expect(formatCppCode('int n=3;cout<<"x=y";')).toBe('int n = 3;cout << "x=y";');
+    expect(formatCppCode('int n=3;cout<<"x=y";')).toBe('int n = 3;\ncout << "x=y";');
   });
 });
 
@@ -67,11 +67,31 @@ describe("formatCppCode - 无花括号控制流缩进", () => {
 
   it("支持嵌套的无花括号控制流", () => {
     const input = "for (int i=0;i<n;i++)\nif (a[i]>0)\nsum+=a[i];\ncout<<sum;";
-    const output = "for (int i = 0;i<n;i++)\n    if (a[i]>0)\n        sum += a[i];\ncout << sum;";
+    const output = "for (int i = 0; i<n; i++)\n    if (a[i]>0)\n        sum += a[i];\ncout << sum;";
     expect(formatCppCode(input)).toBe(output);
   });
 
   it("同一行控制语句已有主体时不额外影响下一行", () => {
     expect(formatCppCode("if (ok) run();\ndone();")).toBe("if (ok) run();\ndone();");
+  });
+});
+
+describe("formatCppCode - 完全规范与保留风格模式", () => {
+  it("完全规范模式拆分同一行的多个顶层逻辑句，并整理参数与二元加法", () => {
+    expect(formatCppCode("merge_sort(q,l,mid);merge_sort(q,mid+1,r);", { mode: "full" })).toBe(
+      "merge_sort(q, l, mid);\nmerge_sort(q, mid + 1, r);",
+    );
+  });
+
+  it("完全规范模式不会拆 for 头、字符串或注释中的分号", () => {
+    expect(formatCppCode('for(int i=0;i<n;i++){ puts("a;b"); } // x;y', { mode: "full" })).toBe(
+      'for (int i = 0; i<n; i++) {\n    puts("a;b");\n} // x;y',
+    );
+  });
+
+  it("保留风格模式不拆原有单行语句，但仍整理运算符空白", () => {
+    expect(formatCppCode("merge_sort(q,l,mid);merge_sort(q,mid+1,r);", { mode: "preserve" })).toBe(
+      "merge_sort(q, l, mid); merge_sort(q, mid + 1, r);",
+    );
   });
 });

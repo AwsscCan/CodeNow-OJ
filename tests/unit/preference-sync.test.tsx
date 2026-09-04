@@ -11,7 +11,7 @@ import { useThemeStore } from "../../app/stores/theme-store";
 
 beforeEach(() => {
   localStorage.clear();
-  useThemeStore.setState({ themeMode: "light", editorTheme: "light" });
+    useThemeStore.setState({ themeMode: "light", editorTheme: "light", formatMode: "preserve" });
   vi.stubGlobal("fetch", vi.fn());
 });
 
@@ -41,8 +41,8 @@ describe("PreferenceSync", () => {
   it("hydrates after login and debounces only safe theme fields back to the cloud", async () => {
     useSession.mockReturnValue({ data: { user: { id: "user-a" } }, isPending: false });
     vi.mocked(fetch)
-      .mockResolvedValueOnce(response({ preferences: { themeMode: "dark", editorTheme: "girl" }, version: 3, updatedAt: "now" }))
-      .mockResolvedValueOnce(response({ preferences: { themeMode: "light", editorTheme: "girl" }, version: 4, updatedAt: "later" }));
+      .mockResolvedValueOnce(response({ preferences: { themeMode: "dark", editorTheme: "girl", formatMode: "preserve" }, version: 3, updatedAt: "now" }))
+      .mockResolvedValueOnce(response({ preferences: { themeMode: "light", editorTheme: "girl", formatMode: "preserve" }, version: 4, updatedAt: "later" }));
     render(<PreferenceSync delay={0} />);
     await waitFor(() => expect(useThemeStore.getState()).toMatchObject({ themeMode: "dark", editorTheme: "girl" }));
     expect(fetch).toHaveBeenCalledTimes(1);
@@ -51,7 +51,7 @@ describe("PreferenceSync", () => {
     await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
     const [, init] = vi.mocked(fetch).mock.calls[1];
     expect(init?.method).toBe("PATCH");
-    expect(JSON.parse(String(init?.body))).toEqual({ version: 3, patch: { themeMode: "light", editorTheme: "girl" } });
+    expect(JSON.parse(String(init?.body))).toEqual({ version: 3, patch: { themeMode: "light", editorTheme: "girl", formatMode: "preserve" } });
     expect(String(init?.body)).not.toMatch(/apiKey|token|secret/i);
   });
 });

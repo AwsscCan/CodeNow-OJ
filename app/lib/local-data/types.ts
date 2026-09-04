@@ -37,6 +37,7 @@ export type LocalDataDraftV1 = {
 export type LocalDataPreferencesV1 = {
   themeMode?: LocalDataThemeV1;
   editorTheme?: LocalDataThemeV1;
+  formatMode?: "preserve" | "full";
   aiProvider?: LocalDataAiProviderV1;
   aiEndpoint?: string;
   aiModel?: string;

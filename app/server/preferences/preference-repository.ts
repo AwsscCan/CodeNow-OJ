@@ -4,13 +4,14 @@ import { createLocalDb } from "../../../db/client";
 import { userPreferences } from "../../../db/schema";
 
 type RepositoryDb = ReturnType<typeof createLocalDb>;
-export type SafePreferences = { themeMode: "light" | "dark" | "girl"; editorTheme: "light" | "dark" | "girl" };
+export type SafePreferences = { themeMode: "light" | "dark" | "girl"; editorTheme: "light" | "dark" | "girl"; formatMode: "preserve" | "full" };
 export type PreferenceValue = { preferences: SafePreferences; version: number; updatedAt: string | null };
 export type PreferenceResult =
   | { ok: true; value: PreferenceValue }
   | { ok: false; status: 400 | 409; code: string; message: string; currentVersion?: number; updatedAt?: string };
 
 const themes = new Set(["light", "dark", "girl"]);
+const formatModes = new Set(["preserve", "full"]);
 const sensitiveKey = /(apikey|token|secret|password|credential)/i;
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -23,11 +24,22 @@ function containsSensitiveField(value: unknown): boolean {
 }
 
 function publicValue(row?: typeof userPreferences.$inferSelect): PreferenceValue {
+  let settings: Record<string, unknown> = {};
+  if (row?.settingsJson) {
+    try {
+      const parsed = JSON.parse(row.settingsJson);
+      if (record(parsed)) settings = parsed;
+    } catch { /* legacy malformed settings fall back to defaults */ }
+  }
   return row ? {
-    preferences: { themeMode: row.themeMode as SafePreferences["themeMode"], editorTheme: row.editorTheme as SafePreferences["editorTheme"] },
+    preferences: {
+      themeMode: row.themeMode as SafePreferences["themeMode"],
+      editorTheme: row.editorTheme as SafePreferences["editorTheme"],
+      formatMode: formatModes.has(String(settings.formatMode)) ? settings.formatMode as SafePreferences["formatMode"] : "preserve",
+    },
     version: row.version,
     updatedAt: row.updatedAt.toISOString(),
-  } : { preferences: { themeMode: "light", editorTheme: "light" }, version: 0, updatedAt: null };
+  } : { preferences: { themeMode: "light", editorTheme: "light", formatMode: "preserve" }, version: 0, updatedAt: null };
 }
 
 export function createPreferenceRepository(db: Database) {
@@ -59,9 +71,9 @@ export function createPreferenceRepository(db: Database) {
       if (containsSensitiveField(patch)) {
         return { ok: false, status: 400, code: "SENSITIVE_FIELD", message: "Sensitive fields cannot be synced" };
       }
-      if (Object.keys(patch).some((key) => key !== "themeMode" && key !== "editorTheme")
-        || Object.values(patch).some((value) => typeof value !== "string" || !themes.has(value))) {
-        return { ok: false, status: 400, code: "INVALID_PREFERENCES", message: "Only valid themeMode and editorTheme values are allowed" };
+      if (Object.keys(patch).some((key) => !["themeMode", "editorTheme", "formatMode"].includes(key))
+        || Object.entries(patch).some(([key, value]) => typeof value !== "string" || (key === "formatMode" ? !formatModes.has(value) : !themes.has(value)))) {
+        return { ok: false, status: 400, code: "INVALID_PREFERENCES", message: "Only valid themeMode, editorTheme and formatMode values are allowed" };
       }
       const expectedVersion = body.version as number;
       const existing = await current(userId);
@@ -73,7 +85,7 @@ export function createPreferenceRepository(db: Database) {
             userId,
             themeMode: typeof patch.themeMode === "string" ? patch.themeMode : "light",
             editorTheme: typeof patch.editorTheme === "string" ? patch.editorTheme : "light",
-            settingsJson: "{}", version: 1, createdAt: now, updatedAt: now,
+            settingsJson: JSON.stringify({ formatMode: patch.formatMode ?? "preserve" }), version: 1, createdAt: now, updatedAt: now,
           }).returning();
           return { ok: true, value: publicValue(created) };
         } catch {
@@ -81,9 +93,16 @@ export function createPreferenceRepository(db: Database) {
         }
       }
       if (existing.version !== expectedVersion) return conflict(existing);
+      let existingSettings: Record<string, unknown> = {};
+      try {
+        const parsed = JSON.parse(existing.settingsJson);
+        if (record(parsed)) existingSettings = parsed;
+      } catch { /* legacy malformed settings fall back to defaults */ }
+      if (patch.formatMode !== undefined) existingSettings.formatMode = patch.formatMode;
       const [updated] = await database.update(userPreferences).set({
         themeMode: typeof patch.themeMode === "string" ? patch.themeMode : existing.themeMode,
         editorTheme: typeof patch.editorTheme === "string" ? patch.editorTheme : existing.editorTheme,
+        settingsJson: JSON.stringify(existingSettings),
         version: expectedVersion + 1,
         updatedAt: new Date(),
       }).where(and(eq(userPreferences.userId, userId), eq(userPreferences.version, expectedVersion))).returning();

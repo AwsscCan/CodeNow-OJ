@@ -61,4 +61,14 @@ describe("code diff", () => {
       { kind: "equal", left: "end", right: "end", leftLine: 5, rightLine: 4 },
     ]);
   });
+
+  it("按逻辑句对齐旧代码一行多句与新代码拆行的情况", () => {
+    expect(buildCodeDiff(
+      "merge_sort(q,l,mid);merge_sort(q,mid+1,r);",
+      "merge_sort(q, l, mid);\nmerge_sort(q, mid + 1, r);",
+    )).toEqual([
+      { kind: "changed", left: "merge_sort(q,l,mid);", right: "merge_sort(q, l, mid);", leftLine: 1, rightLine: 1 },
+      { kind: "changed", left: "merge_sort(q,mid+1,r);", right: "merge_sort(q, mid + 1, r);", leftLine: 1, rightLine: 2 },
+    ]);
+  });
 });

@@ -5,11 +5,12 @@ import type { editor as MonacoEditor, languages as MonacoLanguages, Position, Ra
 import { memo, useEffect, useRef } from "react";
 import { computeLocalDiagnostics, parseCompilerLog, type Diagnostic } from "./lib/cpp-diagnostics";
 import { collectCppSymbols } from "./lib/cpp-symbols";
-import { formatCppCode } from "./lib/format-cpp";
+import { formatCppCode, type CppFormatMode } from "./lib/format-cpp";
 
 loader.config({ paths: { vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.56.0/min/vs" } });
 
 let configured = false;
+let activeFormatMode: CppFormatMode = "full";
 
 const cppControlKeywords = [
   "if", "else", "switch", "case", "default", "for", "while", "do", "break", "continue", "return", "goto", "try", "catch", "throw",
@@ -343,7 +344,7 @@ function configureCpp(monaco: Monaco) {
     displayName: "CodeNow C++ Formatter",
     async provideDocumentFormattingEdits(model: MonacoEditor.ITextModel) {
       const text = model.getValue();
-      const formattedText = formatCppCode(text);
+      const formattedText = formatCppCode(text, { mode: activeFormatMode });
       if (formattedText === text) return [];
       return [{
         range: model.getFullModelRange(),
@@ -382,12 +383,14 @@ const getCompilerMarkers = (value: string, diagnostic: string, monaco: Monaco) =
 type Props = {
   value: string;
   themeMode: "light" | "dark" | "girl";
+  formatMode?: CppFormatMode;
   compilerDiagnostic: string;
   onChange: (value: string) => void;
   onCursorChange: (line: number, column: number) => void;
 };
 
-export const CppEditor = memo(function CppEditor({ value, themeMode, compilerDiagnostic, onChange, onCursorChange }: Props) {
+export const CppEditor = memo(function CppEditor({ value, themeMode, formatMode = "full", compilerDiagnostic, onChange, onCursorChange }: Props) {
+  activeFormatMode = formatMode;
   const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<Monaco | null>(null);
   const localMarkerTimer = useRef<number | null>(null);
@@ -451,7 +454,8 @@ export const CppEditor = memo(function CppEditor({ value, themeMode, compilerDia
       automaticLayout: true,
       fontFamily: '"Cascadia Code", "JetBrains Mono", Consolas, monospace',
       fontSize: 13,
-      fontLigatures: true,
+      // Keep operators such as >= and <= visibly ASCII; ligatures turn them into ≥/≤.
+      fontLigatures: false,
       lineHeight: 21,
       minimap: { enabled: false },
       quickSuggestions: { other: true, comments: false, strings: false },
