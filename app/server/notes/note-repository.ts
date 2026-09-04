@@ -273,8 +273,18 @@ export function createNoteRepository(db: Database) {
       const cursorId = separator > 0 ? options.cursor!.slice(separator + 1) : "";
       const validCursor = cursorDate && !Number.isNaN(cursorDate.getTime());
       const conditions = [eq(notes.userId, userId), isNull(notes.deletedAt)];
-      if (options.problemRef) conditions.push(eq(notes.problemRef, options.problemRef));
-      if (options.problemKind === "private" || options.problemKind === "public") conditions.push(eq(notes.problemKind, options.problemKind));
+      if (options.problemRef) {
+        const refConditions = [eq(noteProblemRefs.userId, userId), eq(noteProblemRefs.problemRef, options.problemRef)];
+        if (options.problemKind === "private" || options.problemKind === "public") refConditions.push(eq(noteProblemRefs.problemKind, options.problemKind));
+        const referencedNotes = await database.select({ noteId: noteProblemRefs.noteId }).from(noteProblemRefs).where(and(...refConditions));
+        const referencedNoteIds = referencedNotes.map((row) => row.noteId);
+        const directMatch = options.problemKind === "private" || options.problemKind === "public"
+          ? and(eq(notes.problemRef, options.problemRef), eq(notes.problemKind, options.problemKind))!
+          : eq(notes.problemRef, options.problemRef);
+        conditions.push(referencedNoteIds.length ? or(directMatch, inArray(notes.id, referencedNoteIds))! : directMatch);
+      } else if (options.problemKind === "private" || options.problemKind === "public") {
+        conditions.push(eq(notes.problemKind, options.problemKind));
+      }
       if (options.visibility === "private" || options.visibility === "public") conditions.push(eq(notes.visibility, options.visibility));
       if (options.tag) {
         const [tagRow] = await database.select({ id: tags.id }).from(tags).where(and(eq(tags.userId, userId), eq(tags.name, options.tag))).limit(1);
@@ -413,7 +423,13 @@ export function createNoteRepository(db: Database) {
       const cursorId = separator > 0 ? options.cursor!.slice(separator + 1) : "";
       const validCursor = cursorDate && !Number.isNaN(cursorDate.getTime());
       const conditions = [eq(notes.visibility, "public"), eq(notes.status, "published"), eq(notes.moderationState, "visible"), isNull(notes.deletedAt)];
-      if (options.problemRef) conditions.push(eq(notes.problemRef, options.problemRef));
+      if (options.problemRef) {
+        const referencedNotes = await database.select({ noteId: noteProblemRefs.noteId }).from(noteProblemRefs)
+          .where(and(eq(noteProblemRefs.problemKind, "public"), eq(noteProblemRefs.problemRef, options.problemRef)));
+        const referencedNoteIds = referencedNotes.map((row) => row.noteId);
+        const directMatch = eq(notes.problemRef, options.problemRef);
+        conditions.push(referencedNoteIds.length ? or(directMatch, inArray(notes.id, referencedNoteIds))! : directMatch);
+      }
       if (validCursor) conditions.push(or(lt(notes.publishedAt, cursorDate!), and(eq(notes.publishedAt, cursorDate!), lt(notes.id, cursorId)))!);
       const rows = await database.select({ note: notes, name: users.name, image: users.image }).from(notes)
         .innerJoin(users, eq(notes.userId, users.id)).where(and(...conditions))

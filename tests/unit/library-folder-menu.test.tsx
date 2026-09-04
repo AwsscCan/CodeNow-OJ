@@ -76,12 +76,13 @@ describe("文件夹 ⋮ 操作菜单", () => {
     expect(document.querySelector(".folder-menu")?.textContent).toContain("解散");
   });
 
-  it("永久删除内置目录经确认后隐藏其中内置题", () => {
+  it("访客不能永久删除包含内置题的目录", () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
     const row = entryOf("默认题库");
     fireEvent.click(row.querySelector("button.folder-drag")!);
     fireEvent.click(screen.getByText(/永久删除|^删/));
-    expect(useLibraryStore.getState().hiddenBuiltins).toContain("P1001");
+    expect(useLibraryStore.getState().folders).toContain("默认题库");
+    expect(useLibraryStore.getState().hiddenBuiltins).not.toContain("P1001");
   });
 
   it("取消永久删除时内置目录和题目保持不变", () => {

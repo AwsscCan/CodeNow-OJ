@@ -110,6 +110,31 @@ describe("note APIs (private)", () => {
     expect(page.items).toHaveLength(0);
   });
 
+  it("finds notes whose body references the requested problem", async () => {
+    const notes = createNotesHandlers(resolve, publicResolve);
+    const created = await notes.POST(request("/api/notes", "POST", {
+      title: "正文引用题目", content: "这篇笔记在正文中插入了题目。",
+      problemRefs: [{ problemKind: "public", problemRef: "P-REF-1" }],
+    }));
+    expect(created.status).toBe(201);
+
+    const page = await (await notes.GET(request("/api/notes?problemRef=P-REF-1&problemKind=public"))).json();
+    expect(page.items.map((item: { title: string }) => item.title)).toContain("正文引用题目");
+  });
+
+  it("finds published public notes whose body references the requested problem", async () => {
+    const notes = createNotesHandlers(resolve, publicResolve);
+    const created = await notes.POST(request("/api/notes", "POST", {
+      title: "公开正文引用", content: "公开题目笔记",
+      visibility: "public", status: "published",
+      problemRefs: [{ problemKind: "public", problemRef: "P-REF-2" }],
+    }));
+    expect(created.status).toBe(201);
+
+    const page = await (await notes.GET(request("/api/notes?view=public&problemRef=P-REF-2"))).json();
+    expect(page.items.map((item: { title: string }) => item.title)).toContain("公开正文引用");
+  });
+
   function request(path: string, method = "GET", body?: unknown) {
     return new Request(`http://localhost${path}`, {
       method,

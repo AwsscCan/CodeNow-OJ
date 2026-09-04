@@ -10,6 +10,7 @@ import { authClient } from "../lib/auth-client";
 import { dissolveFolderLevel, planFolderMove } from "../lib/folder-tree";
 import { buildCloudFolderPaths, ProblemApi } from "../lib/problem-api";
 import { getProblemSourceLabel } from "../lib/problem-source";
+import { canManageBuiltinProblems } from "../lib/problem-permissions";
 import { useAiStore } from "../stores/ai-store";
 import { useLibraryStore, loadAcwingCatalog, loadBundledSamples, folderName, folderParent, folderContains, orderFolderTree, getAcwingProblems } from "../stores/library-store";
 import { draftKey, useProblemStore, INITIAL_PROBLEM, STARTER_CODE } from "../stores/problem-store";
@@ -20,6 +21,7 @@ export default function LibraryPage() {
   const store = useLibraryStore();
   const { setProblem, setCode, setResults, setCompilerDiagnostic, setCloudState, loadLocalProblem, createBlankWorkspace, clearPrivateWorkspace } = useProblemStore();
   const session = authClient.useSession();
+  const canManageBuiltins = canManageBuiltinProblems(session.data?.user);
   const theme = useThemeStore();
   const { notice, toast } = useToast();
 
@@ -44,13 +46,13 @@ export default function LibraryPage() {
   // 订阅 catalogVersion：bundled 题源异步加载完成后触发重渲染
   void store.catalogVersion;
   const acwingProblems = getAcwingProblems()
-    .filter((item) => !store.hiddenBuiltins.includes(item.id))
+    .filter((item) => canManageBuiltins || !store.hiddenBuiltins.includes(item.id))
     .map((item) => ({ ...item, folder: store.builtinFolderOverrides[item.id] ?? item.folder }));
   const acwingFolders = Array.from(new Set(acwingProblems.flatMap((problem) => {
     const parts = problem.folder.split("/").filter(Boolean);
     return parts.map((_, index) => parts.slice(0, index + 1).join("/"));
   })));
-  const builtinVisible = !store.hiddenBuiltins.includes(INITIAL_PROBLEM.id);
+  const builtinVisible = canManageBuiltins || !store.hiddenBuiltins.includes(INITIAL_PROBLEM.id);
   const builtinFolder = store.builtinFolderOverrides[INITIAL_PROBLEM.id] ?? "默认题库";
 
   // Esc 收起弹窗
@@ -200,6 +202,10 @@ export default function LibraryPage() {
     const affected = [...store.archives, ...store.cloudArchives].filter((item) => folderContains(item.folder, folder));
     const builtinCount = (builtinVisible && folderContains(builtinFolder, folder) ? 1 : 0)
       + acwingProblems.filter((item) => folderContains(item.folder, folder)).length;
+    if (!cloudId && builtinCount > 0 && !canManageBuiltins) {
+      toast("只有管理员或被授予题库管理权限的用户才能删除内置题目");
+      return;
+    }
     const prompt = cloudId
       ? `删除云端文件夹「${folder}」？其中 ${affected.length} 道题目会移至上级文件夹。`
       : `永久删除文件夹「${folder}」及其中 ${affected.length + builtinCount} 道题目？此操作不可恢复。`;
