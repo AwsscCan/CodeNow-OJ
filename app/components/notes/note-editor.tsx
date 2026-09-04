@@ -109,7 +109,7 @@ export function NoteEditor({ value, onChange, onSubmit, submitLabel, status, onD
       </div>
 
       <div className="note-actions">
-        <button type="button" className="primary" onClick={onSubmit} disabled={busy || !value.title.trim()}>{submitLabel}</button>
+        <button type="button" className="primary" onClick={onSubmit} disabled={busy}>{submitLabel}</button>
         {onDelete ? <button type="button" className="danger" onClick={onDelete}>删除</button> : null}
       </div>
 

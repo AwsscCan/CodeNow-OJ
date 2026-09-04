@@ -11,6 +11,7 @@ import type { SyncStatus } from "../../hooks/use-cloud-save";
 import { useToast } from "../../hooks/use-toast";
 import { authClient } from "../../lib/auth-client";
 import { NoteApi, NoteApiError, type NoteDetail, type NotePublicDetail } from "../../lib/note-api";
+import { getNoteTitleError } from "../../lib/note-validation";
 import { useNoteStore } from "../../stores/note-store";
 import { useThemeStore } from "../../stores/theme-store";
 
@@ -53,6 +54,11 @@ export default function NoteDetailPage() {
 
   async function save() {
     if (!note || !isOwnerNote(note)) return;
+    const titleError = getNoteTitleError(value.title, false);
+    if (titleError) {
+      toast(titleError);
+      return;
+    }
     setStatus("saving");
     try {
       const result = await NoteApi.update(note.id, note.version, { title: value.title.trim(), content: value.content, summary: value.content ? value.content.slice(0, 120) : null, visibility: value.visibility, status: value.visibility === "public" ? "published" : "draft", tags: value.tags, problemRefs: value.problemRefs });

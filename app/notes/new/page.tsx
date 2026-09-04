@@ -8,6 +8,7 @@ import { Topbar } from "../../components/topbar";
 import { useToast } from "../../hooks/use-toast";
 import { authClient } from "../../lib/auth-client";
 import { NoteApi, NoteApiError, type NoteProblemKind } from "../../lib/note-api";
+import { getNoteTitleError } from "../../lib/note-validation";
 import { useNoteStore } from "../../stores/note-store";
 import { useThemeStore } from "../../stores/theme-store";
 
@@ -60,6 +61,11 @@ function NewNoteInner() {
   }, [draftId, draftKey, problemKind, problemRef, session.isPending, setEditorDraft, source, value]);
 
   async function submit() {
+    const titleError = getNoteTitleError(value.title, Boolean(userId));
+    if (titleError) {
+      toast(titleError);
+      return;
+    }
     setBusy(true);
     try {
       if (userId) {

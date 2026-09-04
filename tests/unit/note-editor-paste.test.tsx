@@ -21,6 +21,15 @@ afterEach(() => {
 });
 
 describe("笔记编辑器粘贴图片", () => {
+  it("空标题时提交按钮仍可点击，由页面显示失败原因", () => {
+    const onSubmit = vi.fn();
+    const { container } = render(<NoteEditor value={{ ...baseValue, title: "   " }} onChange={vi.fn()} onSubmit={onSubmit} submitLabel="保存" />);
+    const button = container.querySelector(".note-actions button.primary") as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+    fireEvent.click(button);
+    expect(onSubmit).toHaveBeenCalledOnce();
+  });
+
   it("粘贴小图自动插入 data URL 图片语法", async () => {
     const onChange = vi.fn();
     const { container } = render(<NoteEditor value={baseValue} onChange={onChange} onSubmit={vi.fn()} submitLabel="保存" />);
