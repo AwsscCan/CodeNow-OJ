@@ -30,6 +30,7 @@ export default function SettingsPage() {
   const [ccSwitchModel, setCcSwitchModel] = useState("");
   const [ccSwitchKind, setCcSwitchKind] = useState<"claude" | "codex">("codex");
   const [ccSwitchStatus, setCcSwitchStatus] = useState("未连接本机 CCSwitch");
+  const [voiceStatus, setVoiceStatus] = useState<{ configured: boolean; reachable: boolean; message: string }>({ configured: false, reachable: false, message: "尚未检查云端语音服务" });
 
   useEffect(() => {
     if (!session.data?.user) return;
@@ -177,6 +178,50 @@ export default function SettingsPage() {
     }
   }
 
+  async function checkVoice() {
+    setBusy(true);
+    try {
+      const response = await fetch("/api/voice/status");
+      const status = await response.json() as typeof voiceStatus & { error?: { message?: string } };
+      if (!response.ok) throw new Error(status.error?.message || "语音服务检查失败");
+      setVoiceStatus(status);
+      toast(status.message);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "语音服务检查失败";
+      setVoiceStatus({ configured: false, reachable: false, message });
+      toast(message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function testVoice() {
+    setBusy(true);
+    try {
+      const response = await fetch("/api/voice/synthesize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: "语音服务测试成功。", mood: "gentle", preset: "takagi" }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null) as { error?: { message?: string } } | null;
+        throw new Error(body?.error?.message || "语音生成失败");
+      }
+      const url = URL.createObjectURL(await response.blob());
+      const audio = new Audio(url);
+      audio.onended = () => URL.revokeObjectURL(url);
+      await audio.play();
+      setVoiceStatus({ configured: true, reachable: true, message: "已生成并播放测试语音" });
+      toast("云端语音测试成功");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "语音生成失败";
+      setVoiceStatus((current) => ({ ...current, reachable: false, message }));
+      toast(message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return <main className={`app-shell theme-${theme.themeMode}`}>
     <Topbar onToast={toast} />
     <section className="settings-page">
@@ -206,6 +251,11 @@ export default function SettingsPage() {
             <div className="ccswitch-link-head"><div><b>CCSwitch 本机联动</b><small>{ccSwitchStatus}</small></div><button type="button" disabled={busy} onClick={() => void connectCcSwitch()}>{ccSwitchCatalog ? "重新读取" : "连接本机"}</button></div>
             {ccSwitchCatalog && <><div className="ccswitch-kind-switch" role="tablist" aria-label="CCSwitch 协议"><button type="button" className={ccSwitchKind === "claude" ? "active" : ""} onClick={() => { setCcSwitchKind("claude"); setCcSwitchProviderId(""); setCcSwitchModel(""); }}>Claude</button><button type="button" className={ccSwitchKind === "codex" ? "active" : ""} onClick={() => { setCcSwitchKind("codex"); setCcSwitchProviderId(""); setCcSwitchModel(""); }}>Codex</button></div><div className="ccswitch-link-controls"><select aria-label="CCSwitch Provider" value={ccSwitchProviderId} onChange={(event) => { const provider = ccSwitchCatalog.providers?.find((item) => item.id === event.target.value); setCcSwitchProviderId(event.target.value); setCcSwitchModel(provider?.model_id ?? provider?.models?.[0] ?? ""); setCcSwitchKind(provider?.kind ?? ccSwitchKind); }}><option value="">选择 Provider</option>{(ccSwitchCatalog.providers ?? []).filter((provider) => (provider.kind ?? "claude") === ccSwitchKind).map((provider) => <option key={`${provider.kind ?? "claude"}-${provider.id}`} value={provider.id} disabled={provider.available === false}>{provider.name}{provider.is_current ? " · 当前" : ""}</option>)}</select><select aria-label="CCSwitch 模型" value={ccSwitchModel} onChange={(event) => setCcSwitchModel(event.target.value)}><option value="">选择模型</option>{[...new Set((ccSwitchCatalog.providers?.find((item) => item.id === ccSwitchProviderId)?.models ?? []).concat(ccSwitchModel).filter(Boolean))].map((model) => <option key={model}>{model}</option>)}</select><button type="button" disabled={busy || !ccSwitchProviderId || !ccSwitchModel} onClick={() => void applyConnectedCcSwitch()}>验证并应用</button></div></>}
             <small className="ccswitch-link-note">从本机 CCSwitch 数据库读取当前 Provider，并由 CCSwitch 自己验证路由；不会把密钥展示在页面。</small>
+          </section>
+          <section className={`voice-service-card ${voiceStatus.reachable ? "is-ready" : ""}`} aria-label="桌宠云端语音服务">
+            <div className="voice-service-head"><div><b>桌宠云端语音</b><small>{voiceStatus.message}</small></div><span className="voice-status-dot" aria-hidden="true" /></div>
+            <p>语音由服务器生成，当前设备无需安装或启动本地语音程序。</p>
+            <div className="voice-service-actions"><button type="button" disabled={busy} onClick={() => void checkVoice()}>检查服务</button><button type="button" disabled={busy || !voiceStatus.configured} onClick={() => void testVoice()}>测试语音</button></div>
           </section>
           <section className="format-preference-card" aria-label="代码格式化偏好">
             <div className="field-caption"><label htmlFor="cpp-format-mode">默认代码格式化</label><small>编辑器工具栏将使用此模式，也可随时切换</small></div>

@@ -57,6 +57,15 @@ describe("AI settings page", () => {
     expect(screen.getByLabelText("导入 CCSwitch 配置")).toBeTruthy();
   });
 
+  it("provides a server voice health check and test entry", async () => {
+    render(<SettingsPage />);
+    await screen.findByDisplayValue("model-a");
+    expect(screen.getByRole("button", { name: "检查服务" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "测试语音" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "检查服务" }));
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input).endsWith("/api/voice/status"))).toBe(true));
+  });
+
   it("offers a real local CCSwitch connection and provider application", async () => {
     render(<SettingsPage />);
     await screen.findByDisplayValue("model-a");
