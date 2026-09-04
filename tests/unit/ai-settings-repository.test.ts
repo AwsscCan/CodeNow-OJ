@@ -47,6 +47,12 @@ describe("account-scoped AI settings", () => {
     expect(await repository.resolve("user-a")).toMatchObject({ model: "model-b", apiKey: "keep-me" });
   });
 
+  it("persists the CCSwitch wire protocol without changing existing account data", async () => {
+    await repository.save("user-a", { provider: "ccswitch", endpoint: "https://relay.example/v1", model: "gpt-5.5", apiKey: "keep-me", source: "ccswitch", wireApi: "responses" }, 0);
+    expect(await repository.get("user-a")).toMatchObject({ provider: "ccswitch", wireApi: "responses", hasApiKey: true });
+    expect(await repository.resolve("user-a")).toMatchObject({ endpoint: "https://relay.example/v1", model: "gpt-5.5", apiKey: "keep-me", wireApi: "responses" });
+  });
+
   it("leaves existing preference and problem data untouched", async () => {
     const now = new Date();
     await db.insert(userPreferences).values({ userId: "user-a", themeMode: "girl", editorTheme: "dark", settingsJson: "{\"kept\":true}", version: 7, createdAt: now, updatedAt: now });

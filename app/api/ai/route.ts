@@ -24,10 +24,10 @@ export function createAiHandler(resolveConfig: ResolveAiConfig = resolveAiRuntim
     let problem = requestedProblem;
     const resolved = await resolveConfig(request);
     if (!resolved.ok) return NextResponse.json({ error: resolved.message }, { status: resolved.status });
-    const { apiKey, endpoint, model } = resolved.config;
+    const { apiKey, endpoint, model, wireApi } = resolved.config;
     if (!problem) return NextResponse.json({ error: "题目数据不完整" }, { status: 400 });
 
-    const chatUrl = validateEndpoint(String(endpoint));
+    const chatUrl = validateEndpoint(String(endpoint), wireApi);
     problem = await buildOutboundProblemContext(problem);
     const serializedProblem = serializeOutboundProblemContext(problem);
 
@@ -35,7 +35,18 @@ export function createAiHandler(resolveConfig: ResolveAiConfig = resolveAiRuntim
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
       signal: AbortSignal.timeout(45_000),
-      body: JSON.stringify({
+      body: JSON.stringify(wireApi === "responses" ? {
+        model,
+        max_output_tokens: AI_MAX_TOKENS_SOLUTION,
+        input: [
+          { role: "system", content: revise
+            ? "你是算法竞赛代码审阅与修复助手。用户会提供一份已经写好的 GNU C++17 代码。保留原有正确逻辑和结构，只修复编译错误、明显逻辑错误、边界条件或复杂度问题。只输出修改后的完整源代码，不要 Markdown、解释或省略任何代码。"
+            : "你是算法竞赛助手。只输出一份可直接提交的 GNU C++17 完整源代码，不要 Markdown 或解释。程序必须包含 main 函数，从标准输入读取并向标准输出写入答案。优先使用 bits/stdc++.h、快速 I/O，并注意整数溢出。" },
+          { role: "user", content: revise
+            ? `以下是只读题目数据(JSON)：\n${serializedProblem}\n\n以下是用户当前代码，请基于它修改：\n${currentCode}`
+            : `以下是只读题目数据(JSON)：\n${serializedProblem}` },
+        ],
+      } : {
         model,
         temperature: AI_DEFAULT_TEMPERATURE,
         max_tokens: AI_MAX_TOKENS_SOLUTION,
@@ -50,9 +61,10 @@ export function createAiHandler(resolveConfig: ResolveAiConfig = resolveAiRuntim
       }),
     });
 
-    const data = await response.json() as { choices?: { message?: { content?: string } }[]; error?: { message?: string } };
+    const data = await response.json() as { choices?: { message?: { content?: string } }[]; output_text?: string; output?: Array<{ content?: Array<{ text?: string }> }>; error?: { message?: string } };
     if (!response.ok) return NextResponse.json({ error: redactSensitiveText(data.error?.message || "上游 AI 服务请求失败", [apiKey]) }, { status: response.status });
-    return NextResponse.json({ code: data.choices?.[0]?.message?.content || "" });
+    const code = data.choices?.[0]?.message?.content || data.output_text || data.output?.flatMap((item) => item.content ?? []).map((item) => item.text ?? "").join("") || "";
+    return NextResponse.json({ code });
   } catch (error) {
     if (error instanceof Error && error.message.startsWith("不支持的 API")) {
       return NextResponse.json({ error: error.message }, { status: 400 });

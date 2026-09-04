@@ -1,4 +1,4 @@
-export function validateEndpoint(raw: string) {
+export function validateEndpoint(raw: string, wireApi: "chat_completions" | "responses" = "chat_completions") {
   let url: URL;
   try {
     url = new URL(raw.trim());
@@ -9,7 +9,8 @@ export function validateEndpoint(raw: string) {
   const host = url.hostname.toLowerCase();
   if (isBlockedHost(host)) throw new Error(`不安全的 API Endpoint：${host}。请使用公网 HTTPS OpenAI-compatible API 地址`);
   const path = url.pathname.replace(/\/+$/, "");
-  url.pathname = /\/chat\/completions$/i.test(path) ? path : `${path}/chat/completions`;
+  const suffix = wireApi === "responses" ? "responses" : "chat/completions";
+  url.pathname = new RegExp(`/${suffix.replace("/", "\\/")}$`, "i").test(path) ? path : `${path}/${suffix}`;
   return url;
 }
 

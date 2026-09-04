@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createChatHandler } from "../../app/api/chat/route";
-import { resolveMissingAiConfig, resolveTestAiConfig } from "./ai-runtime-fixture";
+import { TEST_AI_CONFIG, resolveMissingAiConfig, resolveTestAiConfig } from "./ai-runtime-fixture";
 
 const POST = createChatHandler(resolveTestAiConfig);
 
@@ -43,6 +43,17 @@ function sentSystemPrompt(): string {
 }
 
 describe("POST /api/chat 高木人设联动", () => {
+  it("uses Responses protocol when the account model requires it", async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ output_text: "Responses 回答" }), { status: 200 }));
+    const handler = createChatHandler(async () => ({ ok: true, config: { ...TEST_AI_CONFIG, wireApi: "responses" } }));
+    const response = await handler(makeRequest({ persona: "takagi" }));
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(String(fetchMock.mock.calls[0][0])).toBe("https://example.com/v1/responses");
+    expect(body).toMatchObject({ model: "test-model", max_output_tokens: expect.any(Number), input: expect.any(Array) });
+    expect(body.messages).toBeUndefined();
+    await expect(response.json()).resolves.toMatchObject({ answer: "Responses 回答" });
+  });
+
   it("persona=takagi 时 system 提示词切换为高木同学人设并保留题目上下文", async () => {
     const res = await POST(makeRequest({ persona: "takagi" }));
     expect(res.status).toBe(200);

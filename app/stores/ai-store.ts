@@ -14,6 +14,7 @@ export type PublicAiSettings = {
   hasApiKey: boolean;
   version: number;
   updatedAt: string | null;
+  wireApi?: "chat_completions" | "responses";
 };
 
 type ConversationCache = {
@@ -44,6 +45,7 @@ const EMPTY_SETTINGS: PublicAiSettings = {
   hasApiKey: false,
   version: 0,
   updatedAt: null,
+  wireApi: "chat_completions",
 };
 
 const EMPTY_CACHE: ConversationCache = {

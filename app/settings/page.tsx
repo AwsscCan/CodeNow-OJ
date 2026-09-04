@@ -15,19 +15,20 @@ const presets: Record<Exclude<AiProvider, "ccswitch">, { endpoint: string; model
   custom: { endpoint: "", model: "" },
 };
 
-type FormState = Pick<PublicAiSettings, "provider" | "endpoint" | "model" | "source" | "hasApiKey" | "version"> & { apiKey: string };
+type FormState = Pick<PublicAiSettings, "provider" | "endpoint" | "model" | "source" | "hasApiKey" | "version" | "wireApi"> & { apiKey: string };
 
 export default function SettingsPage() {
   const session = authClient.useSession();
   const theme = useThemeStore();
   const { notice, toast } = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
-  const [form, setForm] = useState<FormState>({ provider: "deepseek", endpoint: presets.deepseek.endpoint, model: presets.deepseek.model, source: "manual", hasApiKey: false, version: 0, apiKey: "" });
+  const [form, setForm] = useState<FormState>({ provider: "deepseek", endpoint: presets.deepseek.endpoint, model: presets.deepseek.model, source: "manual", hasApiKey: false, version: 0, wireApi: "chat_completions", apiKey: "" });
   const [models, setModels] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [ccSwitchCatalog, setCcSwitchCatalog] = useState<CcSwitchCatalog | null>(null);
   const [ccSwitchProviderId, setCcSwitchProviderId] = useState("");
   const [ccSwitchModel, setCcSwitchModel] = useState("");
+  const [ccSwitchKind, setCcSwitchKind] = useState<"claude" | "codex">("codex");
   const [ccSwitchStatus, setCcSwitchStatus] = useState("未连接本机 CCSwitch");
 
   useEffect(() => {
@@ -58,7 +59,7 @@ export default function SettingsPage() {
       const response = await fetch("/api/ai-settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ version: form.version, provider: form.provider, endpoint: form.endpoint, model: form.model, ...(form.apiKey ? { apiKey: form.apiKey } : {}), source: form.source }),
+        body: JSON.stringify({ version: form.version, provider: form.provider, endpoint: form.endpoint, model: form.model, wireApi: form.wireApi, ...(form.apiKey ? { apiKey: form.apiKey } : {}), source: form.source }),
       });
       const body = await response.json() as PublicAiSettings & { error?: { message?: string } };
       if (!response.ok) throw new Error(body.error?.message || "保存失败");
@@ -117,10 +118,14 @@ export default function SettingsPage() {
     try {
       const catalog = await fetchCcSwitchCatalog();
       const providers = catalog.providers ?? [];
-      const active = providers.find((item) => item.is_current) ?? providers[0];
+      const active = providers.find((item) => item.kind === "codex" && item.is_current && item.available !== false)
+        ?? providers.find((item) => item.is_current && item.available !== false)
+        ?? providers.find((item) => item.available !== false)
+        ?? providers[0];
       setCcSwitchCatalog(catalog);
       setCcSwitchProviderId(active?.id ?? "");
       setCcSwitchModel(active?.model_id ?? active?.models?.[0] ?? "");
+      setCcSwitchKind(active?.kind ?? "codex");
       setCcSwitchStatus(catalog.active ? `已连接 · ${providers.length} 个 Provider` : "已连接，但没有可用 Provider");
       toast(catalog.active ? "已读取本机 CCSwitch Provider" : "CCSwitch 未发现可用 Provider");
     } catch (error) {
@@ -136,9 +141,29 @@ export default function SettingsPage() {
     if (!ccSwitchProviderId || !ccSwitchModel) return;
     setBusy(true);
     try {
-      const result = await applyCcSwitchProvider(ccSwitchProviderId, ccSwitchModel);
-      setCcSwitchStatus(`已实测联动 · ${result.provider_name ?? ccSwitchProviderId} · ${result.model_id ?? ccSwitchModel}`);
-      toast(result.message ?? "CCSwitch 已验证并应用");
+      const result = await applyCcSwitchProvider(ccSwitchProviderId, ccSwitchModel, ccSwitchKind);
+      const sync = result.account_sync;
+      if (!sync?.endpoint || !sync.api_key) throw new Error("CCSwitch 已验证，但未返回可同步到账户的凭据");
+      const response = await fetch("/api/ai-settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          version: form.version,
+          provider: "ccswitch",
+          endpoint: sync.endpoint,
+          model: result.model_id ?? ccSwitchModel,
+          apiKey: sync.api_key,
+          source: "ccswitch",
+          wireApi: sync.wire_api === "responses" ? "responses" : "chat_completions",
+        }),
+      });
+      const body = await response.json() as PublicAiSettings & { error?: { message?: string } };
+      if (!response.ok || !body.configured) throw new Error(body.error?.message || "CCSwitch 已验证，但账户设置同步失败");
+      setForm({ ...body, apiKey: "" });
+      setModels(body.model ? [body.model] : []);
+      useAiStore.getState().hydrateSettings(body);
+      setCcSwitchStatus(`本机已实测联动 · ${result.provider_name ?? ccSwitchProviderId} · ${result.model_id ?? ccSwitchModel}`);
+      toast("CCSwitch 已实测联动，设置已同步到账户");
     } catch (error) {
       toast(error instanceof Error ? error.message : "CCSwitch 应用失败");
     } finally {
@@ -165,7 +190,7 @@ export default function SettingsPage() {
           {models.length ? <select id="ai-model" aria-label="模型" value={form.model} onChange={(event) => setForm({ ...form, model: event.target.value })}>{[...new Set([form.model, ...models])].filter(Boolean).map((model) => <option key={model}>{model}</option>)}</select> : <input id="ai-model" aria-label="模型" value={form.model} onChange={(event) => setForm({ ...form, model: event.target.value })} placeholder="模型 ID" />}
           <section className="ccswitch-link-card" aria-label="CCSwitch 本机联动">
             <div className="ccswitch-link-head"><div><b>CCSwitch 本机联动</b><small>{ccSwitchStatus}</small></div><button type="button" disabled={busy} onClick={() => void connectCcSwitch()}>{ccSwitchCatalog ? "重新读取" : "连接本机"}</button></div>
-            {ccSwitchCatalog && <div className="ccswitch-link-controls"><select aria-label="CCSwitch Provider" value={ccSwitchProviderId} onChange={(event) => { const provider = ccSwitchCatalog.providers?.find((item) => item.id === event.target.value); setCcSwitchProviderId(event.target.value); setCcSwitchModel(provider?.model_id ?? provider?.models?.[0] ?? ""); }}><option value="">选择 Provider</option>{(ccSwitchCatalog.providers ?? []).map((provider) => <option key={provider.id} value={provider.id} disabled={provider.available === false}>{provider.name}{provider.is_current ? " · 当前" : ""}</option>)}</select><select aria-label="CCSwitch 模型" value={ccSwitchModel} onChange={(event) => setCcSwitchModel(event.target.value)}><option value="">选择模型</option>{[...new Set((ccSwitchCatalog.providers?.find((item) => item.id === ccSwitchProviderId)?.models ?? []).concat(ccSwitchModel).filter(Boolean))].map((model) => <option key={model}>{model}</option>)}</select><button type="button" disabled={busy || !ccSwitchProviderId || !ccSwitchModel} onClick={() => void applyConnectedCcSwitch()}>验证并应用</button></div>}
+            {ccSwitchCatalog && <div className="ccswitch-link-controls"><select aria-label="CCSwitch Provider" value={ccSwitchProviderId} onChange={(event) => { const provider = ccSwitchCatalog.providers?.find((item) => item.id === event.target.value); setCcSwitchProviderId(event.target.value); setCcSwitchModel(provider?.model_id ?? provider?.models?.[0] ?? ""); setCcSwitchKind(provider?.kind ?? "codex"); }}><option value="">选择 Provider</option>{(ccSwitchCatalog.providers ?? []).map((provider) => <option key={`${provider.kind ?? "claude"}-${provider.id}`} value={provider.id} disabled={provider.available === false}>{provider.name} · {provider.kind === "codex" ? "Codex" : "Claude"}{provider.is_current ? " · 当前" : ""}</option>)}</select><select aria-label="CCSwitch 模型" value={ccSwitchModel} onChange={(event) => setCcSwitchModel(event.target.value)}><option value="">选择模型</option>{[...new Set((ccSwitchCatalog.providers?.find((item) => item.id === ccSwitchProviderId)?.models ?? []).concat(ccSwitchModel).filter(Boolean))].map((model) => <option key={model}>{model}</option>)}</select><button type="button" disabled={busy || !ccSwitchProviderId || !ccSwitchModel} onClick={() => void applyConnectedCcSwitch()}>验证并应用</button></div>}
             <small className="ccswitch-link-note">从本机 CCSwitch 数据库读取当前 Provider，并由 CCSwitch 自己验证路由；不会把密钥展示在页面。</small>
           </section>
           <div className="settings-actions"><button type="button" onClick={() => fileRef.current?.click()}>兼容导入 JSON</button><button type="submit" disabled={busy}>{busy ? "处理中…" : "保存设置"}</button></div>

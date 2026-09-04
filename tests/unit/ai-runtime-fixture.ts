@@ -6,6 +6,7 @@ export const TEST_AI_CONFIG = {
   model: "test-model",
   apiKey: "server-side-test-key",
   source: "manual" as const,
+  wireApi: "chat_completions" as const,
 };
 
 export async function resolveTestAiConfig(): Promise<AiRuntimeResolution> {

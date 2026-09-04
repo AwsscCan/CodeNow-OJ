@@ -40,10 +40,10 @@ export function createChatHandler(resolveConfig: ResolveAiConfig = resolveAiRunt
     let problem = requestedProblem;
     const resolved = await resolveConfig(request);
     if (!resolved.ok) return NextResponse.json({ error: resolved.message }, { status: resolved.status });
-    const { apiKey, endpoint, model } = resolved.config;
+    const { apiKey, endpoint, model, wireApi } = resolved.config;
     if (!problem) return NextResponse.json({ error: "题目数据不完整" }, { status: 400 });
 
-    const chatUrl = validateEndpoint(String(endpoint));
+    const chatUrl = validateEndpoint(String(endpoint), wireApi);
     problem = await buildOutboundProblemContext(problem);
 
     const conversation = Array.isArray(messages)
@@ -117,7 +117,14 @@ export function createChatHandler(resolveConfig: ResolveAiConfig = resolveAiRunt
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
       signal: AbortSignal.timeout(45_000),
-      body: JSON.stringify({
+      body: JSON.stringify(wireApi === "responses" ? {
+        model,
+        max_output_tokens: AI_MAX_TOKENS_CHAT,
+        input: [
+          { role: "system", content: systemPrompt },
+          ...conversation,
+        ],
+      } : {
         model,
         temperature: AI_CHAT_TEMPERATURE,
         max_tokens: AI_MAX_TOKENS_CHAT,
@@ -128,8 +135,9 @@ export function createChatHandler(resolveConfig: ResolveAiConfig = resolveAiRunt
       }),
     });
 
-    const data = await response.json() as { choices?: { message?: { content?: string; reasoning_content?: string } }[]; error?: { message?: string } };
+    const data = await response.json() as { choices?: { message?: { content?: string; reasoning_content?: string } }[]; output_text?: string; output?: Array<{ content?: Array<{ text?: string }> }>; error?: { message?: string } };
     if (!response.ok) return NextResponse.json({ error: redactSensitiveText(data.error?.message || "上游 AI 服务请求失败", [apiKey]) }, { status: response.status });
+    const answer = data.choices?.[0]?.message?.content || data.output_text || data.output?.flatMap((item) => item.content ?? []).map((item) => item.text ?? "").join("") || "";
     let reasoning = data.choices?.[0]?.message?.reasoning_content;
     // 高木人设下思维链会被展示为"小心思"：原生思维链不受人设约束，含穿帮字眼时宁缺毋滥直接丢弃
     if (requestData.persona === "takagi" && typeof reasoning === "string"
@@ -137,7 +145,7 @@ export function createChatHandler(resolveConfig: ResolveAiConfig = resolveAiRunt
       reasoning = undefined;
     }
     return NextResponse.json({
-      answer: data.choices?.[0]?.message?.content || "",
+      answer,
       ...(typeof reasoning === "string" && reasoning.trim() ? { reasoning: reasoning.trim() } : {}),
     });
   } catch (error) {

@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createAiHandler } from "../../app/api/ai/route";
 import { OUTBOUND_PROBLEM_CONTEXT_LIMITS } from "../../app/lib/outbound-problem-context";
-import { resolveTestAiConfig } from "./ai-runtime-fixture";
+import { TEST_AI_CONFIG, resolveTestAiConfig } from "./ai-runtime-fixture";
 
 const POST = createAiHandler(resolveTestAiConfig);
 
@@ -23,6 +23,20 @@ afterEach(() => {
 });
 
 describe("POST /api/ai outbound sample provenance", () => {
+  it("uses the Responses protocol selected by the account setting", async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ output: [{ content: [{ type: "output_text", text: "int main(){return 0;}" }] }] }), { status: 200 }));
+    const handler = createAiHandler(async () => ({ ok: true, config: { ...TEST_AI_CONFIG, wireApi: "responses" } }));
+    const response = await handler(new NextRequest("http://localhost/api/ai", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "revise", code: "int main(){}", problem: { id: "P1", title: "T", description: "D", inputFormat: "", outputFormat: "", samples: [] } }),
+    }));
+    const requestBody = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(String(fetchMock.mock.calls[0][0])).toBe("https://example.com/v1/responses");
+    expect(requestBody).toMatchObject({ model: "test-model", max_output_tokens: expect.any(Number), input: expect.any(Array) });
+    expect(requestBody.messages).toBeUndefined();
+    expect(await response.json()).toEqual({ code: "int main(){return 0;}" });
+  });
+
   it("sends existing code in revise mode and asks the model to preserve it", async () => {
     const request = new NextRequest("http://localhost/api/ai", {
       method: "POST",

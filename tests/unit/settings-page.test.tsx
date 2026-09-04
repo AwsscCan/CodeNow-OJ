@@ -60,17 +60,20 @@ describe("AI settings page", () => {
     render(<SettingsPage />);
     await screen.findByDisplayValue("model-a");
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
-      if (String(input).includes("127.0.0.1:19999")) {
+      if (String(input).includes("127.0.0.1:18088")) {
         if (String(input).includes("cc-switch-catalog")) return new Response(JSON.stringify({ active: true, providers: [{ id: "p1", name: "Local Provider", is_current: true, model_id: "m1", models: ["m1"] }] }), { status: 200 });
-        return new Response(JSON.stringify({ ok: true, verified: true, connection_verified: true, provider_name: "Local Provider", model_id: "m1", message: "已验证" }), { status: 200 });
+        return new Response(JSON.stringify({ ok: true, verified: true, connection_verified: true, provider_name: "Local Provider", model_id: "m1", message: "已验证", account_sync: { endpoint: "https://relay.example/v1", api_key: "secret-for-test", wire_api: "responses" } }), { status: 200 });
       }
       return new Response(JSON.stringify({ configured: true, provider: "custom", endpoint: "https://llm.example.com/v1", model: "model-a", source: "manual", hasApiKey: true, version: 1, updatedAt: "now" }), { status: 200 });
     });
     fireEvent.click(screen.getByRole("button", { name: "连接本机" }));
     expect(await screen.findByText("已连接 · 1 个 Provider")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "验证并应用" }));
-    await waitFor(() => expect(screen.getByText(/已实测联动/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/本机已实测联动/)).toBeTruthy());
     const call = vi.mocked(fetch).mock.calls.find(([input]) => String(input).includes("cc-switch-apply"));
     expect(call).toBeTruthy();
+    const saveCall = vi.mocked(fetch).mock.calls.find(([input, init]) => String(input).endsWith("/api/ai-settings") && init?.method === "PUT");
+    expect(saveCall).toBeTruthy();
+    expect(JSON.parse(String(saveCall?.[1]?.body))).toMatchObject({ provider: "ccswitch", endpoint: "https://relay.example/v1", model: "m1", apiKey: "secret-for-test", source: "ccswitch", wireApi: "responses" });
   });
 });
