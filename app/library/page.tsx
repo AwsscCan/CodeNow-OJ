@@ -22,6 +22,7 @@ export default function LibraryPage() {
   const { setProblem, setCode, setResults, setCompilerDiagnostic, setCloudState, loadLocalProblem, createBlankWorkspace, clearPrivateWorkspace } = useProblemStore();
   const session = authClient.useSession();
   const canManageBuiltins = canManageBuiltinProblems(session.data?.user);
+  const isLoggedIn = Boolean(session.data?.user);
   const theme = useThemeStore();
   const { notice, toast } = useToast();
 
@@ -46,13 +47,13 @@ export default function LibraryPage() {
   // 订阅 catalogVersion：bundled 题源异步加载完成后触发重渲染
   void store.catalogVersion;
   const acwingProblems = getAcwingProblems()
-    .filter((item) => canManageBuiltins || !store.hiddenBuiltins.includes(item.id))
+    .filter((item) => !store.hiddenBuiltins.includes(item.id))
     .map((item) => ({ ...item, folder: store.builtinFolderOverrides[item.id] ?? item.folder }));
   const acwingFolders = Array.from(new Set(acwingProblems.flatMap((problem) => {
     const parts = problem.folder.split("/").filter(Boolean);
     return parts.map((_, index) => parts.slice(0, index + 1).join("/"));
   })));
-  const builtinVisible = canManageBuiltins || !store.hiddenBuiltins.includes(INITIAL_PROBLEM.id);
+  const builtinVisible = !store.hiddenBuiltins.includes(INITIAL_PROBLEM.id);
   const builtinFolder = store.builtinFolderOverrides[INITIAL_PROBLEM.id] ?? "默认题库";
 
   // Esc 收起弹窗
@@ -76,11 +77,13 @@ export default function LibraryPage() {
   // 搜索匹配题号或标题(大小写不敏感)，对全部题源统一生效
   const search = store.librarySearch.trim().toLowerCase();
   const matchesSearch = (id: string, title: string) => !search || `${id} ${title}`.toLowerCase().includes(search);
-  const selectedArchives = [...store.cloudArchives, ...store.archives].filter((item) => matchesSelectedFolder(item.folder) && matchesSearch(item.problem.id, item.problem.title));
+  const showTrash = store.selectedFolder === "已删除";
+  const selectedArchives = showTrash ? [] : [...store.cloudArchives, ...store.archives].filter((item) => matchesSelectedFolder(item.folder) && matchesSearch(item.problem.id, item.problem.title));
   const selectedAcwing = acwingProblems.filter((item) => matchesSelectedFolder(item.folder) && matchesSearch(item.id, item.title));
   const showBuiltIn = builtinVisible && matchesSelectedFolder(builtinFolder) && (!store.librarySearch || `${INITIAL_PROBLEM.id} ${INITIAL_PROBLEM.title}`.toLowerCase().includes(store.librarySearch.toLowerCase()));
 
   useEffect(() => { store.setLibraryReady(); loadAcwingCatalog(); }, []);
+  useEffect(() => { store.purgeDeleted(); }, []);
   useEffect(() => {
     if (!session.data?.user) { store.setCloudArchives([]); store.setCloudFolderIds({}); return; }
     const controller = new AbortController();
@@ -202,11 +205,14 @@ export default function LibraryPage() {
     const affected = [...store.archives, ...store.cloudArchives].filter((item) => folderContains(item.folder, folder));
     const builtinCount = (builtinVisible && folderContains(builtinFolder, folder) ? 1 : 0)
       + acwingProblems.filter((item) => folderContains(item.folder, folder)).length;
-    if (!cloudId && builtinCount > 0 && !canManageBuiltins) {
-      toast("只有管理员或被授予题库管理权限的用户才能删除内置题目");
+    if (!cloudId && builtinCount > 0 && !isLoggedIn) {
+      toast("访客不能隐藏或删除内置题，请先登录");
       return;
     }
-    const prompt = cloudId
+    const localBuiltinOnly = !cloudId && builtinCount > 0 && !canManageBuiltins;
+    const prompt = localBuiltinOnly
+      ? `仅在此设备隐藏内置题目？其中 ${affected.length} 道自有题目仍会永久删除。`
+      : cloudId
       ? `删除云端文件夹「${folder}」？其中 ${affected.length} 道题目会移至上级文件夹。`
       : `永久删除文件夹「${folder}」及其中 ${affected.length + builtinCount} 道题目？此操作不可恢复。`;
     if (!window.confirm(prompt)) return;
@@ -221,7 +227,7 @@ export default function LibraryPage() {
       })));
     } else store.removeFolder(folder);
     if (folderContains(store.selectedFolder, folder)) store.setSelectedFolder(folderParent(folder) || (cloudId ? "云端题库" : "默认题库"));
-    toast(`已永久删除`);
+    toast(localBuiltinOnly ? "已隐藏内置题（仅当前账号）" : "已移入回收站，30 天后自动清理");
   }
 
   async function confirmRename() {
@@ -428,8 +434,12 @@ export default function LibraryPage() {
               onDrop={(event) => { event.preventDefault(); void moveFolderToRoot(); }}>
               <span>▦ 全部题目</span><b>{store.archives.length + acwingProblems.length + (builtinVisible ? 1 : 0)}</b>
             </button>
+            <button className={store.selectedFolder === "已删除" ? "active" : ""} onClick={() => store.setSelectedFolder("已删除")}>
+              <span>♲ 已删除</span><b>{store.deletedArchives.length + store.deletedBuiltins.length}</b>
+            </button>
             {visibleFolders.map((folder) => {
               const hasChildren = orderedFolders.some((item) => item.startsWith(`${folder}/`));
+              const folderHasBuiltins = (builtinVisible && folderContains(builtinFolder, folder)) || acwingProblems.some((item) => folderContains(item.folder, folder));
               const collapsed = store.collapsedFolders.includes(folder);
               // const marginStyle = { marginLeft: `${(folder.split("/").length - 1) * 13}px` };
               return (
@@ -450,7 +460,7 @@ export default function LibraryPage() {
                   </button>
                   {menuFolder === folder && <div className="folder-menu" role="menu">
                     <button role="menuitem" onClick={() => { setMenuFolder(null); void dissolveFolder(folder); }}>散：解散并保留题目</button>
-                    <button role="menuitem" className="danger" onClick={() => { setMenuFolder(null); void deleteFolder(folder); }}>删：永久删除</button>
+                    <button role="menuitem" className="danger" onClick={() => { setMenuFolder(null); void deleteFolder(folder); }}>{!canManageBuiltins && folderHasBuiltins ? "藏：仅自己隐藏内置题" : "删：永久删除"}</button>
                   </div>}
                 </div>
               );
@@ -464,7 +474,7 @@ export default function LibraryPage() {
           <main className="library-catalog">
             <div className="catalog-toolbar">
               <div><h2 className="folder-breadcrumb">{store.selectedFolder === "全部题目" ? "全部题目" : store.selectedFolder.split("/").map((p, i) => <span key={`${p}-${i}`}>{i > 0 && <i>›</i>}{p}</span>)}</h2>
-              <span>{selectedArchives.length + selectedAcwing.length + (showBuiltIn ? 1 : 0)} 道题目</span></div>
+              <span>{showTrash ? store.deletedArchives.length + store.deletedBuiltins.length : selectedArchives.length + selectedAcwing.length + (showBuiltIn ? 1 : 0)} 道题目</span></div>
               <div className="catalog-tools">
                 {store.selectedFolder !== "全部题目" && <button className={store.includeSubfolders ? "active" : ""} onClick={() => store.setIncludeSubfolders(!store.includeSubfolders)}>{store.includeSubfolders ? "含子文件夹" : "仅当前文件夹"}</button>}
                 <label><span>⌕</span><input value={store.librarySearch} onChange={(e) => store.setLibrarySearch(e.target.value)} placeholder="搜索编号或题目名称" /></label>
@@ -472,6 +482,12 @@ export default function LibraryPage() {
             </div>
             <div className="catalog-header"><span>题目</span><span>难度</span><span>测试点</span><span>分类</span><span></span></div>
             <div className="catalog-list">
+              {showTrash && store.deletedBuiltins.map((item) => {
+                const builtin = item.id === INITIAL_PROBLEM.id ? INITIAL_PROBLEM : getAcwingProblems().find((problem) => problem.id === item.id);
+                if (!builtin) return null;
+                return <article className="catalog-row built-in" key={`deleted-${item.id}`}><div className="catalog-problem-link"><code>{builtin.id}</code><span><b>{builtin.title}</b><small>删除于 {new Date(item.deletedAt).toLocaleDateString("zh-CN")}</small></span></div><span className="difficulty beginner">{builtin.difficulty}</span><span>{builtin.samples.length} 个</span><span>已删除</span><div className="row-actions"><button onClick={() => store.restoreBuiltin(item.id)}>恢复</button></div></article>;
+              })}
+              {showTrash && store.deletedArchives.map((item) => <article className="catalog-row" key={`deleted-${item.problem.id}`}><div className="catalog-problem-link"><code>{item.problem.id}</code><span><b>{item.problem.title}</b><small>删除于 {new Date(item.deletedAt ?? item.archivedAt).toLocaleDateString("zh-CN")}</small></span></div><span className={`difficulty ${item.problem.difficulty === "提高" ? "advanced" : item.problem.difficulty === "普及" ? "normal" : "beginner"}`}>{item.problem.difficulty}</span><span>{item.problem.samples.length} 个</span><span>已删除</span><div className="row-actions"><button onClick={() => store.restoreArchive(item.problem.id)}>恢复</button></div></article>)}
               {showBuiltIn && <article className="catalog-row built-in"><div className="catalog-problem-link"><button className="catalog-id-edit editable" onClick={() => { setRenamingId(INITIAL_PROBLEM.id); setNextProblemId(INITIAL_PROBLEM.id); }}><code>{INITIAL_PROBLEM.id}</code></button><button className="catalog-title-open" onClick={openBuiltIn}><span><b>{INITIAL_PROBLEM.title}</b><small>经典入门题 · 内置题目</small></span></button></div><span className="difficulty beginner">{INITIAL_PROBLEM.difficulty}</span><span>{INITIAL_PROBLEM.samples.length} 个</span><span>{folderName(builtinFolder) || "全部题目"}</span><i onClick={openBuiltIn}>进入做题 →</i></article>}
               {selectedAcwing.map((item) => (
                 <article className="catalog-row external-problem" key={item.id}>
@@ -486,12 +502,13 @@ export default function LibraryPage() {
                   <span className={`difficulty ${item.problem.difficulty === "提高" ? "advanced" : item.problem.difficulty === "普及" ? "normal" : "beginner"}`}>{item.problem.difficulty}</span>
                   <span>{item.problem.samples.length} 个</span>
                   <span>{folderName(item.folder)}</span>
-                  <div className="row-actions"><button className="danger-action" onClick={() => { if (window.confirm(`永久删除 ${item.problem.id}？`)) store.removeArchive(item.problem.id); }}>删除</button><i onClick={() => openArchived(item)}>进入 →</i></div>
+                  <div className="row-actions">{isLoggedIn && <button className="danger-action" onClick={() => { if (window.confirm(`删除 ${item.problem.id}？`)) store.removeArchive(item.problem.id); }}>删除</button>}<i onClick={() => openArchived(item)}>进入 →</i></div>
                 </article>
               ))}
-              {!showBuiltIn && selectedAcwing.length === 0 && selectedArchives.length === 0 && (
+              {!showTrash && !showBuiltIn && selectedAcwing.length === 0 && selectedArchives.length === 0 && (
                 <div className="catalog-empty"><b>暂无题目</b><span>点击“添加题目”导入 JSON，或粘贴题面让 AI 自动生成。</span></div>
               )}
+              {showTrash && !store.deletedArchives.length && !store.deletedBuiltins.length && <div className="catalog-empty"><b>回收站为空</b><span>已删除内容保留 30 天，逾期自动清理。</span></div>}
             </div>
           </main>
         </div>

@@ -30,6 +30,8 @@ beforeEach(() => {
     librarySearch: "",
     builtinFolderOverrides: {},
     hiddenBuiltins: [],
+    deletedArchives: [],
+    deletedBuiltins: [],
   });
 });
 
@@ -59,7 +61,7 @@ describe("文件夹 ⋮ 操作菜单", () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
     const row = entryOf("动态规划");
     fireEvent.click(row.querySelector("button.folder-drag")!);
-    fireEvent.click(screen.getByText(/永久删除|^删/));
+    fireEvent.click(screen.getByText(/永久删除|^删|^藏/));
     expect(useLibraryStore.getState().folders).not.toContain("动态规划");
   });
 
@@ -76,12 +78,11 @@ describe("文件夹 ⋮ 操作菜单", () => {
     expect(document.querySelector(".folder-menu")?.textContent).toContain("解散");
   });
 
-  it("访客不能永久删除包含内置题的目录", () => {
+  it("访客不能隐藏内置题", () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
     const row = entryOf("默认题库");
     fireEvent.click(row.querySelector("button.folder-drag")!);
-    fireEvent.click(screen.getByText(/永久删除|^删/));
-    expect(useLibraryStore.getState().folders).toContain("默认题库");
+    fireEvent.click(screen.getByText(/永久删除|^删|^藏/));
     expect(useLibraryStore.getState().hiddenBuiltins).not.toContain("P1001");
   });
 
@@ -89,7 +90,7 @@ describe("文件夹 ⋮ 操作菜单", () => {
     vi.spyOn(window, "confirm").mockReturnValue(false);
     const row = entryOf("默认题库");
     fireEvent.click(row.querySelector("button.folder-drag")!);
-    fireEvent.click(screen.getByText(/永久删除|^删/));
+    fireEvent.click(screen.getByText(/永久删除|^删|^藏/));
     expect(useLibraryStore.getState().folders).toContain("默认题库");
     expect(useLibraryStore.getState().hiddenBuiltins).not.toContain("P1001");
   });

@@ -24,7 +24,8 @@ type Problem = {
   sourceUrl?: string;
   extractionStatus?: "complete" | "needs_review";
 };
-type ArchivedProblem = { problem: Problem; folder: string; archivedAt: string; cloudId?: string; version?: number };
+type ArchivedProblem = { problem: Problem; folder: string; archivedAt: string; deletedAt?: string; cloudId?: string; version?: number };
+export type DeletedBuiltin = { id: string; deletedAt: string };
 type BundledProblem = Problem & { folder: string; sourceUrl: string; extractionStatus: "complete" | "needs_review"; sampleCount?: number };
 
 export type { Problem, ArchivedProblem, BundledProblem, TestCase };
@@ -159,12 +160,18 @@ type LibraryStore = {
   cloudArchives: ArchivedProblem[];
   cloudFolderIds: Record<string, string>;
   hiddenBuiltins: string[];
+  deletedArchives: ArchivedProblem[];
+  deletedBuiltins: DeletedBuiltin[];
   builtinFolderOverrides: Record<string, string>;
   catalogVersion: number;
 
   setArchives: (archives: ArchivedProblem[]) => void;
   addArchive: (archive: ArchivedProblem) => void;
   removeArchive: (id: string) => void;
+  restoreArchive: (id: string) => void;
+  hideBuiltin: (id: string) => void;
+  restoreBuiltin: (id: string) => void;
+  purgeDeleted: () => void;
   updateArchive: (id: string, updater: (item: ArchivedProblem) => ArchivedProblem) => void;
   renameProblem: (oldId: string, newId: string) => void;
   materializeBuiltin: (problem: Problem, folder: string, newId: string) => void;
@@ -201,12 +208,33 @@ export const useLibraryStore = create<LibraryStore>()(
       cloudArchives: [],
       cloudFolderIds: {},
       hiddenBuiltins: [] as string[],
+      deletedArchives: [] as ArchivedProblem[],
+      deletedBuiltins: [] as DeletedBuiltin[],
       builtinFolderOverrides: {} as Record<string, string>,
       catalogVersion: 0,
 
       setArchives: (archives) => set({ archives }),
       addArchive: (archive) => set((s) => ({ archives: [archive, ...s.archives] })),
-      removeArchive: (id) => set((s) => ({ archives: s.archives.filter((a) => a.problem.id !== id) })),
+      removeArchive: (id) => set((s) => {
+        const removed = s.archives.filter((a) => a.problem.id === id).map((a) => ({ ...a, deletedAt: new Date().toISOString() }));
+        return removed.length ? { archives: s.archives.filter((a) => a.problem.id !== id), deletedArchives: [...removed, ...s.deletedArchives] } : s;
+      }),
+      restoreArchive: (id) => set((s) => {
+        const restored = s.deletedArchives.find((a) => a.problem.id === id);
+        return restored ? { deletedArchives: s.deletedArchives.filter((a) => a.problem.id !== id), archives: [{ ...restored, deletedAt: undefined }, ...s.archives] } : s;
+      }),
+      hideBuiltin: (id) => set((s) => s.hiddenBuiltins.includes(id)
+        ? s
+        : { hiddenBuiltins: [...s.hiddenBuiltins, id], deletedBuiltins: [{ id, deletedAt: new Date().toISOString() }, ...s.deletedBuiltins.filter((item) => item.id !== id)] }),
+      restoreBuiltin: (id) => set((s) => ({ hiddenBuiltins: s.hiddenBuiltins.filter((item) => item !== id), deletedBuiltins: s.deletedBuiltins.filter((item) => item.id !== id) })),
+      purgeDeleted: () => set((s) => {
+        const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+        return {
+          deletedArchives: s.deletedArchives.filter((item) => !item.deletedAt || new Date(item.deletedAt).getTime() > cutoff),
+          // 到期后仍保持 hidden，表示内置题已经不可从回收站恢复。
+          deletedBuiltins: s.deletedBuiltins.filter((item) => new Date(item.deletedAt).getTime() > cutoff),
+        };
+      }),
       updateArchive: (id, updater) => set((s) => ({ archives: s.archives.map((a) => a.problem.id === id ? updater(a) : a) })),
       renameProblem: (oldId, newId) => set((s) => ({
         archives: s.archives.map((a) => a.problem.id === oldId ? { ...a, problem: { ...a.problem, id: newId } } : a),
@@ -267,10 +295,12 @@ export const useLibraryStore = create<LibraryStore>()(
         collapsedFolders: s.collapsedFolders.filter((f) => !folderContains(f, folder)),
         folderOrder: s.folderOrder.filter((f) => !folderContains(f, folder)),
         archives: s.archives.filter((archive) => !folderContains(archive.folder, folder)),
+        deletedArchives: [...s.archives.filter((archive) => folderContains(archive.folder, folder)).map((archive) => ({ ...archive, deletedAt: new Date().toISOString() })), ...s.deletedArchives],
         hiddenBuiltins: Array.from(new Set([
           ...s.hiddenBuiltins,
           ...builtinLocations(s.builtinFolderOverrides).filter((item) => folderContains(item.folder, folder)).map((item) => item.id),
         ])),
+        deletedBuiltins: [...builtinLocations(s.builtinFolderOverrides).filter((item) => folderContains(item.folder, folder)).map((item) => ({ id: item.id, deletedAt: new Date().toISOString() })), ...s.deletedBuiltins],
         selectedFolder: folderContains(s.selectedFolder, folder) ? folderParent(folder) || "全部题目" : s.selectedFolder,
       })),
       // Sync test cases back to the library archive when user modifies them in workspace
@@ -305,6 +335,8 @@ export const useLibraryStore = create<LibraryStore>()(
         folderOrder: s.folderOrder,
         includeSubfolders: s.includeSubfolders,
         hiddenBuiltins: s.hiddenBuiltins,
+        deletedArchives: s.deletedArchives,
+        deletedBuiltins: s.deletedBuiltins,
         builtinFolderOverrides: s.builtinFolderOverrides,
         libraryReady: true,
       }),

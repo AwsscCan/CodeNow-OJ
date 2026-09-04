@@ -64,6 +64,9 @@ describe("本地题库目录操作的数据安全", () => {
     useLibraryStore.setState({
       folders: ["默认题库", "A", "A/B", "A/B/C"],
       archives: [archive("A/B/C")],
+      deletedArchives: [],
+      deletedBuiltins: [],
+      hiddenBuiltins: [],
       collapsedFolders: ["A/B/C"],
       folderOrder: ["A/B", "A/B/C"],
       selectedFolder: "A/B/C",
@@ -94,5 +97,14 @@ describe("本地题库目录操作的数据安全", () => {
     expect(state.archives[0].folder).toBe("A/C");
     expect(state.archives[0].problem).toBe(beforeProblem);
     expect(state.selectedFolder).toBe("A/C");
+  });
+
+  it("删除自有题目进入回收站并可恢复", () => {
+    useLibraryStore.getState().removeArchive("P1");
+    expect(useLibraryStore.getState().archives).toHaveLength(0);
+    expect(useLibraryStore.getState().deletedArchives[0].problem.id).toBe("P1");
+    useLibraryStore.getState().restoreArchive("P1");
+    expect(useLibraryStore.getState().archives[0].problem.id).toBe("P1");
+    expect(useLibraryStore.getState().deletedArchives).toHaveLength(0);
   });
 });
