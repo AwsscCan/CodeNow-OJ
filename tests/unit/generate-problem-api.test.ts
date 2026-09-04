@@ -41,6 +41,29 @@ function makeRequest(extra: Record<string, unknown> = {}) {
 }
 
 describe("POST /api/generate-problem 解析与测试点解耦", () => {
+  it("Claude Messages 协议使用 /messages 和 content 响应", async () => {
+    const claudePost = createGenerateProblemHandler(async () => ({ ok: true, config: {
+      provider: "ccswitch", endpoint: "https://relay.example/v1", model: "deepseek-v4", apiKey: "claude-key", source: "ccswitch", wireApi: "anthropic",
+    } }));
+    let requestUrl = "";
+    let requestInit: RequestInit | undefined;
+    vi.stubGlobal("fetch", vi.fn(async (url: string | URL, init?: RequestInit) => {
+      requestUrl = String(url);
+      requestInit = init;
+      return new Response(JSON.stringify({ content: [{ type: "text", text: STRUCTURED_PROBLEM }] }), { status: 200 });
+    }));
+
+    const response = await claudePost(makeRequest());
+    const body = await response.json() as { problem: { title: string } };
+    const requestBody = JSON.parse(String(requestInit?.body)) as Record<string, unknown>;
+    expect(response.status).toBe(200);
+    expect(body.problem.title).toBe("最大子段和");
+    expect(requestUrl).toBe("https://relay.example/v1/messages");
+    expect(requestInit?.headers).toMatchObject({ "x-api-key": "claude-key", "anthropic-version": "2023-06-01" });
+    expect(requestBody).toMatchObject({ model: "deepseek-v4", max_tokens: 4000 });
+    expect(requestBody).not.toHaveProperty("response_format");
+  });
+
   it("默认只解析题面：保留官方样例，不追加批量测试点，也不多调上游", async () => {
     const fetchMock = vi.fn(async () => new Response(
       JSON.stringify({ choices: [{ message: { content: STRUCTURED_PROBLEM } }] }), { status: 200 },

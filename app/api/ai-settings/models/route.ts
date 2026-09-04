@@ -10,7 +10,7 @@ export async function POST(request: Request) {
   const settings = await createAiSettingsRepository(services.db, { secret: services.credentialSecret }).resolve(session.user.id);
   if (!settings) return apiError(400, "AI_NOT_CONFIGURED", "请先保存 AI 设置");
   try {
-    return Response.json(await discoverAiModels({ endpoint: settings.endpoint, apiKey: settings.apiKey, configuredModel: settings.model }), { headers: privateNoStore });
+    return Response.json(await discoverAiModels({ endpoint: settings.endpoint, apiKey: settings.apiKey, configuredModel: settings.model, wireApi: settings.wireApi }), { headers: privateNoStore });
   } catch (error) {
     return apiError(502, "MODEL_DISCOVERY_FAILED", error instanceof Error ? error.message : "无法拉取模型");
   }

@@ -36,7 +36,14 @@ export function useMascotLine() {
       configured: ai.configured,
       signal: controller.signal,
     });
-    if (!controller.signal.aborted) useMascotStore.getState().setLine(line);
+    if (!controller.signal.aborted) {
+      const latest = useMascotStore.getState();
+      // 上游有时会重复返回同一句；点击必须仍然产生可见反馈。
+      const next = line.text === latest.line.text
+        ? pickLocalLine(latest.phase, [...latest.recentLines, line.text])
+        : line;
+      latest.setLine(next);
+    }
   }, []);
 
   useEffect(() => {

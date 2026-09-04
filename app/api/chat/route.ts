@@ -5,6 +5,7 @@ import { rateLimit } from "../_lib/rate-limit";
 import { buildTakagiChatPrompt } from "../_lib/takagi-persona";
 import { formatQuoteContext, pickTakagiQuotes, tagsForQuestion } from "../_lib/takagi-quotes";
 import { validateEndpoint } from "../_lib/validate-endpoint";
+import { buildWireBody, buildWireHeaders, extractWireReasoning, extractWireText } from "../_lib/ai-wire";
 import { resolveAiRuntime, type AiRuntimeResolution } from "../../server/ai/ai-runtime";
 import { redactSensitiveText } from "../../server/ai/redact";
 
@@ -36,7 +37,7 @@ export function createChatHandler(resolveConfig: ResolveAiConfig = resolveAiRunt
 
   try {
     const requestData = await request.json();
-    const { problem: requestedProblem, code, messages } = requestData;
+    const { problem: requestedProblem, code, messages: rawMessages } = requestData;
     let problem = requestedProblem;
     const resolved = await resolveConfig(request);
     if (!resolved.ok) return NextResponse.json({ error: resolved.message }, { status: resolved.status });
@@ -46,8 +47,8 @@ export function createChatHandler(resolveConfig: ResolveAiConfig = resolveAiRunt
     const chatUrl = validateEndpoint(String(endpoint), wireApi);
     problem = await buildOutboundProblemContext(problem);
 
-    const conversation = Array.isArray(messages)
-      ? messages.slice(-16).filter((item): item is ChatMessage =>
+    const conversation = Array.isArray(rawMessages)
+      ? rawMessages.slice(-16).filter((item): item is ChatMessage =>
           item && (item.role === "user" || item.role === "assistant") && typeof item.content === "string" && item.content.trim().length > 0)
       : [];
     if (!conversation.length) return NextResponse.json({ error: "请输入问题" }, { status: 400 });
@@ -113,32 +114,21 @@ export function createChatHandler(resolveConfig: ResolveAiConfig = resolveAiRunt
       ? buildTakagiChatPrompt(problemContext)
       : `你是耐心的算法竞赛 C++17 教练。回答用户关于当前题目的疑问，优先讲清思路、复杂度、边界情况和代码错误。除非用户明确要求，否则不要直接给出完整答案。${problemContext}`) + quoteContext + judgeContext + memoryContext;
 
+    const messages = [
+      { role: "system" as const, content: systemPrompt },
+      ...conversation,
+    ];
     const response = await fetch(chatUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      headers: buildWireHeaders(apiKey, wireApi),
       signal: AbortSignal.timeout(45_000),
-      body: JSON.stringify(wireApi === "responses" ? {
-        model,
-        max_output_tokens: AI_MAX_TOKENS_CHAT,
-        input: [
-          { role: "system", content: systemPrompt },
-          ...conversation,
-        ],
-      } : {
-        model,
-        temperature: AI_CHAT_TEMPERATURE,
-        max_tokens: AI_MAX_TOKENS_CHAT,
-        messages: [
-          { role: "system", content: systemPrompt },
-          ...conversation,
-        ],
-      }),
+      body: JSON.stringify(buildWireBody({ wireApi, model, messages, maxTokens: AI_MAX_TOKENS_CHAT, temperature: AI_CHAT_TEMPERATURE })),
     });
 
-    const data = await response.json() as { choices?: { message?: { content?: string; reasoning_content?: string } }[]; output_text?: string; output?: Array<{ content?: Array<{ text?: string }> }>; error?: { message?: string } };
+    const data = await response.json() as { choices?: { message?: { content?: string; reasoning_content?: string } }[]; content?: Array<{ type?: string; text?: string }>; output_text?: string; output?: Array<{ content?: Array<{ text?: string }> }>; error?: { message?: string } };
     if (!response.ok) return NextResponse.json({ error: redactSensitiveText(data.error?.message || "上游 AI 服务请求失败", [apiKey]) }, { status: response.status });
-    const answer = data.choices?.[0]?.message?.content || data.output_text || data.output?.flatMap((item) => item.content ?? []).map((item) => item.text ?? "").join("") || "";
-    let reasoning = data.choices?.[0]?.message?.reasoning_content;
+    const answer = extractWireText(data);
+    let reasoning = extractWireReasoning(data);
     // 高木人设下思维链会被展示为"小心思"：原生思维链不受人设约束，含穿帮字眼时宁缺毋滥直接丢弃
     if (requestData.persona === "takagi" && typeof reasoning === "string"
       && /deepseek|语言模型|大模型|人工智能|AI\s*助手|扮演|人设|角色设定|提示词|prompt|system|用户(要求|让我|希望|想让)/i.test(reasoning)) {

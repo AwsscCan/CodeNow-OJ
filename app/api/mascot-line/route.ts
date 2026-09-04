@@ -16,6 +16,7 @@ import { rateLimit } from "../_lib/rate-limit";
 import { buildTakagiMascotPrompt } from "../_lib/takagi-persona";
 import { formatQuoteContext, pickTakagiQuotes, tagsForPhase } from "../_lib/takagi-quotes";
 import { validateEndpoint } from "../_lib/validate-endpoint";
+import { buildWireBody, buildWireHeaders, extractWireText } from "../_lib/ai-wire";
 import { resolveAiRuntime, type AiRuntimeResolution } from "../../server/ai/ai-runtime";
 
 /** 每种情境对应的表情与给模型的语气指引 */
@@ -98,35 +99,32 @@ export function createMascotLineHandler(resolveConfig: ResolveAiConfig = resolve
 
     const resolved = await resolveConfig(request);
     if (!resolved.ok) return NextResponse.json({ error: resolved.message }, { status: resolved.status });
-    const { apiKey, endpoint, model } = resolved.config;
+    const { apiKey, endpoint, model, wireApi } = resolved.config;
     if (!event || typeof event !== "object") {
       return NextResponse.json({ error: "桌宠台词请求参数不完整" }, { status: 400 });
     }
 
     const phase = String((event as Record<string, unknown>).phase || "idle");
     const style = PHASE_STYLE[phase] ?? PHASE_STYLE.idle;
-    const chatUrl = validateEndpoint(String(endpoint));
+    const chatUrl = validateEndpoint(String(endpoint), wireApi);
 
+    const messages = [
+      { role: "system" as const, content: SYSTEM_PROMPT },
+      { role: "user" as const, content: buildUserPrompt(event as Record<string, unknown>, recentLines, memories) },
+    ];
     const response = await fetch(chatUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      headers: buildWireHeaders(apiKey, wireApi),
       signal: AbortSignal.timeout(MASCOT_LINE_TIMEOUT_MS),
-      body: JSON.stringify({
-        model,
-        temperature: AI_MASCOT_TEMPERATURE,
-        max_tokens: AI_MAX_TOKENS_MASCOT,
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: buildUserPrompt(event as Record<string, unknown>, recentLines, memories) },
-        ],
-      }),
+      body: JSON.stringify(buildWireBody({ wireApi, model, messages, maxTokens: AI_MAX_TOKENS_MASCOT, temperature: AI_MASCOT_TEMPERATURE })),
     });
 
     // 上游失败：返回通用错误，不泄露上游细节（信息枚举面）
     if (!response.ok) return NextResponse.json({ error: "AI 台词服务暂时不可用" }, { status: 502 });
 
-    const data = await response.json() as { choices?: { message?: { content?: string } }[] };
-    const line = sanitizeLine(data.choices?.[0]?.message?.content || "");
+    const data = await response.json() as { choices?: { message?: { content?: string } }[]; content?: Array<{ type?: string; text?: string }>; output_text?: string; output?: Array<{ content?: Array<{ text?: string }> }> };
+    const rawLine = extractWireText(data);
+    const line = sanitizeLine(rawLine);
     // 空输出：服务端直接降级到本地预设台词池，保证桌宠始终有话说
     if (!line) {
       const local = pickLocalLine(phase as MascotPhase, recentLines);

@@ -6,9 +6,11 @@ import { evaluateMutantFeedback } from "./mutant-feedback";
 import { judge0Submit, type ValidatedReference } from "./reference-solution";
 import { selectMutationEffectiveTests } from "./test-quality-selection";
 import { validateEndpoint } from "./validate-endpoint";
+import { buildWireBody, buildWireHeaders, extractWireText } from "./ai-wire";
+import type { AiWireApi } from "../../server/ai/ai-settings-repository";
 import { redactSensitiveText } from "../../server/ai/redact";
 
-type UpstreamData = { choices?: { message?: { content?: string } }[]; error?: { message?: string } };
+type UpstreamData = { choices?: { message?: { content?: string } }[]; content?: Array<{ type?: string; text?: string }>; output_text?: string; output?: Array<{ content?: Array<{ type?: string; text?: string }> }>; error?: { message?: string } };
 type Category = "boundary" | "special" | "ordinary" | "adversarial" | "performance";
 
 export interface ProblemProfile {
@@ -369,13 +371,15 @@ export async function generateComplexityAwareTests(options: {
   referenceSolution?: string;
   validatedRef?: ValidatedReference;
   signal?: AbortSignal;
+  wireApi?: AiWireApi;
 }) {
   const startedAt = Date.now();
   const overallDeadline = startedAt + Math.max(AI_TIMEOUT_MS, GENERATION_BUDGET_MS);
   throwIfAborted(options.signal);
   const target = Math.max(1, Math.min(50, Math.floor(options.count || 12)));
   const quota = buildCategoryQuota(target);
-  const chatUrl = validateEndpoint(options.endpoint);
+  const wireApi = options.wireApi ?? "chat_completions";
+  const chatUrl = validateEndpoint(options.endpoint, wireApi);
   const isDeepSeek = /(^|\.)api\.deepseek\.com$/i.test(chatUrl.hostname);
   const referenceSolution = options.referenceSolution || options.validatedRef?.solutionCode || "";
   const hasReference = Boolean(referenceSolution.trim());
@@ -403,20 +407,23 @@ export async function generateComplexityAwareTests(options: {
     const remaining = overallDeadline - Date.now();
     if (remaining < 2_000) throw new Error("Generation time budget exhausted.");
     const perCallTimeout = Math.max(1_500, Math.min(PER_CALL_TIMEOUT_CAP_MS, remaining));
-    const body: Record<string, unknown> = {
+    const body: Record<string, unknown> = buildWireBody({
+      wireApi,
       model: options.model,
+      messages: messages as Array<{ role: "system" | "user" | "assistant"; content: string }>,
+      maxTokens: Math.min(8000, Math.max(1800, 900 + requested * 480)),
       temperature: 0.04,
-      max_tokens: Math.min(8000, Math.max(1800, 900 + requested * 480)),
-      stream: false,
-      response_format: { type: "json_object" },
-      messages,
-    };
-    if (isDeepSeek) body.thinking = { type: "disabled" };
+    });
+    if (wireApi === "chat_completions") {
+      body.stream = false;
+      body.response_format = { type: "json_object" };
+      if (isDeepSeek) body.thinking = { type: "disabled" };
+    }
     const send = async () => {
       throwIfAborted(options.signal);
       return fetch(chatUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${options.apiKey}` },
+        headers: buildWireHeaders(options.apiKey, wireApi),
         body: JSON.stringify(body),
         signal: requestSignal(options.signal, perCallTimeout),
       });
@@ -433,7 +440,7 @@ export async function generateComplexityAwareTests(options: {
     let data: UpstreamData;
     try { data = JSON.parse(envelope) as UpstreamData; } catch { throw new Error(`AI service returned an invalid HTTP response (${response.status}).`); }
     if (!response.ok) throw new Error(data.error?.message || `Upstream AI request failed (HTTP ${response.status}).`);
-    const content = data.choices?.[0]?.message?.content || "";
+    const content = extractWireText(data);
     if (!content.trim()) throw new Error("AI returned an empty response.");
     return content;
   }

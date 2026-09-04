@@ -43,7 +43,7 @@ export function createGenerateTestsHandler(dependencies: GenerateTestsHandlerDep
       const { problem, count } = requestData;
       const resolved = await resolveConfig(request);
       if (!resolved.ok) return NextResponse.json({ error: resolved.message }, { status: resolved.status });
-      const { apiKey, endpoint, model } = resolved.config;
+      const { apiKey, endpoint, model, wireApi } = resolved.config;
       activeApiKey = apiKey;
       const requested = Math.floor(Number(count));
       const target = Number.isFinite(requested) ? Math.max(1, Math.min(50, requested)) : 12;
@@ -81,6 +81,7 @@ export function createGenerateTestsHandler(dependencies: GenerateTestsHandlerDep
           model: String(model),
           problemDigest: digest,
           samples,
+          wireApi,
           signal: request.signal,
         });
         throwIfAborted(request.signal);
@@ -96,6 +97,7 @@ export function createGenerateTestsHandler(dependencies: GenerateTestsHandlerDep
         count: target,
         referenceSolution: validatedRef?.solutionCode,
         validatedRef,
+        wireApi,
         signal: request.signal,
       });
       throwIfAborted(request.signal);

@@ -68,6 +68,31 @@ describe("staticCheck security gate", () => {
 });
 
 describe("reference candidate mutant pool", () => {
+  it("uses Claude Messages wire format when configured", async () => {
+    let requestUrl = "";
+    let requestInit: RequestInit | undefined;
+    const content = JSON.stringify({
+      solutionCode: "int main(){return 0;}",
+      bruteCode: "int main(){volatile int x=0;return x;}",
+      validationInputs: ["1", "2", "3", "4"],
+    });
+    vi.stubGlobal("fetch", vi.fn(async (url: string | URL, init?: RequestInit) => {
+      requestUrl = String(url);
+      requestInit = init;
+      return new Response(JSON.stringify({ content: [{ type: "text", text: content }] }), { status: 200 });
+    }));
+
+    const candidate = await generateReferenceCandidate("claude-key", "https://relay.example/v1", "deepseek-v4", "P", [], undefined, "anthropic");
+    const body = JSON.parse(String(requestInit?.body)) as Record<string, unknown>;
+    expect(requestUrl).toBe("https://relay.example/v1/messages");
+    expect(requestInit?.headers).toMatchObject({ "x-api-key": "claude-key", "anthropic-version": "2023-06-01" });
+    expect(body).toMatchObject({ model: "deepseek-v4", max_tokens: 7000 });
+    expect(body.messages).toEqual([
+      { role: "user", content: "Return the JSON object now." },
+    ]);
+    expect(candidate.solutionCode).toContain("main");
+  });
+
   it("aborts an in-flight reference candidate request when its caller disconnects", async () => {
     const controller = new AbortController();
     const abortError = new DOMException("client disconnected", "AbortError");

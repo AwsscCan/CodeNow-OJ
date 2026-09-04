@@ -1,4 +1,4 @@
-import type { AiProvider } from "./ai-settings-repository";
+import type { AiProvider, AiWireApi } from "./ai-settings-repository";
 
 const providerHosts: Partial<Record<AiProvider, string>> = {
   deepseek: "api.deepseek.com",
@@ -26,10 +26,10 @@ export function validateAiEndpoint(raw: string, provider: AiProvider = "custom")
   return url;
 }
 
-function modelsUrl(endpoint: string): URL {
+function modelsUrl(endpoint: string, wireApi: AiWireApi): URL {
   const url = validateAiEndpoint(endpoint);
   let path = url.pathname.replace(/\/+$/, "");
-  path = path.replace(/\/chat\/completions$/i, "").replace(/\/responses$/i, "");
+  path = path.replace(/\/chat\/completions$/i, "").replace(/\/responses$/i, "").replace(/\/messages$/i, "");
   url.pathname = `${path}/models`.replace(/\/+/g, "/");
   url.search = "";
   url.hash = "";
@@ -42,13 +42,16 @@ function safeError(value: unknown, apiKey: string) {
 }
 
 export async function discoverAiModels(
-  settings: { endpoint: string; apiKey: string; configuredModel: string },
+  settings: { endpoint: string; apiKey: string; configuredModel: string; wireApi?: AiWireApi },
   fetcher: typeof fetch = fetch,
 ) {
-  const url = modelsUrl(settings.endpoint);
+  const wireApi = settings.wireApi ?? "chat_completions";
+  const url = modelsUrl(settings.endpoint, wireApi);
   try {
     const response = await fetcher(url, {
-      headers: { Authorization: `Bearer ${settings.apiKey}` },
+      headers: wireApi === "anthropic"
+        ? { Authorization: `Bearer ${settings.apiKey}`, "x-api-key": settings.apiKey, "anthropic-version": "2023-06-01" }
+        : { Authorization: `Bearer ${settings.apiKey}` },
       signal: AbortSignal.timeout(15_000),
     });
     const body = await response.json().catch(() => ({})) as { data?: Array<{ id?: unknown }>; models?: Array<{ id?: unknown }>; error?: { message?: unknown } };

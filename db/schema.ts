@@ -187,7 +187,7 @@ export const aiSettings = sqliteTable("ai_settings", {
   model: text("model").notNull(),
   apiKeyCiphertext: text("api_key_ciphertext").notNull(),
   source: text("source", { enum: ["manual", "ccswitch"] }).notNull().default("manual"),
-  wireApi: text("wire_api", { enum: ["chat_completions", "responses"] }).notNull().default("chat_completions"),
+    wireApi: text("wire_api", { enum: ["chat_completions", "responses", "anthropic"] }).notNull().default("chat_completions"),
   version: integer("version").notNull().default(1),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),

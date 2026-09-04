@@ -7,6 +7,7 @@ import {
   type ReferenceCandidate,
   type ValidatedReference,
 } from "./reference-solution";
+import type { AiWireApi } from "../../server/ai/ai-settings-repository";
 
 export type ReferenceResolutionDependencies = {
   getCachedReference: (problemDigest: string) => ValidatedReference | null;
@@ -18,6 +19,7 @@ export type ReferenceResolutionDependencies = {
     problemDigest: string,
     existingSamples: Array<{ input: string; output: string }>,
     signal?: AbortSignal,
+    wireApi?: AiWireApi,
   ) => Promise<ReferenceCandidate>;
   validateReference: (
     candidate: ReferenceCandidate,
@@ -86,6 +88,7 @@ export async function resolveValidatedReference(options: {
   model: string;
   problemDigest: string;
   samples: Array<{ input: string; output: string }>;
+  wireApi?: AiWireApi;
   signal?: AbortSignal;
 }, dependencies: ReferenceResolutionDependencies = defaultDependencies): Promise<{
   validatedRef?: ValidatedReference;
@@ -110,22 +113,15 @@ export async function resolveValidatedReference(options: {
   try {
     throwIfAborted(options.signal);
     const samples = options.samples.slice(0, 6);
-    const candidate = options.signal
-      ? await dependencies.generateReferenceCandidate(
-        options.apiKey,
-        options.endpoint,
-        options.model,
-        options.problemDigest,
-        samples,
-        options.signal,
-      )
-      : await dependencies.generateReferenceCandidate(
-        options.apiKey,
-        options.endpoint,
-        options.model,
-        options.problemDigest,
-        samples,
-      );
+    const candidate = await dependencies.generateReferenceCandidate(
+      options.apiKey,
+      options.endpoint,
+      options.model,
+      options.problemDigest,
+      samples,
+      options.signal,
+      options.wireApi,
+    );
     throwIfAborted(options.signal);
     const rounds = Math.min(8, Math.max(4, candidate.validationInputs.length));
     const validation = options.signal

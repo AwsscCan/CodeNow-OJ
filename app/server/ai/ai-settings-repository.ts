@@ -7,6 +7,7 @@ import { validateAiEndpoint } from "./model-discovery";
 
 type RepositoryDb = ReturnType<typeof createLocalDb>;
 export type AiProvider = "deepseek" | "openai" | "custom" | "ccswitch";
+export type AiWireApi = "chat_completions" | "responses" | "anthropic";
 export type AiSettingsInput = {
   provider: AiProvider;
   endpoint: string;
@@ -14,7 +15,7 @@ export type AiSettingsInput = {
   apiKey?: string;
   clearApiKey?: boolean;
   source?: "manual" | "ccswitch";
-  wireApi?: "chat_completions" | "responses";
+  wireApi?: AiWireApi;
 };
 export type PublicAiSettings = {
   configured: boolean;
@@ -25,7 +26,7 @@ export type PublicAiSettings = {
   hasApiKey: boolean;
   version: number;
   updatedAt: string | null;
-  wireApi?: "chat_completions" | "responses";
+  wireApi: AiWireApi;
 };
 export type RuntimeAiSettings = Omit<PublicAiSettings, "configured" | "hasApiKey" | "version" | "updatedAt"> & { apiKey: string };
 export type AiSettingsResult =
@@ -33,6 +34,7 @@ export type AiSettingsResult =
   | { ok: false; status: 400 | 409; code: string; message: string; currentVersion?: number; updatedAt?: string };
 
 const providers = new Set<AiProvider>(["deepseek", "openai", "custom", "ccswitch"]);
+const wireApis = new Set<AiWireApi>(["chat_completions", "responses", "anthropic"]);
 const defaults: PublicAiSettings = {
   configured: false,
   provider: "deepseek",
@@ -42,7 +44,7 @@ const defaults: PublicAiSettings = {
   hasApiKey: false,
   version: 0,
   updatedAt: null,
-  wireApi: "chat_completions",
+    wireApi: "chat_completions",
 };
 
 function publicValue(row?: typeof aiSettings.$inferSelect): PublicAiSettings {
@@ -56,13 +58,13 @@ function publicValue(row?: typeof aiSettings.$inferSelect): PublicAiSettings {
     hasApiKey: Boolean(row.apiKeyCiphertext),
     version: row.version,
     updatedAt: row.updatedAt.toISOString(),
-    wireApi: row.wireApi === "responses" ? "responses" : "chat_completions",
+    wireApi: wireApis.has(row.wireApi as AiWireApi) ? row.wireApi as AiWireApi : "chat_completions",
   };
 }
 
 function validate(input: AiSettingsInput): string | null {
   if (!providers.has(input.provider)) return "AI provider is invalid";
-  if (input.wireApi !== undefined && input.wireApi !== "chat_completions" && input.wireApi !== "responses") return "Wire API is invalid";
+  if (input.wireApi !== undefined && !wireApis.has(input.wireApi)) return "Wire API is invalid";
   try { validateAiEndpoint(input.endpoint, input.provider); } catch (error) { return error instanceof Error ? error.message : "API Endpoint is invalid"; }
   if (!input.model.trim() || input.model.trim().length > 160 || /[\u0000-\u001f]/.test(input.model)) return "Model ID is invalid";
   if (input.apiKey !== undefined && (typeof input.apiKey !== "string" || input.apiKey.length > 4096 || /[\r\n]/.test(input.apiKey))) return "API Key is invalid";
@@ -94,7 +96,7 @@ export function createAiSettingsRepository(db: Database, options: { secret: stri
         endpoint: row.endpoint,
         model: row.model,
         source: row.source,
-        wireApi: row.wireApi === "responses" ? "responses" : "chat_completions",
+        wireApi: wireApis.has(row.wireApi as AiWireApi) ? row.wireApi as AiWireApi : "chat_completions",
         apiKey: await decryptCredential(row.apiKeyCiphertext, options.secret, userId),
       };
     },

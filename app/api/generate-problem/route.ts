@@ -5,7 +5,9 @@ import { getCachedReference } from "../_lib/reference-solution";
 import { generateComplexityAwareTests } from "../_lib/test-generation-pipeline";
 import { validateEndpoint } from "../_lib/validate-endpoint";
 import { resolveAiRuntime, type AiRuntimeResolution } from "../../server/ai/ai-runtime";
+import type { AiWireApi } from "../../server/ai/ai-settings-repository";
 import { redactSensitiveText } from "../../server/ai/redact";
+import { buildWireBody, buildWireHeaders, extractWireText } from "../_lib/ai-wire";
 
 type ResolveAiConfig = (request: Request) => Promise<AiRuntimeResolution>;
 
@@ -19,14 +21,14 @@ export function createGenerateProblemHandler(resolveConfig: ResolveAiConfig = re
     const { rawProblem } = requestData;
     const resolved = await resolveConfig(request);
     if (!resolved.ok) return NextResponse.json({ error: resolved.message }, { status: resolved.status });
-    const { apiKey, endpoint, model } = resolved.config;
+    const { apiKey, endpoint, model, wireApi } = resolved.config;
     if (!rawProblem) return NextResponse.json({ error: "Raw problem text is required." }, { status: 400 });
     if (typeof rawProblem !== "string" || rawProblem.trim().length < 20) return NextResponse.json({ error: "Problem text is too short." }, { status: 400 });
     if (rawProblem.length > AI_MAX_RAW_PROBLEM_LENGTH) return NextResponse.json({ error: `Problem text cannot exceed ${AI_MAX_RAW_PROBLEM_LENGTH} characters.` }, { status: 400 });
 
-    const chatUrl = validateEndpoint(String(endpoint));
+    const chatUrl = validateEndpoint(String(endpoint), wireApi);
     const isDeepSeek = /(^|\.)api\.deepseek\.com$/i.test(chatUrl.hostname);
-    const structContent = await structureProblem(chatUrl, String(apiKey), String(model), rawProblem, isDeepSeek);
+    const structContent = await structureProblem(chatUrl, String(apiKey), String(model), rawProblem, wireApi, isDeepSeek);
     const cleaned = structContent.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
     const start = cleaned.indexOf("{"), end = cleaned.lastIndexOf("}");
     if (start < 0 || end <= start) throw new Error("AI did not return valid problem JSON.");
@@ -59,6 +61,7 @@ export function createGenerateProblemHandler(resolveConfig: ResolveAiConfig = re
       count: Math.max(12, 30 - (problem.samples as unknown[]).length),
       referenceSolution: validatedRef?.solutionCode,
       validatedRef: validatedRef || undefined,
+      wireApi,
     });
 
     problem.samples = [
@@ -91,31 +94,29 @@ export function createGenerateProblemHandler(resolveConfig: ResolveAiConfig = re
 
 export const POST = createGenerateProblemHandler();
 
-async function structureProblem(chatUrl: URL, apiKey: string, model: string, rawProblem: string, isDeepSeek: boolean): Promise<string> {
-  const body: Record<string, unknown> = {
-    model,
-    temperature: 0.1,
-    max_tokens: 4000,
-    stream: false,
-    response_format: { type: "json_object" },
-    messages: [{
-      role: "system",
+async function structureProblem(chatUrl: URL, apiKey: string, model: string, rawProblem: string, wireApi: AiWireApi, isDeepSeek: boolean): Promise<string> {
+  const messages = [{
+      role: "system" as const,
       content: [
         "Parse an online-judge programming problem. Return ONLY one valid JSON object.",
         `Schema: {"version":1,"id":"","title":"","difficulty":"beginner","time":"1000 ms","memory":"128 MB","description":"","inputFormat":"","outputFormat":"","samples":[{"id":1,"input":"","output":""}]}`,
         "Extract official samples if present. If samples are missing, return an empty samples array; do not invent official samples.",
         "Preserve input/output line breaks exactly.",
       ].join("\n"),
-    }, { role: "user", content: rawProblem }],
-  };
-  if (isDeepSeek) body.thinking = { type: "disabled" };
+    }, { role: "user" as const, content: rawProblem }];
+  const body: Record<string, unknown> = buildWireBody({ wireApi, model, temperature: 0.1, maxTokens: 4000, messages });
+  if (wireApi === "chat_completions") {
+    body.stream = false;
+    body.response_format = { type: "json_object" };
+    if (isDeepSeek) body.thinking = { type: "disabled" };
+  }
 
   async function send(jsonMode: boolean) {
     const requestBody = jsonMode ? body : { ...body };
     if (!jsonMode) delete (requestBody as Record<string, unknown>).response_format;
     return fetch(chatUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      headers: buildWireHeaders(apiKey, wireApi),
       body: JSON.stringify(requestBody),
       signal: AbortSignal.timeout(AI_TIMEOUT_MS),
     });
@@ -124,10 +125,10 @@ async function structureProblem(chatUrl: URL, apiKey: string, model: string, raw
   let res = await send(true);
   if (!res.ok && (res.status === 400 || res.status === 422)) res = await send(false);
   const text = await res.text();
-  let data: { choices?: { message?: { content?: string } }[]; error?: { message?: string } };
+  let data: { choices?: { message?: { content?: string } }[]; content?: Array<{ type?: string; text?: string }>; output_text?: string; output?: Array<{ content?: Array<{ type?: string; text?: string }> }>; error?: { message?: string } };
   try { data = JSON.parse(text); } catch { throw new Error(`AI returned invalid HTTP response (${res.status}).`); }
   if (!res.ok) throw new Error(data.error?.message || "Upstream AI request failed.");
-  return data.choices?.[0]?.message?.content || "";
+  return extractWireText(data);
 }
 
 function buildDigest(problem: Record<string, unknown>): string {

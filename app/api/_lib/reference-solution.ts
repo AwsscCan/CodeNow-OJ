@@ -10,6 +10,8 @@ import type { GeneratorArtifact } from "./generator-artifact";
 import { decode, encode, getCppLanguageId, submitSingle } from "./judge0-client";
 import type { MutantSource } from "./mutant-feedback";
 import { validateEndpoint } from "./validate-endpoint";
+import { buildWireBody, buildWireHeaders, extractWireText } from "./ai-wire";
+import type { AiWireApi } from "../../server/ai/ai-settings-repository";
 
 type RunResult = {
   stdout: string;
@@ -209,9 +211,10 @@ export async function generateReferenceCandidate(
   problemDigest: string,
   existingSamples: Array<{ input: string; output: string }>,
   signal?: AbortSignal,
+  wireApi: AiWireApi = "chat_completions",
 ): Promise<ReferenceCandidate> {
   throwIfAborted(signal);
-  const chatUrl = validateEndpoint(endpoint);
+  const chatUrl = validateEndpoint(endpoint, wireApi);
   const isDeepSeek = /api\.deepseek\.com$/i.test(chatUrl.hostname);
   const prompt = `You are an OJ reference-solution engineer. Return only one JSON object.
 
@@ -233,27 +236,34 @@ Rules:
 - generator is optional; if returned it must be standalone C++17, read one integer seed from stdin, write exactly one complete problem input to stdout, use no files/network, and return at most 8 deterministic integer seeds.
 - Use exact C++17 and safe integer types. Never invent an input format.
 - Do not include Markdown or extra JSON fields.`;
-  const body: Record<string, unknown> = {
+  const body: Record<string, unknown> = buildWireBody({
+    wireApi,
     model,
     temperature: 0.02,
-    max_tokens: 7000,
-    stream: false,
-    messages: [{ role: "system", content: prompt }],
-  };
-  if (isDeepSeek) body.thinking = { type: "disabled" };
+    maxTokens: 7000,
+    messages: [
+      { role: "system", content: prompt },
+      { role: "user", content: "Return the JSON object now." },
+    ],
+  });
+  if (wireApi === "chat_completions") {
+    body.stream = false;
+    if (isDeepSeek) body.thinking = { type: "disabled" };
+  }
   const timeoutSignal = AbortSignal.timeout(60_000);
   const response = await fetch(chatUrl, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+    headers: buildWireHeaders(apiKey, wireApi),
     body: JSON.stringify(body),
     signal: signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal,
   });
   throwIfAborted(signal);
-  const data = await response.json() as { choices?: { message?: { content?: string } }[]; error?: { message?: string } };
+  const data = await response.json() as { choices?: { message?: { content?: string } }[]; content?: Array<{ type?: string; text?: string }>; output_text?: string; output?: Array<{ content?: Array<{ type?: string; text?: string }> }>; error?: { message?: string } };
   throwIfAborted(signal);
-  if (!response.ok || !data.choices?.[0]?.message?.content) throw new Error(data.error?.message || "AI 生成参考程序失败");
+  const content = extractWireText(data);
+  if (!response.ok || !content) throw new Error(data.error?.message || "AI 生成参考程序失败");
 
-  const parsed = parseObject(data.choices[0].message.content);
+  const parsed = parseObject(content);
   const solutionCode = String(parsed.solutionCode || "");
   const bruteCode = String(parsed.bruteCode || "");
   const validationInputs = Array.isArray(parsed.validationInputs) ? parsed.validationInputs.map(String).filter((input) => input.trim()).slice(0, 16) : [];

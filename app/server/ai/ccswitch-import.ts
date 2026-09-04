@@ -25,9 +25,10 @@ function fromCodex(root: Record<string, unknown>): ImportedCcSwitchSettings | nu
   const config = typeof settings?.config === "string" ? settings.config : "";
   const endpoint = tomlValue(config, "base_url");
   const model = tomlValue(config, "model");
+  const wireApi = tomlValue(config, "wire_api") === "responses" ? "responses" as const : "chat_completions" as const;
   const apiKey = typeof auth?.OPENAI_API_KEY === "string" ? auth.OPENAI_API_KEY : "";
   if (!endpoint || !model || !apiKey) return null;
-  return { provider: "ccswitch", endpoint, model, apiKey, source: "ccswitch", models: [model] };
+  return { provider: "ccswitch", endpoint, model, apiKey, source: "ccswitch", wireApi, models: [model] };
 }
 
 function fromRows(root: Record<string, unknown>): ImportedCcSwitchSettings | null {
@@ -41,7 +42,11 @@ function fromRows(root: Record<string, unknown>): ImportedCcSwitchSettings | nul
   const modelKeys = ["ANTHROPIC_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME"];
   const models = [...new Set(modelKeys.flatMap((key) => typeof env?.[key] === "string" && String(env[key]).trim() ? [String(env[key]).trim()] : []))];
   if (!endpoint || !apiKey || !models.length) return null;
-  return { provider: "ccswitch", endpoint, model: models[0], apiKey, source: "ccswitch", models };
+  const providerType = String(row.app_type ?? row.appType ?? row.kind ?? "").toLowerCase();
+  const wireApi = providerType === "claude" || Boolean(env?.ANTHROPIC_BASE_URL || env?.ANTHROPIC_AUTH_TOKEN || env?.ANTHROPIC_API_KEY)
+    ? "anthropic" as const
+    : "chat_completions" as const;
+  return { provider: "ccswitch", endpoint, model: models[0], apiKey, source: "ccswitch", wireApi, models };
 }
 
 export function parseCcSwitchExport(value: unknown): ImportedCcSwitchSettings {

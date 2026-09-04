@@ -14,7 +14,7 @@ export type PublicAiSettings = {
   hasApiKey: boolean;
   version: number;
   updatedAt: string | null;
-  wireApi?: "chat_completions" | "responses";
+  wireApi?: "chat_completions" | "responses" | "anthropic";
 };
 
 type ConversationCache = {

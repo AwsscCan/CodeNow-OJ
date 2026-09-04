@@ -35,7 +35,7 @@ export function createAiSettingsHandlers(resolveContext: ResolveAiSettingsContex
         apiKey: typeof body.apiKey === "string" ? body.apiKey : undefined,
         clearApiKey: body.clearApiKey === true,
         source: body.source === "ccswitch" ? "ccswitch" : "manual",
-        wireApi: body.wireApi === "responses" ? "responses" : "chat_completions",
+        wireApi: body.wireApi === "responses" || body.wireApi === "anthropic" ? body.wireApi : "chat_completions",
       }, body.version);
       if (!result.ok) return apiError(result.status, result.code, result.message, undefined, { currentVersion: result.currentVersion, updatedAt: result.updatedAt });
       return Response.json(result.value, { headers: privateNoStore });

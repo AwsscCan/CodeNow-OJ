@@ -9,10 +9,19 @@ export const TEST_AI_CONFIG = {
   wireApi: "chat_completions" as const,
 };
 
+export const TEST_RESPONSES_AI_CONFIG = {
+  ...TEST_AI_CONFIG,
+  wireApi: "responses" as const,
+};
+
 export async function resolveTestAiConfig(): Promise<AiRuntimeResolution> {
   return { ok: true, config: TEST_AI_CONFIG };
 }
 
 export async function resolveMissingAiConfig(): Promise<AiRuntimeResolution> {
   return { ok: false, status: 400, code: "AI_NOT_CONFIGURED", message: "请先在设置中配置 AI 服务" };
+}
+
+export async function resolveResponsesAiConfig(): Promise<AiRuntimeResolution> {
+  return { ok: true, config: TEST_RESPONSES_AI_CONFIG };
 }

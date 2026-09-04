@@ -52,6 +52,16 @@ describe("useMascotLine 点击即时反馈", () => {
     expect(useMascotStore.getState().line.text).toBe(local.text);
   });
 
+  it("AI 重复返回当前台词时仍切换到另一句", async () => {
+    const current = useMascotStore.getState().line;
+    requestMascotLine.mockResolvedValue({ ...current });
+
+    const { result } = renderHook(() => useMascotLine());
+    await act(async () => { await result.current.refresh(); });
+
+    expect(useMascotStore.getState().line.text).not.toBe(current.text);
+  });
+
   it("取词请求携带用户记忆池(桌宠台词可玩记忆梗)", async () => {
     useMemoryStore.setState({ memories: [] });
     useMemoryStore.getState().remember("habit", "常在边界情况上没把握");

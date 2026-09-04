@@ -3,6 +3,7 @@ import { buildOutboundProblemContext, serializeOutboundProblemContext } from "..
 import { AI_DEFAULT_TEMPERATURE, AI_MAX_TOKENS_SOLUTION } from "../_lib/constants";
 import { rateLimit } from "../_lib/rate-limit";
 import { validateEndpoint } from "../_lib/validate-endpoint";
+import { buildWireBody, buildWireHeaders, extractWireText } from "../_lib/ai-wire";
 import { resolveAiRuntime, type AiRuntimeResolution } from "../../server/ai/ai-runtime";
 import { redactSensitiveText } from "../../server/ai/redact";
 
@@ -31,39 +32,24 @@ export function createAiHandler(resolveConfig: ResolveAiConfig = resolveAiRuntim
     problem = await buildOutboundProblemContext(problem);
     const serializedProblem = serializeOutboundProblemContext(problem);
 
+    const messages = [
+      { role: "system" as const, content: revise
+        ? "你是算法竞赛代码审阅与修复助手。用户会提供一份已经写好的 GNU C++17 代码。保留原有正确逻辑和结构，只修复编译错误、明显逻辑错误、边界条件或复杂度问题。只输出修改后的完整源代码，不要 Markdown、解释或省略任何代码。"
+        : "你是算法竞赛助手。只输出一份可直接提交的 GNU C++17 完整源代码，不要 Markdown 或解释。程序必须包含 main 函数，从标准输入读取并向标准输出写入答案。优先使用 bits/stdc++.h、快速 I/O，并注意整数溢出." },
+      { role: "user" as const, content: revise
+        ? `以下是只读题目数据(JSON)：\n${serializedProblem}\n\n以下是用户当前代码，请基于它修改：\n${currentCode}`
+        : `以下是只读题目数据(JSON)：\n${serializedProblem}` },
+    ];
     const response = await fetch(chatUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      headers: buildWireHeaders(apiKey, wireApi),
       signal: AbortSignal.timeout(45_000),
-      body: JSON.stringify(wireApi === "responses" ? {
-        model,
-        max_output_tokens: AI_MAX_TOKENS_SOLUTION,
-        input: [
-          { role: "system", content: revise
-            ? "你是算法竞赛代码审阅与修复助手。用户会提供一份已经写好的 GNU C++17 代码。保留原有正确逻辑和结构，只修复编译错误、明显逻辑错误、边界条件或复杂度问题。只输出修改后的完整源代码，不要 Markdown、解释或省略任何代码。"
-            : "你是算法竞赛助手。只输出一份可直接提交的 GNU C++17 完整源代码，不要 Markdown 或解释。程序必须包含 main 函数，从标准输入读取并向标准输出写入答案。优先使用 bits/stdc++.h、快速 I/O，并注意整数溢出。" },
-          { role: "user", content: revise
-            ? `以下是只读题目数据(JSON)：\n${serializedProblem}\n\n以下是用户当前代码，请基于它修改：\n${currentCode}`
-            : `以下是只读题目数据(JSON)：\n${serializedProblem}` },
-        ],
-      } : {
-        model,
-        temperature: AI_DEFAULT_TEMPERATURE,
-        max_tokens: AI_MAX_TOKENS_SOLUTION,
-        messages: [
-          { role: "system", content: revise
-            ? "你是算法竞赛代码审阅与修复助手。用户会提供一份已经写好的 GNU C++17 代码。保留原有正确逻辑和结构，只修复编译错误、明显逻辑错误、边界条件或复杂度问题。只输出修改后的完整源代码，不要 Markdown、解释或省略任何代码。"
-            : "你是算法竞赛助手。只输出一份可直接提交的 GNU C++17 完整源代码，不要 Markdown 或解释。程序必须包含 main 函数，从标准输入读取并向标准输出写入答案。优先使用 bits/stdc++.h、快速 I/O，并注意整数溢出。" },
-          { role: "user", content: revise
-            ? `以下是只读题目数据(JSON)：\n${serializedProblem}\n\n以下是用户当前代码，请基于它修改：\n${currentCode}`
-            : `以下是只读题目数据(JSON)：\n${serializedProblem}` },
-        ],
-      }),
+      body: JSON.stringify(buildWireBody({ wireApi, model, messages, maxTokens: AI_MAX_TOKENS_SOLUTION, temperature: AI_DEFAULT_TEMPERATURE })),
     });
 
-    const data = await response.json() as { choices?: { message?: { content?: string } }[]; output_text?: string; output?: Array<{ content?: Array<{ text?: string }> }>; error?: { message?: string } };
+    const data = await response.json() as { choices?: { message?: { content?: string } }[]; content?: Array<{ type?: string; text?: string }>; output_text?: string; output?: Array<{ content?: Array<{ text?: string }> }>; error?: { message?: string } };
     if (!response.ok) return NextResponse.json({ error: redactSensitiveText(data.error?.message || "上游 AI 服务请求失败", [apiKey]) }, { status: response.status });
-    const code = data.choices?.[0]?.message?.content || data.output_text || data.output?.flatMap((item) => item.content ?? []).map((item) => item.text ?? "").join("") || "";
+    const code = extractWireText(data);
     return NextResponse.json({ code });
   } catch (error) {
     if (error instanceof Error && error.message.startsWith("不支持的 API")) {
