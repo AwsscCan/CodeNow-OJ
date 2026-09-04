@@ -55,4 +55,22 @@ describe("AI settings page", () => {
     await screen.findByDisplayValue("model-a");
     expect(screen.getByLabelText("导入 CCSwitch 配置")).toBeTruthy();
   });
+
+  it("offers a real local CCSwitch connection and provider application", async () => {
+    render(<SettingsPage />);
+    await screen.findByDisplayValue("model-a");
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).includes("127.0.0.1:19999")) {
+        if (String(input).includes("cc-switch-catalog")) return new Response(JSON.stringify({ active: true, providers: [{ id: "p1", name: "Local Provider", is_current: true, model_id: "m1", models: ["m1"] }] }), { status: 200 });
+        return new Response(JSON.stringify({ ok: true, verified: true, connection_verified: true, provider_name: "Local Provider", model_id: "m1", message: "已验证" }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ configured: true, provider: "custom", endpoint: "https://llm.example.com/v1", model: "model-a", source: "manual", hasApiKey: true, version: 1, updatedAt: "now" }), { status: 200 });
+    });
+    fireEvent.click(screen.getByRole("button", { name: "连接本机" }));
+    expect(await screen.findByText("已连接 · 1 个 Provider")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "验证并应用" }));
+    await waitFor(() => expect(screen.getByText(/已实测联动/)).toBeTruthy());
+    const call = vi.mocked(fetch).mock.calls.find(([input]) => String(input).includes("cc-switch-apply"));
+    expect(call).toBeTruthy();
+  });
 });

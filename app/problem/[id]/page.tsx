@@ -16,6 +16,7 @@ import { useJudge } from "../../hooks/use-judge";
 import { useToast } from "../../hooks/use-toast";
 import { authClient } from "../../lib/auth-client";
 import { formatCppCode } from "../../lib/format-cpp";
+import { buildCodeDiff } from "../../lib/code-diff";
 import { ProblemApi, ProblemApiError, type CloudProblem } from "../../lib/problem-api";
 import { getProblemSourceLabel } from "../../lib/problem-source";
 import { useAiStore } from "../../stores/ai-store";
@@ -58,6 +59,8 @@ export default function ProblemPage() {
   const [chatInput, setChatInput] = useState("");
   const [chatBusy, setChatBusy] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
+  const [aiOriginalCode, setAiOriginalCode] = useState<string | null>(null);
+  const [aiProposedCode, setAiProposedCode] = useState<string | null>(null);
   const [generatingTests, setGeneratingTests] = useState(false);
   const [editingProblem, setEditingProblem] = useState(false);
   const [testGenStatus, setTestGenStatus] = useState("");
@@ -321,6 +324,7 @@ export default function ProblemPage() {
   // Esc 逐层收起浮层
   useEscapeClose(showChat, () => setShowChat(false));
   useEscapeClose(showAi, () => setShowAi(false));
+  useEscapeClose(Boolean(aiProposedCode), () => { setAiProposedCode(null); setAiOriginalCode(null); });
   useEscapeClose(showMascotAiPrompt, () => setShowMascotAiPrompt(false));
   useEscapeClose(Boolean(store.selectedSubmission), () => store.setSelectedSubmission(null));
 
@@ -347,18 +351,22 @@ export default function ProblemPage() {
 
   async function handleAskAi() {
     if (!aiStore.configured) return toast("请先在设置中完成 AI 配置");
+    const originalCode = store.code;
+    if (!originalCode.trim()) return toast("当前编辑器没有可供高木修改的代码");
     setAiBusy(true);
     try {
       const res = await fetch("/api/ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ problem: slimProblem() }),
+        body: JSON.stringify({ mode: "revise", code: originalCode, problem: slimProblem() }),
       });
       const data = await res.json() as { code?: string; error?: string };
       if (!res.ok || !data.code) throw new Error(data.error || "生成失败");
-      store.setCode(data.code.replace(/^```(?:cpp|c\+\+|cc|cxx)?\s*/i, "").replace(/```\s*$/, ""));
+      const proposedCode = data.code.replace(/^```(?:cpp|c\+\+|cc|cxx)?\s*/i, "").replace(/```\s*$/, "").trimEnd();
+      setAiOriginalCode(originalCode);
+      setAiProposedCode(proposedCode);
       setShowAi(false);
-      toast("AI 已生成解答，请运行测试验证");
+      toast("已生成修改候选，请在对照视图中确认");
     } catch (err) {
       toast(err instanceof Error ? err.message : "AI 请求失败");
     } finally {
@@ -679,8 +687,17 @@ export default function ProblemPage() {
           <div><span>当前模型</span><b>{aiStore.configured ? aiStore.model : "尚未配置"}</b><small>{aiStore.configured ? `${aiStore.provider} · ${aiStore.source === "ccswitch" ? "CCSwitch 导入" : "账户设置"}` : "保存后可在所有登录设备上使用"}</small></div>
           <button type="button" onClick={() => router.push("/settings")}>前往设置</button>
         </div>
-        <div className="ai-summary"><span>当前题目</span><b>{store.problem.id} · {store.problem.title}</b><small>仅发送题面与前 2 个样例，测试点不随请求发送，生成更快</small></div>
-        <button className="generate-button" disabled={aiBusy || !aiStore.configured} onClick={handleAskAi}>{aiBusy ? "正在思考并编写 C++…" : aiStore.configured ? `✦ 使用 ${aiStore.model} 生成 C++17 解答` : "请先完成 AI 设置"}</button>
+        <div className="ai-summary"><span>当前题目</span><b>{store.problem.id} · {store.problem.title}</b><small>高木会读取当前代码，保留已有逻辑，只提交一份可审阅的修改候选。</small></div>
+        <button className="generate-button" disabled={aiBusy || !aiStore.configured} onClick={handleAskAi}>{aiBusy ? "正在分析当前代码…" : aiStore.configured ? "✦ 分析并修改当前 C++17 代码 · 生成 C++17 解答" : "请先完成 AI 设置"}</button>
+      </div></div>}
+
+      {aiProposedCode !== null && aiOriginalCode !== null && <div className="modal-backdrop" onMouseDown={() => { setAiProposedCode(null); setAiOriginalCode(null); }}><div className="modal code-review-modal" onMouseDown={(event) => event.stopPropagation()}>
+        <button className="modal-close" aria-label="关闭代码审阅" onClick={() => { setAiProposedCode(null); setAiOriginalCode(null); }}>×</button>
+        <span className="modal-kicker">CODE REVIEW</span><h2>审阅高木的修改</h2>
+        <p>左侧是你当前的代码，右侧是修改候选。绿色表示新增，红色表示删除，黄色表示同一行被改写。</p>
+        <div className="code-review-legend"><span><i className="diff-swatch unchanged" />未改动</span><span><i className="diff-swatch added" />新增</span><span><i className="diff-swatch removed" />删除</span><span><i className="diff-swatch changed" />修改</span></div>
+        <div className="code-review-grid"><header><b>当前代码</b><b>修改候选</b></header><div className="code-review-scroll">{buildCodeDiff(aiOriginalCode, aiProposedCode).map((row, index) => <div className={`code-review-row ${row.kind}`} key={`${index}-${row.leftLine}-${row.rightLine}`}><code className="review-line-number">{row.leftLine ?? ""}</code><pre>{row.left ?? ""}</pre><code className="review-line-number">{row.rightLine ?? ""}</code><pre>{row.right ?? ""}</pre></div>)}</div></div>
+        <div className="code-review-actions"><button type="button" onClick={() => { setAiProposedCode(null); setAiOriginalCode(null); }}>放弃候选</button><button type="button" className="apply-review" onClick={() => { store.setCode(aiProposedCode); setAiProposedCode(null); setAiOriginalCode(null); toast("已应用高木修改，请运行测试验证"); }}>应用修改到编辑器</button></div>
       </div></div>}
 
       {/* Chat Drawer */}

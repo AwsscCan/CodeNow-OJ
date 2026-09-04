@@ -422,6 +422,28 @@ describe("AI 解题请求瘦身", () => {
       expect(body.problem.samples.length, "AI 解题不应携带全部测试点").toBeLessThanOrEqual(2);
     });
   });
+
+  it("审阅高木修改时保留原代码，确认后才写回编辑器", async () => {
+    configureAi();
+    useProblemStore.setState({ code: "int main() {\n  return 0;\n}" });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).includes("/api/ai")) {
+        const body = JSON.parse(String(init?.body));
+        expect(body.mode).toBe("revise");
+        expect(body.code).toContain("return 0");
+        return new Response(JSON.stringify({ code: "int main() {\n  return 1;\n}" }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ history: [] }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { container, getByText } = render(<ProblemPage />);
+    fireEvent.click(getByText("✦ AI 解题"));
+    fireEvent.click(getByText(/生成 C\+\+17 解答/));
+    await vi.waitFor(() => expect(container.querySelector(".code-review-modal")).toBeTruthy());
+    expect(useProblemStore.getState().code).toContain("return 0");
+    fireEvent.click(getByText("应用修改到编辑器"));
+    expect(useProblemStore.getState().code).toContain("return 1");
+  });
 });
 
 describe("AI 测试点生成错误", () => {

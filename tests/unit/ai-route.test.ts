@@ -23,6 +23,21 @@ afterEach(() => {
 });
 
 describe("POST /api/ai outbound sample provenance", () => {
+  it("sends existing code in revise mode and asks the model to preserve it", async () => {
+    const request = new NextRequest("http://localhost/api/ai", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mode: "revise", code: "int main(){ return 0; }",
+        problem: { id: "P1001", title: "A+B", description: "Add", inputFormat: "a b", outputFormat: "sum", samples: [] },
+      }),
+    });
+    await expect(POST(request)).resolves.toHaveProperty("status", 200);
+    const payload = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(payload.messages[0].content).toMatch(/保留原有正确逻辑/);
+    expect(payload.messages[1].content).toContain("int main(){ return 0; }");
+  });
+
   it("sends a bounded JSON problem snapshot instead of interpolated problem fields", async () => {
     const overflow = "__AI_DESCRIPTION_OVERFLOW__";
     const request = new NextRequest("http://localhost/api/ai", {
