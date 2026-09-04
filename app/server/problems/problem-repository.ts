@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, lt } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, lt } from "drizzle-orm";
 import type { Database } from "../../../db/client";
 import { createD1Db, createLocalDb } from "../../../db/client";
 import { folders, problems, testCases } from "../../../db/schema";
@@ -157,6 +157,14 @@ export function createProblemRepository(db: Database) {
       return { items, nextCursor: hasMore ? items.at(-1)?.updatedAt ?? null : null };
     },
 
+    async listDeletedProblems(userId: string) {
+      const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const rows = await database.select().from(problems)
+        .where(and(eq(problems.userId, userId), gt(problems.deletedAt, cutoff)))
+        .orderBy(desc(problems.deletedAt));
+      return rows.map(publicProblem);
+    },
+
     async getProblem(userId: string, id: string) {
       const row = await ownedProblem(userId, id);
       if (!row) return null;
@@ -259,6 +267,20 @@ export function createProblemRepository(db: Database) {
         return latest ? conflict(latest) : { ok: false, status: 404, code: "PROBLEM_NOT_FOUND", message: "Problem not found" };
       }
       return { ok: true, value: { id: row.id }, version: row.version, updatedAt: row.updatedAt.toISOString() };
+    },
+
+    async restoreProblem(userId: string, id: string, version: number): Promise<SaveResult<ReturnType<typeof publicProblem>>> {
+      const current = await ownedProblem(userId, id, true);
+      if (!current || !current.deletedAt) return { ok: false, status: 404, code: "PROBLEM_NOT_FOUND", message: "Problem not found" };
+      if (Date.now() - current.deletedAt.getTime() > 30 * 24 * 60 * 60 * 1000) {
+        return { ok: false, status: 404, code: "PROBLEM_EXPIRED", message: "Deleted problem has expired" };
+      }
+      if (current.version !== version) return conflict(current);
+      const now = new Date();
+      const [row] = await database.update(problems).set({ deletedAt: null, updatedAt: now, version: version + 1 })
+        .where(and(eq(problems.userId, userId), eq(problems.id, id), eq(problems.version, version), gt(problems.deletedAt, new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)))).returning();
+      if (!row) return { ok: false, status: 404, code: "PROBLEM_NOT_FOUND", message: "Problem not found" };
+      return { ok: true, value: publicProblem(row), version: row.version, updatedAt: row.updatedAt.toISOString() };
     },
   };
 }

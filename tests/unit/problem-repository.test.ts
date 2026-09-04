@@ -1,4 +1,5 @@
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
+import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   createProblemRepository,
@@ -6,7 +7,7 @@ import {
 } from "../../app/server/problems/problem-repository";
 import { validateTestCases } from "../../app/server/problems/problem-validation";
 import { createLocalDb } from "../../db/client";
-import { users } from "../../db/schema";
+import { problems, users } from "../../db/schema";
 
 const baseProblem: ProblemInput = {
   problemCode: "CF0001",
@@ -61,6 +62,25 @@ describe("user-scoped problem repository", () => {
 
     expect(await repository.getProblem("user-a", created.value.id)).toBeNull();
     expect((await repository.listProblems("user-a")).items).toHaveLength(0);
+  });
+
+  it("lists recent deleted problems and restores them within 30 days", async () => {
+    const created = await repository.createProblem("user-a", baseProblem);
+    if (!created.ok) throw new Error("create failed");
+    expect((await repository.softDeleteProblem("user-a", created.value.id, 1)).ok).toBe(true);
+    expect((await repository.listDeletedProblems("user-a"))).toHaveLength(1);
+    const restored = await repository.restoreProblem("user-a", created.value.id, 2);
+    expect(restored.ok).toBe(true);
+    expect((await repository.listProblems("user-a")).items).toHaveLength(1);
+  });
+
+  it("does not restore a deleted problem after the 30-day recovery window", async () => {
+    const created = await repository.createProblem("user-a", baseProblem);
+    if (!created.ok) throw new Error("create failed");
+    await repository.softDeleteProblem("user-a", created.value.id, 1);
+    await db.update(problems).set({ deletedAt: new Date(Date.now() - 31 * 24 * 60 * 60 * 1000) }).where(eq(problems.id, created.value.id));
+    expect((await repository.listDeletedProblems("user-a"))).toHaveLength(0);
+    expect((await repository.restoreProblem("user-a", created.value.id, 2)).ok).toBe(false);
   });
 
   it("rejects stale versions with the current version and update time", async () => {

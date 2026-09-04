@@ -158,6 +158,7 @@ type LibraryStore = {
   librarySearch: string;
   libraryReady: boolean;
   cloudArchives: ArchivedProblem[];
+  cloudDeletedArchives: ArchivedProblem[];
   cloudFolderIds: Record<string, string>;
   hiddenBuiltins: string[];
   deletedArchives: ArchivedProblem[];
@@ -168,7 +169,9 @@ type LibraryStore = {
   setArchives: (archives: ArchivedProblem[]) => void;
   addArchive: (archive: ArchivedProblem) => void;
   removeArchive: (id: string) => void;
+  removeCloudArchive: (id: string, deletedAt?: string) => void;
   restoreArchive: (id: string) => void;
+  restoreCloudArchive: (id: string) => void;
   hideBuiltin: (id: string) => void;
   restoreBuiltin: (id: string) => void;
   purgeDeleted: () => void;
@@ -190,6 +193,7 @@ type LibraryStore = {
   setLibrarySearch: (s: string) => void;
   setLibraryReady: () => void;
   setCloudArchives: (archives: ArchivedProblem[]) => void;
+  setCloudDeletedArchives: (archives: ArchivedProblem[]) => void;
   setCloudFolderIds: (folders: Record<string, string>) => void;
   bumpCatalogVersion: () => void;
 };
@@ -206,6 +210,7 @@ export const useLibraryStore = create<LibraryStore>()(
       librarySearch: "",
       libraryReady: false,
       cloudArchives: [],
+      cloudDeletedArchives: [],
       cloudFolderIds: {},
       hiddenBuiltins: [] as string[],
       deletedArchives: [] as ArchivedProblem[],
@@ -219,9 +224,23 @@ export const useLibraryStore = create<LibraryStore>()(
         const removed = s.archives.filter((a) => a.problem.id === id).map((a) => ({ ...a, deletedAt: new Date().toISOString() }));
         return removed.length ? { archives: s.archives.filter((a) => a.problem.id !== id), deletedArchives: [...removed, ...s.deletedArchives] } : s;
       }),
+      removeCloudArchive: (id, deletedAt = new Date().toISOString()) => set((s) => {
+        const removed = s.cloudArchives.filter((a) => a.cloudId === id);
+        return removed.length ? {
+          cloudArchives: s.cloudArchives.filter((a) => a.cloudId !== id),
+          cloudDeletedArchives: [...removed.map((item): ArchivedProblem => ({ ...item, deletedAt })), ...s.cloudDeletedArchives.filter((item) => item.cloudId !== id)],
+        } : s;
+      }),
       restoreArchive: (id) => set((s) => {
         const restored = s.deletedArchives.find((a) => a.problem.id === id);
         return restored ? { deletedArchives: s.deletedArchives.filter((a) => a.problem.id !== id), archives: [{ ...restored, deletedAt: undefined }, ...s.archives] } : s;
+      }),
+      restoreCloudArchive: (id) => set((s) => {
+        const restored = s.cloudDeletedArchives.find((a) => a.cloudId === id);
+        return restored ? {
+          cloudDeletedArchives: s.cloudDeletedArchives.filter((item) => item.cloudId !== id),
+          cloudArchives: [{ ...restored, deletedAt: undefined }, ...s.cloudArchives],
+        } : s;
       }),
       hideBuiltin: (id) => set((s) => s.hiddenBuiltins.includes(id)
         ? s
@@ -322,6 +341,7 @@ export const useLibraryStore = create<LibraryStore>()(
       setLibrarySearch: (librarySearch) => set({ librarySearch }),
       setLibraryReady: () => set({ libraryReady: true }),
       setCloudArchives: (cloudArchives) => set({ cloudArchives }),
+      setCloudDeletedArchives: (cloudDeletedArchives) => set({ cloudDeletedArchives }),
       setCloudFolderIds: (cloudFolderIds) => set({ cloudFolderIds }),
       bumpCatalogVersion: () => set((s) => ({ catalogVersion: s.catalogVersion + 1 })),
     }),

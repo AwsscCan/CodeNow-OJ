@@ -83,6 +83,19 @@ describe("private problem APIs", () => {
     expect(body).not.toContain("secret-output");
   });
 
+  it("exposes a 30-day deleted list and restores an owned problem", async () => {
+    const collection = createProblemsHandlers(context);
+    const created = await (await collection.POST(request("/api/problems", "POST", problem))).json() as { problem: { id: string } };
+    const detail = createProblemDetailHandlers(context);
+    const deleted = await detail.DELETE(request(`/api/problems/${created.problem.id}?version=1`, "DELETE"), created.problem.id);
+    expect(deleted.status).toBe(200);
+    const trash = await collection.GET(request("/api/problems?deleted=1"));
+    expect((await trash.json() as { problems: Array<{ id: string }> }).problems).toHaveLength(1);
+    const restored = await detail.POST(request(`/api/problems/${created.problem.id}`, "POST", { version: 2 }), created.problem.id);
+    expect(restored.status).toBe(200);
+    expect((await collection.GET(request("/api/problems"))).status).toBe(200);
+  });
+
   it("moves problems to a deleted folder's parent without deleting them", async () => {
     const folders = createFolderHandlers(context);
     const parent = await (await folders.POST(request("/api/folders", "POST", { name: "parent" }))).json() as { folder: { id: string } };

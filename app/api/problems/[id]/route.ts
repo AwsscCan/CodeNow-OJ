@@ -30,6 +30,16 @@ export function createProblemDetailHandlers(resolveContext: ResolveProblemContex
       if (!result.ok) return apiError(result.status, result.code, result.message, result.field, { currentVersion: result.currentVersion, updatedAt: result.updatedAt });
       return Response.json({ deleted: result.value, version: result.version, updatedAt: result.updatedAt }, { headers: privateNoStore });
     },
+    POST: async (request: Request, id: string) => {
+      const context = await resolveContext(request);
+      if (!context) return apiError(401, "AUTH_REQUIRED", "请先登录");
+      const body = await readJson(request);
+      const version = typeof body?.version === "number" ? body.version : NaN;
+      if (!Number.isInteger(version) || version < 1) return apiError(400, "INVALID_VERSION", "需要有效版本号");
+      const result = await context.repository.restoreProblem(context.userId, id, version);
+      if (!result.ok) return apiError(result.status, result.code, result.message, result.field, { currentVersion: result.currentVersion, updatedAt: result.updatedAt });
+      return Response.json({ problem: result.value, version: result.version, updatedAt: result.updatedAt }, { headers: privateNoStore });
+    },
   };
 }
 
@@ -38,3 +48,4 @@ type RouteContext = { params: Promise<{ id: string }> };
 export async function GET(request: Request, context: RouteContext) { return handlers.GET(request, (await context.params).id); }
 export async function PATCH(request: Request, context: RouteContext) { return handlers.PATCH(request, (await context.params).id); }
 export async function DELETE(request: Request, context: RouteContext) { return handlers.DELETE(request, (await context.params).id); }
+export async function POST(request: Request, context: RouteContext) { return handlers.POST(request, (await context.params).id); }

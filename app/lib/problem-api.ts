@@ -13,10 +13,13 @@ const jsonHeaders = { "Content-Type": "application/json" };
 
 export const ProblemApi = {
   list: (signal?: AbortSignal) => json<{ problems: CloudProblemSummary[]; nextCursor: string | null }>("/api/problems", { signal }),
+  listDeleted: (signal?: AbortSignal) => json<{ problems: CloudProblemSummary[] }>("/api/problems?deleted=1", { signal }),
   get: (id: string, signal?: AbortSignal) => json<{ problem: CloudProblem }>(`/api/problems/${encodeURIComponent(id)}`, { signal }),
   create: (problem: Record<string, unknown>, signal?: AbortSignal) => json<{ problem: CloudProblemSummary; version: number; updatedAt: string }>("/api/problems", { method: "POST", headers: jsonHeaders, body: JSON.stringify(problem), signal }),
   update: (id: string, version: number, patch: Record<string, unknown>, idempotencyKey: string, signal?: AbortSignal) => json<{ problem: CloudProblemSummary; version: number; updatedAt: string }>(`/api/problems/${encodeURIComponent(id)}`, { method: "PATCH", headers: { ...jsonHeaders, "Idempotency-Key": idempotencyKey }, body: JSON.stringify({ version, patch }), signal }),
   replaceTests: (id: string, version: number, testCases: CloudTestCaseInput[], idempotencyKey: string, signal?: AbortSignal) => json<{ testCases: unknown[]; version: number; updatedAt: string }>(`/api/problems/${encodeURIComponent(id)}/test-cases`, { method: "PUT", headers: { ...jsonHeaders, "Idempotency-Key": idempotencyKey }, body: JSON.stringify({ version, testCases }), signal }),
+  remove: (id: string, version: number, signal?: AbortSignal) => json<{ deleted: { id: string }; version: number; updatedAt: string }>(`/api/problems/${encodeURIComponent(id)}`, { method: "DELETE", headers: jsonHeaders, body: JSON.stringify({ version }), signal }),
+  restore: (id: string, version: number, signal?: AbortSignal) => json<{ problem: CloudProblemSummary; version: number; updatedAt: string }>(`/api/problems/${encodeURIComponent(id)}`, { method: "POST", headers: jsonHeaders, body: JSON.stringify({ version }), signal }),
   getDraft: (problemKind: string, problemRef: string, language: string, signal?: AbortSignal) => json<{ draft: { sourceCode: string }; version: number; updatedAt: string }>(`/api/drafts/${encodeURIComponent(problemRef)}?problemKind=${encodeURIComponent(problemKind)}&language=${encodeURIComponent(language)}`, { signal }),
   saveDraft: (problemKind: string, problemRef: string, language: string, sourceCode: string, expectedVersion: number, idempotencyKey: string, signal?: AbortSignal) => json<{ draft: { sourceCode: string }; version: number; updatedAt: string }>(`/api/drafts/${encodeURIComponent(problemRef)}`, { method: "PUT", headers: { ...jsonHeaders, "Idempotency-Key": idempotencyKey }, body: JSON.stringify({ problemKind, language, sourceCode, expectedVersion }), signal }),
   listFolders: (signal?: AbortSignal) => json<{ folders: CloudFolder[] }>("/api/folders", { signal }),
@@ -28,6 +31,7 @@ export const ProblemApi = {
 export type CloudProblemSummary = {
   id: string; problemCode: string; title: string; difficulty: "入门" | "普及" | "提高"; timeLimit: string; memoryLimit: string;
   description: string; inputFormat: string; outputFormat: string; folderId: string | null; version: number; updatedAt: string;
+  deletedAt?: string | null;
   sourceUrl?: string | null; extractionStatus?: "complete" | "needs_review" | null;
 };
 export type CloudProblem = CloudProblemSummary & { testCases: Array<{ id: string; input: string; expectedOutput: string; category?: string | null; scale?: number | null; targets?: string | null; reason?: string | null }> };

@@ -5,7 +5,11 @@ export function createProblemsHandlers(resolveContext: ResolveProblemContext = r
     GET: async (request: Request) => {
       const context = await resolveContext(request);
       if (!context) return apiError(401, "AUTH_REQUIRED", "请先登录");
-      const cursor = new URL(request.url).searchParams.get("cursor") ?? undefined;
+      const params = new URL(request.url).searchParams;
+      if (params.get("deleted") === "1") {
+        return Response.json({ problems: await context.repository.listDeletedProblems(context.userId) }, { headers: privateNoStore });
+      }
+      const cursor = params.get("cursor") ?? undefined;
       const result = await context.repository.listProblems(context.userId, cursor);
       return Response.json({ problems: result.items, nextCursor: result.nextCursor }, { headers: privateNoStore });
     },

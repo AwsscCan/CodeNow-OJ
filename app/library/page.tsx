@@ -85,23 +85,26 @@ export default function LibraryPage() {
   useEffect(() => { store.setLibraryReady(); loadAcwingCatalog(); }, []);
   useEffect(() => { store.purgeDeleted(); }, []);
   useEffect(() => {
-    if (!session.data?.user) { store.setCloudArchives([]); store.setCloudFolderIds({}); return; }
+    if (!session.data?.user) { store.setCloudArchives([]); store.setCloudDeletedArchives([]); store.setCloudFolderIds({}); return; }
     const controller = new AbortController();
-    Promise.all([ProblemApi.list(controller.signal), ProblemApi.listFolders(controller.signal)]).then(([{ problems }, { folders }]) => {
+    Promise.all([ProblemApi.list(controller.signal), ProblemApi.listDeleted(controller.signal), ProblemApi.listFolders(controller.signal)]).then(([{ problems }, { problems: deletedProblems }, { folders }]) => {
       const folderPaths = buildCloudFolderPaths(folders);
       const pathById = new Map(Object.entries(folderPaths).map(([path, id]) => [id, path]));
       store.setCloudFolderIds(folderPaths);
-      store.setCloudArchives(problems.map((item) => ({
+      const toArchive = (item: typeof problems[number]): typeof store.archives[number] => ({
         cloudId: item.id,
         version: item.version,
         folder: item.folderId ? pathById.get(item.folderId) ?? "云端题库" : "云端题库",
+        deletedAt: item.deletedAt ?? undefined,
         archivedAt: item.updatedAt,
         problem: {
           id: item.problemCode, title: item.title, difficulty: item.difficulty, time: item.timeLimit, memory: item.memoryLimit,
           description: item.description, inputFormat: item.inputFormat, outputFormat: item.outputFormat, samples: [],
           sourceUrl: item.sourceUrl ?? undefined, extractionStatus: item.extractionStatus ?? undefined,
         },
-      })));
+      });
+      store.setCloudArchives(problems.map(toArchive));
+      store.setCloudDeletedArchives(deletedProblems.map(toArchive));
     }).catch(() => { /* keep the local library available while offline */ });
     return () => controller.abort();
   }, [session.data?.user?.id]);
@@ -228,6 +231,35 @@ export default function LibraryPage() {
     } else store.removeFolder(folder);
     if (folderContains(store.selectedFolder, folder)) store.setSelectedFolder(folderParent(folder) || (cloudId ? "云端题库" : "默认题库"));
     toast(localBuiltinOnly ? "已隐藏内置题（仅当前账号）" : "已移入回收站，30 天后自动清理");
+  }
+
+  async function deleteArchive(item: typeof store.archives[number]) {
+    if (!window.confirm(`删除 ${item.problem.id}？删除后可在“已删除”中恢复 30 天。`)) return;
+    try {
+      if (item.cloudId) {
+        await ProblemApi.remove(item.cloudId, item.version ?? 1);
+        store.removeCloudArchive(item.cloudId, new Date().toISOString());
+      } else {
+        store.removeArchive(item.problem.id);
+      }
+      toast(`已删除 ${item.problem.id}，可在已删除中恢复`);
+    } catch (error) {
+      toast(`删除失败：${error instanceof Error ? error.message : "请稍后重试"}`);
+    }
+  }
+
+  async function restoreDeleted(item: typeof store.archives[number]) {
+    try {
+      if (item.cloudId) {
+        await ProblemApi.restore(item.cloudId, item.version ?? 1);
+        store.restoreCloudArchive(item.cloudId);
+      } else {
+        store.restoreArchive(item.problem.id);
+      }
+      toast(`已恢复 ${item.problem.id}`);
+    } catch (error) {
+      toast(`恢复失败：${error instanceof Error ? error.message : "删除已超过 30 天或版本已变化"}`);
+    }
   }
 
   async function confirmRename() {
@@ -435,7 +467,7 @@ export default function LibraryPage() {
               <span>▦ 全部题目</span><b>{store.archives.length + acwingProblems.length + (builtinVisible ? 1 : 0)}</b>
             </button>
             <button className={store.selectedFolder === "已删除" ? "active" : ""} onClick={() => store.setSelectedFolder("已删除")}>
-              <span>♲ 已删除</span><b>{store.deletedArchives.length + store.deletedBuiltins.length}</b>
+              <span>♲ 已删除</span><b>{store.deletedArchives.length + store.cloudDeletedArchives.length + store.deletedBuiltins.length}</b>
             </button>
             {visibleFolders.map((folder) => {
               const hasChildren = orderedFolders.some((item) => item.startsWith(`${folder}/`));
@@ -474,7 +506,7 @@ export default function LibraryPage() {
           <main className="library-catalog">
             <div className="catalog-toolbar">
               <div><h2 className="folder-breadcrumb">{store.selectedFolder === "全部题目" ? "全部题目" : store.selectedFolder.split("/").map((p, i) => <span key={`${p}-${i}`}>{i > 0 && <i>›</i>}{p}</span>)}</h2>
-              <span>{showTrash ? store.deletedArchives.length + store.deletedBuiltins.length : selectedArchives.length + selectedAcwing.length + (showBuiltIn ? 1 : 0)} 道题目</span></div>
+              <span>{showTrash ? store.deletedArchives.length + store.cloudDeletedArchives.length + store.deletedBuiltins.length : selectedArchives.length + selectedAcwing.length + (showBuiltIn ? 1 : 0)} 道题目</span></div>
               <div className="catalog-tools">
                 {store.selectedFolder !== "全部题目" && <button className={store.includeSubfolders ? "active" : ""} onClick={() => store.setIncludeSubfolders(!store.includeSubfolders)}>{store.includeSubfolders ? "含子文件夹" : "仅当前文件夹"}</button>}
                 <label><span>⌕</span><input value={store.librarySearch} onChange={(e) => store.setLibrarySearch(e.target.value)} placeholder="搜索编号或题目名称" /></label>
@@ -487,7 +519,7 @@ export default function LibraryPage() {
                 if (!builtin) return null;
                 return <article className="catalog-row built-in" key={`deleted-${item.id}`}><div className="catalog-problem-link"><code>{builtin.id}</code><span><b>{builtin.title}</b><small>删除于 {new Date(item.deletedAt).toLocaleDateString("zh-CN")}</small></span></div><span className="difficulty beginner">{builtin.difficulty}</span><span>{builtin.samples.length} 个</span><span>已删除</span><div className="row-actions"><button onClick={() => store.restoreBuiltin(item.id)}>恢复</button></div></article>;
               })}
-              {showTrash && store.deletedArchives.map((item) => <article className="catalog-row" key={`deleted-${item.problem.id}`}><div className="catalog-problem-link"><code>{item.problem.id}</code><span><b>{item.problem.title}</b><small>删除于 {new Date(item.deletedAt ?? item.archivedAt).toLocaleDateString("zh-CN")}</small></span></div><span className={`difficulty ${item.problem.difficulty === "提高" ? "advanced" : item.problem.difficulty === "普及" ? "normal" : "beginner"}`}>{item.problem.difficulty}</span><span>{item.problem.samples.length} 个</span><span>已删除</span><div className="row-actions"><button onClick={() => store.restoreArchive(item.problem.id)}>恢复</button></div></article>)}
+              {showTrash && [...store.cloudDeletedArchives, ...store.deletedArchives].map((item) => <article className="catalog-row" key={`deleted-${item.cloudId ?? item.problem.id}`}><div className="catalog-problem-link"><code>{item.problem.id}</code><span><b>{item.problem.title}</b><small>删除于 {new Date(item.deletedAt ?? item.archivedAt).toLocaleDateString("zh-CN")}</small></span></div><span className={`difficulty ${item.problem.difficulty === "提高" ? "advanced" : item.problem.difficulty === "普及" ? "normal" : "beginner"}`}>{item.problem.difficulty}</span><span>{item.problem.samples.length} 个</span><span>已删除</span><div className="row-actions"><button onClick={() => void restoreDeleted(item)}>恢复</button></div></article>)}
               {showBuiltIn && <article className="catalog-row built-in"><div className="catalog-problem-link"><button className="catalog-id-edit editable" onClick={() => { setRenamingId(INITIAL_PROBLEM.id); setNextProblemId(INITIAL_PROBLEM.id); }}><code>{INITIAL_PROBLEM.id}</code></button><button className="catalog-title-open" onClick={openBuiltIn}><span><b>{INITIAL_PROBLEM.title}</b><small>经典入门题 · 内置题目</small></span></button></div><span className="difficulty beginner">{INITIAL_PROBLEM.difficulty}</span><span>{INITIAL_PROBLEM.samples.length} 个</span><span>{folderName(builtinFolder) || "全部题目"}</span><i onClick={openBuiltIn}>进入做题 →</i></article>}
               {selectedAcwing.map((item) => (
                 <article className="catalog-row external-problem" key={item.id}>
@@ -502,13 +534,13 @@ export default function LibraryPage() {
                   <span className={`difficulty ${item.problem.difficulty === "提高" ? "advanced" : item.problem.difficulty === "普及" ? "normal" : "beginner"}`}>{item.problem.difficulty}</span>
                   <span>{item.problem.samples.length} 个</span>
                   <span>{folderName(item.folder)}</span>
-                  <div className="row-actions">{isLoggedIn && <button className="danger-action" onClick={() => { if (window.confirm(`删除 ${item.problem.id}？`)) store.removeArchive(item.problem.id); }}>删除</button>}<i onClick={() => openArchived(item)}>进入 →</i></div>
+                  <div className="row-actions">{isLoggedIn && <button className="danger-action" onClick={() => void deleteArchive(item)}>删除</button>}<i onClick={() => openArchived(item)}>进入 →</i></div>
                 </article>
               ))}
               {!showTrash && !showBuiltIn && selectedAcwing.length === 0 && selectedArchives.length === 0 && (
                 <div className="catalog-empty"><b>暂无题目</b><span>点击“添加题目”导入 JSON，或粘贴题面让 AI 自动生成。</span></div>
               )}
-              {showTrash && !store.deletedArchives.length && !store.deletedBuiltins.length && <div className="catalog-empty"><b>回收站为空</b><span>已删除内容保留 30 天，逾期自动清理。</span></div>}
+              {showTrash && !store.deletedArchives.length && !store.cloudDeletedArchives.length && !store.deletedBuiltins.length && <div className="catalog-empty"><b>回收站为空</b><span>已删除内容保留 30 天，逾期自动清理。</span></div>}
             </div>
           </main>
         </div>
