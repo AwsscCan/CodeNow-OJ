@@ -26,6 +26,7 @@ type NoteStore = {
   cloudNotes: NoteListEntry[];            // 云端镜像，不落盘
   noteVersions: Record<string, number>;   // 每篇版本号，不落盘
   localDrafts: LocalNoteDraft[];          // 游客草稿，落盘并跨登录保留
+  editorDrafts: Record<string, LocalNoteDraft>; // 未提交编辑器草稿，落盘并按账户隔离
   listView: NoteListView;
   sort: NoteSort;
   tagFilter: string | null;
@@ -36,6 +37,8 @@ type NoteStore = {
   setNoteVersion: (id: string, version: number) => void;
   upsertLocalDraft: (draft: LocalNoteDraft) => void;
   removeLocalDraft: (id: string) => void;
+  setEditorDraft: (key: string, draft: LocalNoteDraft) => void;
+  removeEditorDraft: (key: string) => void;
   setListView: (view: NoteListView) => void;
   setSort: (sort: NoteSort) => void;
   setTagFilter: (tag: string | null) => void;
@@ -48,6 +51,7 @@ export const useNoteStore = create<NoteStore>()(
       cloudNotes: [],
       noteVersions: {},
       localDrafts: [],
+      editorDrafts: {},
       listView: "mine",
       sort: "recent",
       tagFilter: null,
@@ -69,13 +73,19 @@ export const useNoteStore = create<NoteStore>()(
         return { localDrafts: [draft, ...rest] };
       }),
       removeLocalDraft: (id) => set((state) => ({ localDrafts: state.localDrafts.filter((item) => item.id !== id) })),
+      setEditorDraft: (key, draft) => set((state) => ({ editorDrafts: { ...state.editorDrafts, [key]: draft } })),
+      removeEditorDraft: (key) => set((state) => {
+        const next = { ...state.editorDrafts };
+        delete next[key];
+        return { editorDrafts: next };
+      }),
       setListView: (listView) => set({ listView }),
       setSort: (sort) => set({ sort }),
       setTagFilter: (tagFilter) => set({ tagFilter }),
     }),
     {
       name: "codenow-notes-local",
-      partialize: (state) => ({ localDrafts: state.localDrafts, listView: state.listView, sort: state.sort }),
+      partialize: (state) => ({ localDrafts: state.localDrafts, editorDrafts: state.editorDrafts, listView: state.listView, sort: state.sort }),
     },
   ),
 );

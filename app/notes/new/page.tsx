@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { NoteEditor, type NoteEditorValue } from "../../components/notes/note-editor";
 import { Toast } from "../../components/toast";
 import { Topbar } from "../../components/topbar";
@@ -22,20 +22,42 @@ function NewNoteInner() {
   const { notice, toast } = useToast();
   const session = authClient.useSession();
   const store = useNoteStore();
+  const setEditorDraft = useNoteStore((state) => state.setEditorDraft);
+  const removeEditorDraft = useNoteStore((state) => state.removeEditorDraft);
   const params = useSearchParams();
   const userId = session.data?.user?.id ?? null;
 
   const draftId = params.get("draft");
   const problemRef = params.get("problemRef");
   const problemKind = (params.get("problemKind") as NoteProblemKind | null) ?? null;
-  const existingDraft = draftId ? store.localDrafts.find((item) => item.id === draftId) : undefined;
+  const draftKey = draftId ? `local:${draftId}` : `editor:${userId ?? "guest"}:${problemRef ?? "standalone"}`;
+  const existingDraft = draftId
+    ? store.editorDrafts[draftKey] ?? store.localDrafts.find((item) => item.id === draftId)
+    : store.editorDrafts[draftKey];
 
   const [value, setValue] = useState<NoteEditorValue>(() => existingDraft
     ? { title: existingDraft.title, content: existingDraft.content, summary: existingDraft.summary ?? "", tags: existingDraft.tags, visibility: existingDraft.visibility, problemRefs: [] }
     : { title: "", content: "", summary: "", tags: [], visibility: "private", problemRefs: [] });
   const [busy, setBusy] = useState(false);
-
+  const hydratedDraftKey = useRef<string | null>(null);
   const source = problemRef ? "problem" as const : (existingDraft?.source ?? "standalone" as const);
+
+  useEffect(() => {
+    if (session.isPending || hydratedDraftKey.current === draftKey) return;
+    const saved = draftId ? store.editorDrafts[draftKey] ?? store.localDrafts.find((item) => item.id === draftId) : store.editorDrafts[draftKey];
+    if (saved) setValue({ title: saved.title, content: saved.content, summary: saved.summary ?? "", tags: saved.tags, visibility: saved.visibility, problemRefs: [] });
+    hydratedDraftKey.current = draftKey;
+  }, [draftId, draftKey, session.isPending, store.editorDrafts, store.localDrafts]);
+
+  useEffect(() => {
+    if (session.isPending) return;
+    const timer = window.setTimeout(() => setEditorDraft(draftKey, {
+      id: draftId ?? draftKey, title: value.title, content: value.content, summary: deriveSummary(value.content),
+      tags: value.tags, visibility: value.visibility, source, problemKind: source === "problem" ? (problemKind ?? "public") : null,
+      problemRef: source === "problem" ? problemRef : null, updatedAt: new Date().toISOString(),
+    }), 250);
+    return () => window.clearTimeout(timer);
+  }, [draftId, draftKey, problemKind, problemRef, session.isPending, setEditorDraft, source, value]);
 
   async function submit() {
     setBusy(true);
@@ -53,6 +75,7 @@ function NewNoteInner() {
           ...(source === "problem" ? { problemKind: problemKind ?? existingDraft?.problemKind ?? "public", problemRef: problemRef ?? existingDraft?.problemRef ?? undefined } : {}),
         });
         if (draftId) store.removeLocalDraft(draftId);
+        removeEditorDraft(draftKey);
         router.push(`/notes/${encodeURIComponent(result.note.id)}`);
       } else {
         const id = draftId ?? crypto.randomUUID();
@@ -63,6 +86,7 @@ function NewNoteInner() {
           problemRef: source === "problem" ? problemRef : null,
           updatedAt: new Date().toISOString(),
         });
+        removeEditorDraft(draftKey);
         toast("已保存到本机，登录后可迁移上云");
         router.push("/notes");
       }

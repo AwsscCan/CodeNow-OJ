@@ -19,7 +19,7 @@ function draft(id: string): LocalNoteDraft {
 describe("note store account isolation", () => {
   beforeEach(() => {
     localStorage.clear();
-    useNoteStore.setState({ noteAccountId: null, cloudNotes: [], noteVersions: {}, localDrafts: [] });
+    useNoteStore.setState({ noteAccountId: null, cloudNotes: [], noteVersions: {}, localDrafts: [], editorDrafts: {} });
   });
 
   it("clears cloud mirror when switching accounts but keeps guest drafts", () => {
@@ -62,5 +62,11 @@ describe("note store account isolation", () => {
     expect(persisted.state.listView).toBe("public");
     expect(persisted.state).not.toHaveProperty("cloudNotes");
     expect(persisted.state).not.toHaveProperty("noteVersions");
+  });
+
+  it("persists an unpublished editor draft so refresh and route changes do not lose it", () => {
+    useNoteStore.getState().setEditorDraft("editor:user-a:standalone", draft("pending"));
+    const persisted = JSON.parse(localStorage.getItem("codenow-notes-local") ?? "{}");
+    expect(persisted.state.editorDrafts["editor:user-a:standalone"]).toMatchObject({ id: "pending", content: "x" });
   });
 });
