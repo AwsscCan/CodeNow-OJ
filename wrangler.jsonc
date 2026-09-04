@@ -21,6 +21,12 @@
     "production": {
       "name": "codenow-oj-production",
       "workers_dev": true,
+      "routes": [
+        {
+          "pattern": "codenowoj.xyz",
+          "custom_domain": true
+        }
+      ],
       "d1_databases": [
         {
           "binding": "DB",

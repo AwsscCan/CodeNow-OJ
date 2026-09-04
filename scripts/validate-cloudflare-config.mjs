@@ -26,6 +26,8 @@ export function validateCloudflareConfig(config) {
   if (!preview || !production) return { ok: false, errors };
   if (!preview.name || !production.name || preview.name === production.name) errors.push("Preview and production Worker names must be different");
   if (preview.workers_dev !== true || production.workers_dev !== true) errors.push("Both environments must enable workers_dev");
+  const hasProductionDomain = production.routes?.some((route) => route?.pattern === "codenowoj.xyz" && route.custom_domain === true);
+  if (!hasProductionDomain) errors.push("Production must bind custom domain codenowoj.xyz");
   const previewDb = preview.d1_databases?.find((entry) => entry.binding === "DB");
   const productionDb = production.d1_databases?.find((entry) => entry.binding === "DB");
   if (!previewDb?.database_id || !productionDb?.database_id) errors.push("Both environments require a non-empty DB database_id");
